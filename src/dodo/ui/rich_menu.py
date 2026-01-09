@@ -11,6 +11,11 @@ from simple_term_menu import TerminalMenu
 
 T = TypeVar("T")
 
+# UI Constants
+LIVE_REFRESH_RATE = 20
+DEFAULT_PANEL_WIDTH = 80
+DEFAULT_TERMINAL_HEIGHT = 24
+
 
 class InteractiveList:
     """Reusable interactive list with customizable keybindings.
@@ -35,7 +40,7 @@ class InteractiveList:
         render_item: Callable[[T, bool], str] | None = None,
         keybindings: dict[str, Callable[["ListContext[T]"], Any]] | None = None,
         footer: str | None = None,
-        width: int = 80,
+        width: int = DEFAULT_PANEL_WIDTH,
     ):
         """Initialize interactive list.
 
@@ -61,9 +66,9 @@ class InteractiveList:
 
     def show(self) -> int | None:
         """Display the interactive list. Returns cursor position or None if quit."""
-        term_width = self._console.width or 80
+        term_width = self._console.width or DEFAULT_PANEL_WIDTH
         width = min(self.width, term_width - 4)  # adapt to terminal width
-        height = self._console.height or 24
+        height = self._console.height or DEFAULT_TERMINAL_HEIGHT
         # Panel height = height (full terminal), interior = height - 2
         # Reserve: footer+gap(2) + scroll indicators(2) + status(1) = 5
         max_items = height - 6
@@ -123,7 +128,9 @@ class InteractiveList:
             )
 
         self._console.clear()
-        with Live(build_panel(), console=self._console, refresh_per_second=20) as live:
+        with Live(
+            build_panel(), console=self._console, refresh_per_second=LIVE_REFRESH_RATE
+        ) as live:
             while True:
                 try:
                     key = readchar.readkey()

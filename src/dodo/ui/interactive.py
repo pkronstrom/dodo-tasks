@@ -12,6 +12,13 @@ from dodo.project import detect_project
 
 from .rich_menu import RichTerminalMenu
 
+# UI Constants
+LIVE_REFRESH_RATE = 20
+DEFAULT_PANEL_WIDTH = 80
+DEFAULT_TERMINAL_HEIGHT = 24
+STATUS_MSG_MAX_LEN = 30
+CONFIG_DISPLAY_MAX_LEN = 35
+
 console = Console()
 
 
@@ -29,7 +36,7 @@ def interactive_menu() -> None:
         done = sum(1 for i in items if i.status == Status.DONE)
 
         # Adaptive panel width
-        term_width = console.width or 80
+        term_width = console.width or DEFAULT_PANEL_WIDTH
         panel_width = min(84, term_width)  # max 80 + 4 for borders
 
         console.clear()
@@ -107,9 +114,9 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
         nonlocal scroll_offset, last_size
 
         # Recalculate dimensions (may have changed due to resize)
-        term_width = live_console.width or 80
-        term_height = live_console.height or 24
-        width = min(80, term_width - 4)
+        term_width = live_console.width or DEFAULT_PANEL_WIDTH
+        term_height = live_console.height or DEFAULT_TERMINAL_HEIGHT
+        width = min(DEFAULT_PANEL_WIDTH, term_width - 4)
         height = term_height
         max_items = height - 6
 
@@ -208,7 +215,7 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
 
         live_console.clear()
         panel, _ = build_display()
-        with Live(panel, console=live_console, refresh_per_second=20) as live:
+        with Live(panel, console=live_console, refresh_per_second=LIVE_REFRESH_RATE) as live:
             while True:
                 items = svc.list()
                 max_cursor = max(0, len(items) - 1)
@@ -230,7 +237,7 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
                     item = items[cursor]
                     undo_stack.append(UndoAction("toggle", item))
                     svc.toggle(item.id)
-                    status_msg = f"[dim]✓ Toggled: {item.text[:30]}[/dim]"
+                    status_msg = f"[dim]✓ Toggled: {item.text[:STATUS_MSG_MAX_LEN]}[/dim]"
                 elif key == "e" and items:  # Edit
                     edit_item = items[cursor]
                     break  # Exit to editor
@@ -238,18 +245,24 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
                     item = items[cursor]
                     undo_stack.append(UndoAction("delete", item))
                     svc.delete(item.id)
-                    status_msg = f"[dim]✓ Deleted: {item.text[:30]}[/dim]"
+                    status_msg = f"[dim]✓ Deleted: {item.text[:STATUS_MSG_MAX_LEN]}[/dim]"
                 elif key == "u" and undo_stack:  # Undo
                     action = undo_stack.pop()
                     if action.kind == "toggle":
                         svc.toggle(action.item.id)
-                        status_msg = f"[dim]↩ Undid toggle: {action.item.text[:30]}[/dim]"
+                        status_msg = (
+                            f"[dim]↩ Undid toggle: {action.item.text[:STATUS_MSG_MAX_LEN]}[/dim]"
+                        )
                     elif action.kind == "delete":
                         svc.add(action.item.text)
-                        status_msg = f"[dim]↩ Restored: {action.item.text[:30]}[/dim]"
+                        status_msg = (
+                            f"[dim]↩ Restored: {action.item.text[:STATUS_MSG_MAX_LEN]}[/dim]"
+                        )
                     elif action.kind == "edit" and action.new_id:
                         svc.update_text(action.new_id, action.item.text)
-                        status_msg = f"[dim]↩ Restored text: {action.item.text[:30]}[/dim]"
+                        status_msg = (
+                            f"[dim]↩ Restored text: {action.item.text[:STATUS_MSG_MAX_LEN]}[/dim]"
+                        )
                 elif key == "a":  # Add
                     add_mode = True
                     break
@@ -272,7 +285,7 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
             )
             if new_text:
                 svc.add(new_text)
-                status_msg = f"[dim]✓ Added: {new_text[:30]}[/dim]"
+                status_msg = f"[dim]✓ Added: {new_text[:STATUS_MSG_MAX_LEN]}[/dim]"
             else:
                 status_msg = "[dim]Cancelled[/dim]"
             continue  # Re-enter Live context
@@ -283,7 +296,7 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
             if new_text and new_text != edit_item.text:
                 updated = svc.update_text(edit_item.id, new_text)
                 undo_stack.append(UndoAction("edit", edit_item, new_id=updated.id))
-                status_msg = f"[dim]✓ Updated: {new_text[:30]}[/dim]"
+                status_msg = f"[dim]✓ Updated: {new_text[:STATUS_MSG_MAX_LEN]}[/dim]"
             else:
                 status_msg = "[dim]No changes[/dim]"
             continue  # Re-enter Live context
@@ -403,8 +416,8 @@ def _config_loop(
             elif kind == "cycle":
                 line = f"{marker}  {label}: [yellow]{value}[/yellow]"
             else:
-                display = str(value).replace("\n", "↵")[:35] + (
-                    "..." if len(str(value)) > 35 else ""
+                display = str(value).replace("\n", "↵")[:CONFIG_DISPLAY_MAX_LEN] + (
+                    "..." if len(str(value)) > CONFIG_DISPLAY_MAX_LEN else ""
                 )
                 line = f"{marker}  {label}: [dim]{display}[/dim]"
             console.print(f"{line:<60}")
