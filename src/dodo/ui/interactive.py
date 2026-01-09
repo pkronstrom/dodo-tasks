@@ -186,6 +186,9 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
             accept_keys=("enter", " "),
             clear_screen=False,
             clear_menu_on_exit=True,
+            menu_cursor="> ",
+            menu_cursor_style=None,
+            menu_highlight_style=None,
         )
         choice = menu.show()
         if choice is not None:
