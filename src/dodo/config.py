@@ -35,7 +35,7 @@ class Config:
         "timestamps_enabled": True,
         # Settings
         "default_adapter": "markdown",
-        "ai_command": "llm '{{prompt}}' -s '{{system}}' --schema '{{schema}}'",
+        "ai_command": "claude -p '{{prompt}}'",
         "ai_sys_prompt": (
             "You are a todo formatter. Return a JSON array of clear, actionable todo items. "
             "If one task, return array with one item. If multiple implied, split them. "
