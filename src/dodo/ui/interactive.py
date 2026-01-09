@@ -89,8 +89,6 @@ def _interactive_add(svc: TodoService, ui: RichTerminalMenu, target: str) -> Non
 
 def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
     """Unified todo management with keyboard shortcuts."""
-    live_console = Console()
-
     cursor = 0
     scroll_offset = 0
     undo_stack: list[UndoAction] = []
@@ -102,8 +100,8 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
         nonlocal scroll_offset, last_size
 
         # Recalculate dimensions (may have changed due to resize)
-        term_width = live_console.width or DEFAULT_PANEL_WIDTH
-        term_height = live_console.height or DEFAULT_TERMINAL_HEIGHT
+        term_width = console.width or DEFAULT_PANEL_WIDTH
+        term_height = console.height or DEFAULT_TERMINAL_HEIGHT
         width = min(DEFAULT_PANEL_WIDTH, term_width - 4)
         height = term_height
         max_items = height - 6
@@ -199,9 +197,9 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
         edit_item: TodoItem | None = None
         add_mode = False
 
-        live_console.clear()
+        console.clear()
         panel, _ = build_display()
-        with Live(panel, console=live_console, refresh_per_second=LIVE_REFRESH_RATE) as live:
+        with Live(panel, console=console, refresh_per_second=LIVE_REFRESH_RATE) as live:
             while True:
                 items = svc.list()
                 max_cursor = max(0, len(items) - 1)
@@ -257,7 +255,7 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
 
                 panel, size_changed = build_display()
                 if size_changed:
-                    live_console.clear()
+                    console.clear()
                 live.update(panel)
 
         # Reload config to pick up any changes (e.g., editor setting)
