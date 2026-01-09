@@ -1,7 +1,7 @@
 """Rich + simple-term-menu implementation."""
 
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any, Generic, TypeVar
 
 import readchar
 from rich.console import Console
@@ -149,7 +149,7 @@ class InteractiveList:
         return self.cursor
 
 
-class ListContext[T]:
+class ListContext(Generic[T]):
     """Context passed to keybinding callbacks."""
 
     def __init__(self, list_view: InteractiveList[T]):
