@@ -140,83 +140,85 @@ def _interactive_switch(ui: RichTerminalMenu, cfg: Config) -> tuple[str | None, 
 
 
 def interactive_config(ui: RichTerminalMenu | None = None) -> None:
-    """Interactive config editor with toggles and settings."""
-    ui = ui or RichTerminalMenu()
-    cfg = Config.load()
-
-    while True:
-        options = ["Toggle settings", "Edit AI command", "Edit adapter", "Back"]
-        choice = ui.select(options, title="Config")
-
-        if choice is None or choice == 3:
-            break
-        elif choice == 0:
-            _config_toggles(ui, cfg)
-        elif choice == 1:
-            _config_ai_command(ui, cfg)
-        elif choice == 2:
-            _config_adapter(ui, cfg)
-
-
-def _config_toggles(ui: RichTerminalMenu, cfg: Config) -> None:
-    """Edit boolean toggles."""
-    toggles = cfg.get_toggles()
-    options = [desc for _, desc, _ in toggles]
-
-    selected = ui.multi_select(
-        options,
-        selected=[enabled for _, _, enabled in toggles],
-        title="Toggle settings (Space to toggle, Enter to save)",
-    )
-
-    for i, (attr, _, was_enabled) in enumerate(toggles):
-        now_enabled = i in selected
-        if now_enabled != was_enabled:
-            cfg.set(attr, now_enabled)
-
-    console.print("[green]✓[/green] Toggles saved")
-
-
-def _config_ai_command(ui: RichTerminalMenu, cfg: Config) -> None:
-    """Edit AI command template using $EDITOR."""
+    """Unified config editor - toggles, choices, and text in one view."""
     import os
     import subprocess
     import tempfile
 
-    editor = os.environ.get("EDITOR", "vim")
-    current = cfg.ai_command
+    from simple_term_menu import TerminalMenu
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write("# AI command template\n")
-        f.write("# Variables: {{prompt}}, {{system}}, {{schema}}\n")
-        f.write("# Lines starting with # are ignored\n\n")
-        f.write(current)
-        tmp_path = f.name
-
-    try:
-        subprocess.run([editor, tmp_path], check=True)
-        with open(tmp_path) as f:
-            lines = [l for l in f.readlines() if not l.startswith("#")]
-            new_cmd = "".join(lines).strip()
-
-        if new_cmd and new_cmd != current:
-            cfg.set("ai_command", new_cmd)
-            console.print("[green]✓[/green] AI command saved")
-        else:
-            console.print("[dim]No changes[/dim]")
-    finally:
-        os.unlink(tmp_path)
-
-
-def _config_adapter(ui: RichTerminalMenu, cfg: Config) -> None:
-    """Select storage adapter."""
+    cfg = Config.load()
     adapters = ["markdown", "sqlite", "obsidian"]
 
-    choice = ui.select(
-        [f"{a} {'(current)' if a == cfg.default_adapter else ''}" for a in adapters],
-        title="Select adapter",
-    )
+    # Track pending changes (not saved until Enter on "Save")
+    pending: dict = {
+        "worktree_shared": cfg.worktree_shared,
+        "local_storage": cfg.local_storage,
+        "timestamps_enabled": cfg.timestamps_enabled,
+        "default_adapter": cfg.default_adapter,
+        "ai_command": cfg.ai_command,
+    }
 
-    if choice is not None and adapters[choice] != cfg.default_adapter:
-        cfg.set("default_adapter", adapters[choice])
-        console.print(f"[green]✓[/green] Adapter set to {adapters[choice]}")
+    def build_options():
+        def checkbox(val):
+            return "[x]" if val else "[ ]"
+
+        def truncate(s, length=40):
+            return s[:length] + "..." if len(s) > length else s
+
+        return [
+            f"{checkbox(pending['worktree_shared'])} Share todos across git worktrees",
+            f"{checkbox(pending['local_storage'])} Store todos in project dir",
+            f"{checkbox(pending['timestamps_enabled'])} Add timestamps to todo entries",
+            f"    Adapter: {pending['default_adapter']} ▸",
+            f"    AI cmd: {truncate(pending['ai_command'])} ✎",
+            "────────────────────────",
+            "[Save & Exit]",
+        ]
+
+    while True:
+        options = build_options()
+        menu = TerminalMenu(
+            options,
+            title="Config (Space/Enter to toggle, Enter to edit, Esc to cancel)",
+            cycle_cursor=True,
+            clear_screen=False,
+        )
+        choice = menu.show()
+
+        if choice is None:  # Esc pressed
+            console.print("[dim]Cancelled[/dim]")
+            return
+
+        if choice == 0:
+            pending["worktree_shared"] = not pending["worktree_shared"]
+        elif choice == 1:
+            pending["local_storage"] = not pending["local_storage"]
+        elif choice == 2:
+            pending["timestamps_enabled"] = not pending["timestamps_enabled"]
+        elif choice == 3:  # Cycle adapter
+            idx = adapters.index(pending["default_adapter"])
+            pending["default_adapter"] = adapters[(idx + 1) % len(adapters)]
+        elif choice == 4:  # Edit AI command in $EDITOR
+            editor = os.environ.get("EDITOR", "vim")
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
+                f.write("# AI command template\n")
+                f.write("# Variables: {{prompt}}, {{system}}, {{schema}}\n")
+                f.write("# Lines starting with # are ignored\n\n")
+                f.write(pending["ai_command"])
+                tmp_path = f.name
+            try:
+                subprocess.run([editor, tmp_path], check=True)
+                with open(tmp_path) as f:
+                    lines = [ln for ln in f.readlines() if not ln.startswith("#")]
+                    new_cmd = "".join(lines).strip()
+                if new_cmd:
+                    pending["ai_command"] = new_cmd
+            finally:
+                os.unlink(tmp_path)
+        elif choice == 6:  # Save & Exit
+            for key, val in pending.items():
+                if getattr(cfg, key) != val:
+                    cfg.set(key, val)
+            console.print("[green]✓[/green] Config saved")
+            return
