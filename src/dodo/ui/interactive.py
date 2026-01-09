@@ -425,7 +425,7 @@ def _config_loop(
                 try:
                     key = readchar.readkey()
                 except KeyboardInterrupt:
-                    break
+                    return  # Exit config cleanly
 
                 if key in (readchar.key.UP, "k"):  # Up (wrap)
                     cursor = (cursor - 1) % total_items
