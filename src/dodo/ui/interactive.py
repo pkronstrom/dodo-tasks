@@ -186,7 +186,6 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
     """Interactive config editor with arrow key navigation."""
     cfg = Config.load()
 
-    # Config items: (key, label, type, options_for_cycle)
     items = [
         ("worktree_shared", "Share todos across git worktrees", "toggle", None),
         ("local_storage", "Store todos in project dir", "toggle", None),
@@ -195,17 +194,13 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
         ("ai_command", "AI command", "edit", None),
     ]
 
-    # Load current values
     pending = {key: getattr(cfg, key) for key, *_ in items}
-    cursor = 0
-    total_items = len(items) + 1  # +1 for Save & Exit
+    _config_loop(cfg, items, pending, cursor=0)
 
-    def save_changes():
-        for key, val in pending.items():
-            if getattr(cfg, key) != val:
-                cfg.set(key, val)
-        console.clear()
-        console.print("[green]✓[/green] Config saved")
+
+def _config_loop(cfg, items, pending, cursor):
+    """Config editor loop using alternate screen buffer."""
+    total_items = len(items) + 1
 
     def render():
         console.clear()
@@ -221,53 +216,66 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
                 console.print(f"{marker}{icon} {label}")
             elif kind == "cycle":
                 console.print(f"{marker}  {label}: [yellow]{value}[/yellow]")
-            else:  # edit
-                display = value.replace("\n", "↵")[:35]
-                if len(value) > 35:
-                    display += "..."
+            else:
+                display = value.replace("\n", "↵")[:35] + ("..." if len(value) > 35 else "")
                 console.print(f"{marker}  {label}: [dim]{display}[/dim]")
 
         console.print()
         marker = "[cyan]>[/cyan] " if cursor == len(items) else "  "
         console.print(f"{marker}[green]Save & Exit[/green]")
 
-    render()
-    while True:
-        key = _read_single_key()
+    def save():
+        for key, val in pending.items():
+            if getattr(cfg, key) != val:
+                cfg.set(key, val)
 
-        # Navigation
-        if key == "\x1b[A":  # Up
-            cursor = (cursor - 1) % total_items
-        elif key in ("\x1b[B", "\t"):  # Down or Tab
-            cursor = (cursor + 1) % total_items
+    result_msg = None
+    edit_triggered = False
 
-        # Actions
-        elif key in ("q", "\x1b", "\x1b["):  # Quit
-            console.clear()
-            console.print("[dim]Cancelled[/dim]")
-            return
-        elif key == "s":  # Save shortcut
-            save_changes()
-            return
-        elif key in (" ", "\r", "\n"):  # Select
-            if cursor == len(items):  # Save & Exit
-                save_changes()
-                return
-
-            item_key, _, kind, options = items[cursor]
-
-            if kind == "toggle":
-                pending[item_key] = not pending[item_key]
-            elif kind == "cycle":
-                idx = options.index(pending[item_key])
-                pending[item_key] = options[(idx + 1) % len(options)]
-            elif kind == "edit":
-                console.clear()
-                new_val = _edit_in_editor(
-                    pending[item_key],
-                    ["AI command template", "Variables: {{prompt}}, {{system}}, {{schema}}"],
-                )
-                if new_val:
-                    pending[item_key] = new_val
-
+    with console.screen():
         render()
+        while True:
+            key = _read_single_key()
+
+            if key == "\x1b[A":  # Up
+                cursor = (cursor - 1) % total_items
+            elif key in ("\x1b[B", "\t"):  # Down/Tab
+                cursor = (cursor + 1) % total_items
+            elif key in ("q", "\x1b", "\x1b["):  # Quit
+                result_msg = "[dim]Cancelled[/dim]"
+                break
+            elif key == "s":  # Save
+                save()
+                result_msg = "[green]✓[/green] Config saved"
+                break
+            elif key in (" ", "\r", "\n"):  # Select
+                if cursor == len(items):  # Save & Exit
+                    save()
+                    result_msg = "[green]✓[/green] Config saved"
+                    break
+
+                item_key, _, kind, options = items[cursor]
+                if kind == "toggle":
+                    pending[item_key] = not pending[item_key]
+                elif kind == "cycle":
+                    idx = options.index(pending[item_key])
+                    pending[item_key] = options[(idx + 1) % len(options)]
+                elif kind == "edit":
+                    edit_triggered = True
+                    break
+
+            render()
+
+    # Editor needs to run outside screen buffer
+    if edit_triggered:
+        item_key = items[cursor][0]
+        new_val = _edit_in_editor(
+            pending[item_key],
+            ["AI command template", "Variables: {{prompt}}, {{system}}, {{schema}}"],
+        )
+        if new_val:
+            pending[item_key] = new_val
+        return _config_loop(cfg, items, pending, cursor)
+
+    if result_msg:
+        console.print(result_msg)
