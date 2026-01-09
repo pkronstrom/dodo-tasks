@@ -140,10 +140,26 @@ def _interactive_switch(ui: RichTerminalMenu, cfg: Config) -> tuple[str | None, 
 
 
 def interactive_config(ui: RichTerminalMenu | None = None) -> None:
-    """Interactive config editor with autodiscovered toggles."""
+    """Interactive config editor with toggles and settings."""
     ui = ui or RichTerminalMenu()
     cfg = Config.load()
 
+    while True:
+        options = ["Toggle settings", "Edit AI command", "Edit adapter", "Back"]
+        choice = ui.select(options, title="Config")
+
+        if choice is None or choice == 3:
+            break
+        elif choice == 0:
+            _config_toggles(ui, cfg)
+        elif choice == 1:
+            _config_ai_command(ui, cfg)
+        elif choice == 2:
+            _config_adapter(ui, cfg)
+
+
+def _config_toggles(ui: RichTerminalMenu, cfg: Config) -> None:
+    """Edit boolean toggles."""
     toggles = cfg.get_toggles()
     options = [desc for _, desc, _ in toggles]
 
@@ -158,4 +174,49 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
         if now_enabled != was_enabled:
             cfg.set(attr, now_enabled)
 
-    console.print("[green]✓[/green] Config saved")
+    console.print("[green]✓[/green] Toggles saved")
+
+
+def _config_ai_command(ui: RichTerminalMenu, cfg: Config) -> None:
+    """Edit AI command template using $EDITOR."""
+    import os
+    import subprocess
+    import tempfile
+
+    editor = os.environ.get("EDITOR", "vim")
+    current = cfg.ai_command
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("# AI command template\n")
+        f.write("# Variables: {{prompt}}, {{system}}, {{schema}}\n")
+        f.write("# Lines starting with # are ignored\n\n")
+        f.write(current)
+        tmp_path = f.name
+
+    try:
+        subprocess.run([editor, tmp_path], check=True)
+        with open(tmp_path) as f:
+            lines = [l for l in f.readlines() if not l.startswith("#")]
+            new_cmd = "".join(lines).strip()
+
+        if new_cmd and new_cmd != current:
+            cfg.set("ai_command", new_cmd)
+            console.print("[green]✓[/green] AI command saved")
+        else:
+            console.print("[dim]No changes[/dim]")
+    finally:
+        os.unlink(tmp_path)
+
+
+def _config_adapter(ui: RichTerminalMenu, cfg: Config) -> None:
+    """Select storage adapter."""
+    adapters = ["markdown", "sqlite", "obsidian"]
+
+    choice = ui.select(
+        [f"{a} {'(current)' if a == cfg.default_adapter else ''}" for a in adapters],
+        title="Select adapter",
+    )
+
+    if choice is not None and adapters[choice] != cfg.default_adapter:
+        cfg.set("default_adapter", adapters[choice])
+        console.print(f"[green]✓[/green] Adapter set to {adapters[choice]}")
