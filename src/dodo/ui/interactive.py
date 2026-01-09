@@ -207,9 +207,14 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
         console.clear()
         console.print("[green]✓[/green] Config saved")
 
-    def render():
-        console.clear()
-        console.print("[bold]Config[/bold]")
+    def render(first_time: bool = False):
+        if first_time:
+            console.clear()
+        else:
+            # Move cursor to top-left without clearing (no blink)
+            console.print("\033[H", end="")
+
+        console.print("[bold]Config[/bold]                                        ")
         console.print("[dim]↑↓ navigate, Space/Enter toggle, s save, q quit[/dim]\n")
 
         for i, (key, label, kind, _) in enumerate(items):
@@ -218,21 +223,23 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
 
             if kind == "toggle":
                 icon = "[green]✓[/green]" if value else "[dim]○[/dim]"
-                console.print(f"{marker}{icon} {label}")
+                line = f"{marker}{icon} {label}"
             elif kind == "cycle":
-                console.print(f"{marker}  {label}: [yellow]{value}[/yellow]")
+                line = f"{marker}  {label}: [yellow]{value}[/yellow]"
             else:  # edit
-                # Collapse newlines and truncate for display
                 display = value.replace("\n", "↵")[:35]
                 if len(value) > 35:
                     display += "..."
-                console.print(f"{marker}  {label}: [dim]{display}[/dim]")
+                line = f"{marker}  {label}: [dim]{display}[/dim]"
+
+            # Pad to overwrite previous content
+            console.print(f"{line:<60}")
 
         console.print()
         marker = "[cyan]>[/cyan] " if cursor == len(items) else "  "
-        console.print(f"{marker}[green]Save & Exit[/green]")
+        console.print(f"{marker}[green]Save & Exit[/green]              ")
 
-    render()
+    render(first_time=True)
     while True:
         key = _read_single_key()
 
