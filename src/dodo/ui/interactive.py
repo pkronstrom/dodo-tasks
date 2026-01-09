@@ -184,7 +184,8 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
             title="Config (Enter/Space to toggle, Esc to cancel)",
             cursor_index=cursor_idx,
             accept_keys=("enter", " "),
-            clear_screen=True,
+            clear_screen=False,
+            clear_menu_on_exit=True,
         )
         choice = menu.show()
         if choice is not None:
