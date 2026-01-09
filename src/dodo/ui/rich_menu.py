@@ -35,7 +35,7 @@ class InteractiveList:
         render_item: Callable[[T, bool], str] | None = None,
         keybindings: dict[str, Callable[["ListContext[T]"], Any]] | None = None,
         footer: str | None = None,
-        width: int = 70,
+        width: int = 80,
     ):
         """Initialize interactive list.
 
@@ -61,6 +61,8 @@ class InteractiveList:
 
     def show(self) -> int | None:
         """Display the interactive list. Returns cursor position or None if quit."""
+        term_width = self._console.width or 80
+        width = min(self.width, term_width - 4)  # adapt to terminal width
         height = self._console.height or 24
         # Panel height = height (full terminal), interior = height - 2
         # Reserve: footer+gap(2) + scroll indicators(2) + status(1) = 5
@@ -68,6 +70,7 @@ class InteractiveList:
 
         def build_panel() -> Panel:
             lines: list[str] = []
+            lines.append("")  # blank line before items
 
             if not self.items:
                 lines.append("[dim]No items[/dim]")
@@ -93,25 +96,30 @@ class InteractiveList:
                 if visible_end < len(self.items):
                     lines.append(f"[dim]  ↓ {len(self.items) - visible_end} more[/dim]")
 
-            # Panel interior = height - 2. Content = target_lines + 1 (footer after \n)
-            # So target_lines = (height - 2) - 1 = height - 3
-            # Reserve 1 line for status at fixed position
-            target_lines = height - 3
-            while len(lines) < target_lines - 1:
+            # Status line (with left margin)
+            status_line = f"  {self.status_msg}" if self.status_msg else ""
+            footer = self.footer or "[dim]  ↑↓/jk nav · q quit[/dim]"
+
+            # Calculate panel height: content + blank + status + footer + borders
+            min_panel_height = len(lines) + 5
+            panel_height = min(min_panel_height, height)
+
+            # Pad to fill panel if using full height
+            target_lines = panel_height - 2  # interior
+            while len(lines) < target_lines - 3:  # -3 for blank + status + footer
                 lines.append("")
 
-            # Status at fixed position (1 line before footer)
-            lines.append(self.status_msg if self.status_msg else "")
-
+            lines.append("")  # blank line before status
+            lines.append(status_line)
+            lines.append(footer)
             content = "\n".join(lines)
-            footer = self.footer or "[dim]↑↓/jk nav • q quit[/dim]"
 
             return Panel(
-                f"{content}\n{footer}",
+                content,
                 title=f"[bold]{self.title}[/bold]" if self.title else None,
                 border_style="blue",
-                width=self.width + 4,
-                height=height,
+                width=width + 4,
+                height=panel_height,
             )
 
         self._console.clear()

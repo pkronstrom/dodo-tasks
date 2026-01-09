@@ -28,6 +28,10 @@ def interactive_menu() -> None:
         pending = sum(1 for i in items if i.status == Status.PENDING)
         done = sum(1 for i in items if i.status == Status.DONE)
 
+        # Adaptive panel width
+        term_width = console.width or 80
+        panel_width = min(84, term_width)  # max 80 + 4 for borders
+
         console.clear()
         console.print(
             Panel(
@@ -36,6 +40,7 @@ def interactive_menu() -> None:
                 f"[bold]Todos:[/bold] {pending} pending, {done} done",
                 title="dodo",
                 border_style="blue",
+                width=panel_width,
             )
         )
 
@@ -97,7 +102,8 @@ def _todos_loop(svc: TodoService, target: str) -> None:
     status_msg: str | None = None
 
     # Calculate dimensions once, before entering Live context
-    width = 70
+    term_width = live_console.width or 80
+    width = min(80, term_width - 4)  # panel width minus borders
     height = live_console.height or 24
     # Panel height = height (full terminal), interior = height - 2
     # Reserve: footer+gap(2) + scroll indicators(2) + status(1) = 5
@@ -110,6 +116,7 @@ def _todos_loop(svc: TodoService, target: str) -> None:
         items = svc.list()
 
         lines: list[str] = []
+        lines.append("")  # blank line before items
 
         if not items:
             lines.append("[dim]No todos - press 'a' to add one[/dim]")
@@ -153,29 +160,36 @@ def _todos_loop(svc: TodoService, target: str) -> None:
             if visible_end < len(items):
                 lines.append(f"[dim]  ↓ {len(items) - visible_end} more[/dim]")
 
-        # Panel interior = height - 2. Content = target_lines + 1 (footer after \n)
-        # So target_lines = (height - 2) - 1 = height - 3
-        # Reserve 1 line for status at fixed position
-        target_lines = height - 3
-        while len(lines) < target_lines - 1:
-            lines.append("")
-
-        # Status at fixed position (1 line before footer)
+        # Status line (with left margin)
         if status_msg:
-            lines.append(status_msg)
+            status_line = f"  {status_msg}"
         else:
             done_count = sum(1 for i in items if i.status == Status.DONE)
-            lines.append(f"[dim]{len(items)} todos • {done_count} done[/dim]")
+            status_line = f"[dim]  {len(items)} todos · {done_count} done[/dim]"
 
+        footer = "[dim]  ↑↓/jk · space toggle · e edit · d del · u undo · a add · q quit[/dim]"
+
+        # Calculate panel height: content + blank + status + footer + borders
+        # +1 blank before items (already added), +1 blank after, +1 status, +1 footer, +2 borders
+        min_panel_height = len(lines) + 5
+        panel_height = min(min_panel_height, height)
+
+        # Pad to fill panel if using full height
+        target_lines = panel_height - 2  # interior
+        while len(lines) < target_lines - 3:  # -3 for blank + status + footer
+            lines.append("")
+
+        lines.append("")  # blank line before status
+        lines.append(status_line)
+        lines.append(footer)
         content = "\n".join(lines)
-        footer = "[dim]↑↓/jk • Space toggle • e edit • d del • u undo • a add • q quit[/dim]"
 
         return Panel(
-            f"{content}\n{footer}",
+            content,
             title=f"[bold]Todos[/bold] - {target}",
             border_style="blue",
             width=width + 4,
-            height=height,
+            height=panel_height,
         )
 
     while True:  # Outer loop handles editor re-entry
@@ -206,7 +220,7 @@ def _todos_loop(svc: TodoService, target: str) -> None:
                     item = items[cursor]
                     undo_stack.append(UndoAction("toggle", item))
                     svc.toggle(item.id)
-                    status_msg = f"[green]✓[/green] Toggled: {item.text[:30]}"
+                    status_msg = f"[dim]✓ Toggled: {item.text[:30]}[/dim]"
                 elif key == "e" and items:  # Edit
                     edit_item = items[cursor]
                     break  # Exit to editor
@@ -214,18 +228,18 @@ def _todos_loop(svc: TodoService, target: str) -> None:
                     item = items[cursor]
                     undo_stack.append(UndoAction("delete", item))
                     svc.delete(item.id)
-                    status_msg = f"[yellow]✓[/yellow] Deleted: {item.text[:30]}"
+                    status_msg = f"[dim]✓ Deleted: {item.text[:30]}[/dim]"
                 elif key == "u" and undo_stack:  # Undo
                     action = undo_stack.pop()
                     if action.kind == "toggle":
                         svc.toggle(action.item.id)
-                        status_msg = f"[blue]↩[/blue] Undid toggle: {action.item.text[:30]}"
+                        status_msg = f"[dim]↩ Undid toggle: {action.item.text[:30]}[/dim]"
                     elif action.kind == "delete":
                         svc.add(action.item.text)
-                        status_msg = f"[blue]↩[/blue] Restored: {action.item.text[:30]}"
+                        status_msg = f"[dim]↩ Restored: {action.item.text[:30]}[/dim]"
                     elif action.kind == "edit" and action.new_id:
                         svc.update_text(action.new_id, action.item.text)
-                        status_msg = f"[blue]↩[/blue] Restored text: {action.item.text[:30]}"
+                        status_msg = f"[dim]↩ Restored text: {action.item.text[:30]}[/dim]"
                 elif key == "a":  # Add
                     return  # Exit to add via main menu
                 elif key == "u" and not undo_stack:
@@ -239,7 +253,7 @@ def _todos_loop(svc: TodoService, target: str) -> None:
             if new_text and new_text != edit_item.text:
                 updated = svc.update_text(edit_item.id, new_text)
                 undo_stack.append(UndoAction("edit", edit_item, new_id=updated.id))
-                status_msg = f"[green]✓[/green] Updated: {new_text[:30]}"
+                status_msg = f"[dim]✓ Updated: {new_text[:30]}[/dim]"
             else:
                 status_msg = "[dim]No changes[/dim]"
             continue  # Re-enter Live context
