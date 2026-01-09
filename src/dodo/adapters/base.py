@@ -32,6 +32,10 @@ class TodoAdapter(Protocol):
         """Update todo status."""
         ...
 
+    def update_text(self, id: str, text: str) -> TodoItem:
+        """Update todo text."""
+        ...
+
     def delete(self, id: str) -> None:
         """Delete a todo."""
         ...

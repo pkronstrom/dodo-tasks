@@ -4,7 +4,6 @@ import sys
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.table import Table
 
 from dodo.config import Config
 from dodo.core import TodoService
@@ -41,10 +40,8 @@ def interactive_menu() -> None:
         )
 
         options = [
+            "Manage todos",
             "Add todo",
-            "List todos",
-            "Complete todo",
-            "Delete todo",
             "Config",
             "Switch project",
             "Exit",
@@ -52,24 +49,22 @@ def interactive_menu() -> None:
 
         choice = ui.select(options)
 
-        if choice is None or choice == 6:
+        if choice is None or choice == 4:
+            console.clear()
             break
         elif choice == 0:
-            _interactive_add(svc, ui, target)
+            _todos_loop(svc, target)
         elif choice == 1:
-            _interactive_list(svc, ui)
+            _interactive_add(svc, ui, target)
         elif choice == 2:
-            _interactive_complete(svc, ui)
-        elif choice == 3:
-            _interactive_delete(svc, ui)
-        elif choice == 4:
             interactive_config()
-        elif choice == 5:
+        elif choice == 3:
             project_id, target = _interactive_switch(ui)
             svc = TodoService(cfg, project_id)
 
 
 def _interactive_add(svc: TodoService, ui: RichTerminalMenu, target: str) -> None:
+    console.print("[dim]Ctrl+C to cancel[/dim]")
     text = ui.input("Todo:")
     if text:
         item = svc.add(text)
@@ -77,52 +72,179 @@ def _interactive_add(svc: TodoService, ui: RichTerminalMenu, target: str) -> Non
         ui.input("Press Enter to continue...")
 
 
-def _interactive_list(svc: TodoService, ui: RichTerminalMenu) -> None:
-    items = svc.list()
-    if not items:
-        console.print("[dim]No todos[/dim]")
-    else:
-        table = Table(show_header=True)
-        table.add_column("ID", style="dim", width=8)
-        table.add_column("✓", width=3)
-        table.add_column("Todo")
-        for item in items:
-            status = "[green]✓[/green]" if item.status == Status.DONE else " "
-            table.add_row(item.id, status, item.text)
-        console.print(table)
-    ui.input("Press Enter to continue...")
+def _todos_loop(svc: TodoService, target: str) -> None:
+    """Unified todo management with keyboard shortcuts."""
+    from dataclasses import dataclass
 
+    from rich.console import Console
+    from rich.live import Live
+    from rich.markup import escape
+    from rich.panel import Panel
 
-def _interactive_complete(svc: TodoService, ui: RichTerminalMenu) -> None:
-    items = [i for i in svc.list() if i.status == Status.PENDING]
-    if not items:
-        console.print("[dim]No pending todos[/dim]")
-        ui.input("Press Enter...")
-        return
+    from dodo.models import TodoItem
 
-    options = [f"{i.id[:8]} - {i.text}" for i in items]
-    choice = ui.select(options, title="Select todo to complete")
+    live_console = Console()
 
-    if choice is not None:
-        svc.complete(items[choice].id)
-        console.print(f"[green]✓[/green] Done: {items[choice].text}")
-        ui.input("Press Enter...")
+    @dataclass
+    class UndoAction:
+        kind: str  # "toggle" | "delete" | "edit"
+        item: TodoItem
+        new_id: str | None = None  # For edit: track new ID after text change
 
+    cursor = 0
+    scroll_offset = 0
+    undo_stack: list[UndoAction] = []
+    status_msg: str | None = None
 
-def _interactive_delete(svc: TodoService, ui: RichTerminalMenu) -> None:
-    items = svc.list()
-    if not items:
-        console.print("[dim]No todos[/dim]")
-        ui.input("Press Enter...")
-        return
+    # Calculate dimensions once, before entering Live context
+    width = 70
+    height = live_console.height or 24
+    # Panel height = height (full terminal), interior = height - 2
+    # Reserve: footer+gap(2) + scroll indicators(2) + status(1) = 5
+    max_items = height - 6
 
-    options = [f"{i.id[:8]} - {i.text}" for i in items]
-    choice = ui.select(options, title="Select todo to delete")
+    def build_display() -> Panel:
+        """Build the display as a Panel."""
+        nonlocal scroll_offset
 
-    if choice is not None and ui.confirm(f"Delete '{items[choice].text}'?"):
-        svc.delete(items[choice].id)
-        console.print("[yellow]✓[/yellow] Deleted")
-        ui.input("Press Enter...")
+        items = svc.list()
+
+        lines: list[str] = []
+
+        if not items:
+            lines.append("[dim]No todos - press 'a' to add one[/dim]")
+        else:
+            # Keep cursor in bounds
+            if cursor < scroll_offset:
+                scroll_offset = cursor
+            elif cursor >= scroll_offset + max_items:
+                scroll_offset = cursor - max_items + 1
+            scroll_offset = max(0, min(scroll_offset, len(items) - 1))
+
+            visible_end = min(scroll_offset + max_items, len(items))
+
+            if scroll_offset > 0:
+                lines.append(f"[dim]  ↑ {scroll_offset} more[/dim]")
+
+            for i in range(scroll_offset, visible_end):
+                item = items[i]
+                selected = i == cursor
+                done = item.status == Status.DONE
+
+                # Marker: cyan > for active, dim > for done
+                if selected:
+                    marker = "[dim]>[/dim]" if done else "[cyan]>[/cyan]"
+                else:
+                    marker = " "
+
+                # Checkbox
+                check = "[green]●[/green]" if done else "[dim]○[/dim]"
+
+                # Text (no wrapping - keep it simple)
+                text = escape(item.text)
+                if len(text) > width - 6:
+                    text = text[: width - 9] + "..."
+
+                if done:
+                    lines.append(f"{marker} {check} [dim]{text}[/dim]")
+                else:
+                    lines.append(f"{marker} {check} {text}")
+
+            if visible_end < len(items):
+                lines.append(f"[dim]  ↓ {len(items) - visible_end} more[/dim]")
+
+        # Panel interior = height - 2. Content = target_lines + 1 (footer after \n)
+        # So target_lines = (height - 2) - 1 = height - 3
+        # Reserve 1 line for status at fixed position
+        target_lines = height - 3
+        while len(lines) < target_lines - 1:
+            lines.append("")
+
+        # Status at fixed position (1 line before footer)
+        if status_msg:
+            lines.append(status_msg)
+        else:
+            done_count = sum(1 for i in items if i.status == Status.DONE)
+            lines.append(f"[dim]{len(items)} todos • {done_count} done[/dim]")
+
+        content = "\n".join(lines)
+        footer = "[dim]↑↓/jk • Space toggle • e edit • d del • u undo • a add • q quit[/dim]"
+
+        return Panel(
+            f"{content}\n{footer}",
+            title=f"[bold]Todos[/bold] - {target}",
+            border_style="blue",
+            width=width + 4,
+            height=height,
+        )
+
+    while True:  # Outer loop handles editor re-entry
+        edit_item: TodoItem | None = None
+
+        import readchar
+
+        live_console.clear()
+        with Live(build_display(), console=live_console, refresh_per_second=20) as live:
+            while True:
+                items = svc.list()
+                max_cursor = max(0, len(items) - 1)
+                if cursor > max_cursor:
+                    cursor = max_cursor
+
+                try:
+                    key = readchar.readkey()
+                except KeyboardInterrupt:
+                    return
+
+                if key in (readchar.key.UP, "k"):  # Up
+                    cursor = max(0, cursor - 1)
+                elif key in (readchar.key.DOWN, "j", "\t"):  # Down/Tab
+                    cursor = min(max_cursor, cursor + 1)
+                elif key == "q":  # Quit
+                    return
+                elif key in ("s", " ") and items:  # Toggle status
+                    item = items[cursor]
+                    undo_stack.append(UndoAction("toggle", item))
+                    svc.toggle(item.id)
+                    status_msg = f"[green]✓[/green] Toggled: {item.text[:30]}"
+                elif key == "e" and items:  # Edit
+                    edit_item = items[cursor]
+                    break  # Exit to editor
+                elif key == "d" and items:  # Delete
+                    item = items[cursor]
+                    undo_stack.append(UndoAction("delete", item))
+                    svc.delete(item.id)
+                    status_msg = f"[yellow]✓[/yellow] Deleted: {item.text[:30]}"
+                elif key == "u" and undo_stack:  # Undo
+                    action = undo_stack.pop()
+                    if action.kind == "toggle":
+                        svc.toggle(action.item.id)
+                        status_msg = f"[blue]↩[/blue] Undid toggle: {action.item.text[:30]}"
+                    elif action.kind == "delete":
+                        svc.add(action.item.text)
+                        status_msg = f"[blue]↩[/blue] Restored: {action.item.text[:30]}"
+                    elif action.kind == "edit" and action.new_id:
+                        svc.update_text(action.new_id, action.item.text)
+                        status_msg = f"[blue]↩[/blue] Restored text: {action.item.text[:30]}"
+                elif key == "a":  # Add
+                    return  # Exit to add via main menu
+                elif key == "u" and not undo_stack:
+                    status_msg = "[dim]Nothing to undo[/dim]"
+
+                live.update(build_display())
+
+        # Editor runs outside Live context
+        if edit_item:
+            new_text = _edit_in_editor(edit_item.text, ["Edit todo"])
+            if new_text and new_text != edit_item.text:
+                updated = svc.update_text(edit_item.id, new_text)
+                undo_stack.append(UndoAction("edit", edit_item, new_id=updated.id))
+                status_msg = f"[green]✓[/green] Updated: {new_text[:30]}"
+            else:
+                status_msg = "[dim]No changes[/dim]"
+            continue  # Re-enter Live context
+
+        break  # Normal exit
 
 
 def _interactive_switch(ui: RichTerminalMenu) -> tuple[str | None, str]:
@@ -139,23 +261,6 @@ def _interactive_switch(ui: RichTerminalMenu) -> tuple[str | None, str]:
         return name, name or "global"
 
     return None, "global"
-
-
-def _read_single_key() -> str:
-    """Read a single keypress, handling escape sequences for arrow keys."""
-    import termios
-    import tty
-
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        char = sys.stdin.read(1)
-        if char == "\x1b":  # Escape sequence
-            char += sys.stdin.read(2)
-        return char
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
 def _edit_in_editor(current_value: str, header_lines: list[str]) -> str | None:
@@ -208,6 +313,7 @@ def _config_loop(
     pending: dict[str, object],
 ) -> None:
     """Config editor loop using alternate screen buffer."""
+
     cursor = 0
     total_items = len(items) + 1
 
@@ -215,7 +321,7 @@ def _config_loop(
         sys.stdout.write("\033[H")  # Move cursor to top-left
         sys.stdout.flush()
         console.print("[bold]Config[/bold]                              ")
-        console.print("[dim]↑↓ navigate, Space/Enter toggle, s save, q/Ctrl+C cancel[/dim]")
+        console.print("[dim]↑↓ navigate • Space/Enter toggle • s save • q cancel[/dim]")
         console.print()
 
         for i, (key, label, kind, _) in enumerate(items):
@@ -248,16 +354,22 @@ def _config_loop(
     while True:  # Outer loop handles editor re-entry without recursion
         edit_triggered = False
 
+        import readchar
+
         with console.screen():
             render()
             while True:
-                key = _read_single_key()
+                try:
+                    key = readchar.readkey()
+                except KeyboardInterrupt:
+                    result_msg = "[dim]Cancelled[/dim]"
+                    break
 
-                if key == "\x1b[A":  # Up
+                if key in (readchar.key.UP, "k"):  # Up
                     cursor = (cursor - 1) % total_items
-                elif key in ("\x1b[B", "\t"):  # Down/Tab
+                elif key in (readchar.key.DOWN, "j", "\t"):  # Down/Tab
                     cursor = (cursor + 1) % total_items
-                elif key in ("q", "\x1b", "\x1b[", "\x03"):  # Quit (q, Esc, Ctrl+C)
+                elif key == "q":  # Quit
                     result_msg = "[dim]Cancelled[/dim]"
                     break
                 elif key == "s":  # Save

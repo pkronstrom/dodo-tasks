@@ -1,7 +1,170 @@
 """Rich + simple-term-menu implementation."""
 
+from collections.abc import Callable
+from typing import Any, TypeVar
+
+import readchar
 from rich.console import Console
+from rich.live import Live
+from rich.panel import Panel
 from simple_term_menu import TerminalMenu
+
+T = TypeVar("T")
+
+
+class InteractiveList:
+    """Reusable interactive list with customizable keybindings.
+
+    Example:
+        items = ["Apple", "Banana", "Cherry"]
+        list_view = InteractiveList(
+            items=items,
+            title="Fruits",
+            keybindings={
+                "d": lambda ctx: ctx.items.pop(ctx.cursor),  # delete
+                " ": lambda ctx: print(f"Selected: {ctx.current}"),  # action
+            },
+        )
+        result = list_view.show()  # returns final cursor position or None if quit
+    """
+
+    def __init__(
+        self,
+        items: list[T],
+        title: str = "",
+        render_item: Callable[[T, bool], str] | None = None,
+        keybindings: dict[str, Callable[["ListContext[T]"], Any]] | None = None,
+        footer: str | None = None,
+        width: int = 70,
+    ):
+        """Initialize interactive list.
+
+        Args:
+            items: List of items to display.
+            title: Panel title.
+            render_item: Function(item, is_selected) -> str. Default shows str(item).
+            keybindings: Dict mapping key chars to callbacks. Callback receives ListContext.
+                         Return "quit" from callback to exit, "refresh" to update display.
+            footer: Custom footer text. Default shows navigation hints.
+            width: Panel width.
+        """
+        self.items = items
+        self.title = title
+        self.render_item = render_item or (lambda item, sel: f"{'>' if sel else ' '} {item}")
+        self.keybindings = keybindings or {}
+        self.footer = footer
+        self.width = width
+        self.cursor = 0
+        self.scroll_offset = 0
+        self.status_msg: str | None = None
+        self._console = Console()
+
+    def show(self) -> int | None:
+        """Display the interactive list. Returns cursor position or None if quit."""
+        height = self._console.height or 24
+        # Panel height = height (full terminal), interior = height - 2
+        # Reserve: footer+gap(2) + scroll indicators(2) + status(1) = 5
+        max_items = height - 6
+
+        def build_panel() -> Panel:
+            lines: list[str] = []
+
+            if not self.items:
+                lines.append("[dim]No items[/dim]")
+            else:
+                # Keep cursor in bounds
+                self.cursor = max(0, min(self.cursor, len(self.items) - 1))
+                if self.cursor < self.scroll_offset:
+                    self.scroll_offset = self.cursor
+                elif self.cursor >= self.scroll_offset + max_items:
+                    self.scroll_offset = self.cursor - max_items + 1
+                self.scroll_offset = max(0, min(self.scroll_offset, len(self.items) - 1))
+
+                visible_end = min(self.scroll_offset + max_items, len(self.items))
+
+                if self.scroll_offset > 0:
+                    lines.append(f"[dim]  ↑ {self.scroll_offset} more[/dim]")
+
+                for i in range(self.scroll_offset, visible_end):
+                    selected = i == self.cursor
+                    rendered = self.render_item(self.items[i], selected)
+                    lines.append(rendered)
+
+                if visible_end < len(self.items):
+                    lines.append(f"[dim]  ↓ {len(self.items) - visible_end} more[/dim]")
+
+            # Panel interior = height - 2. Content = target_lines + 1 (footer after \n)
+            # So target_lines = (height - 2) - 1 = height - 3
+            # Reserve 1 line for status at fixed position
+            target_lines = height - 3
+            while len(lines) < target_lines - 1:
+                lines.append("")
+
+            # Status at fixed position (1 line before footer)
+            lines.append(self.status_msg if self.status_msg else "")
+
+            content = "\n".join(lines)
+            footer = self.footer or "[dim]↑↓/jk nav • q quit[/dim]"
+
+            return Panel(
+                f"{content}\n{footer}",
+                title=f"[bold]{self.title}[/bold]" if self.title else None,
+                border_style="blue",
+                width=self.width + 4,
+                height=height,
+            )
+
+        self._console.clear()
+        with Live(build_panel(), console=self._console, refresh_per_second=20) as live:
+            while True:
+                try:
+                    key = readchar.readkey()
+                except KeyboardInterrupt:
+                    return None
+
+                # Built-in navigation
+                if key in (readchar.key.UP, "k"):
+                    self.cursor = max(0, self.cursor - 1)
+                elif key in (readchar.key.DOWN, "j"):
+                    self.cursor = min(len(self.items) - 1, self.cursor + 1) if self.items else 0
+                elif key == "q":
+                    return None
+                elif key in self.keybindings:
+                    ctx = ListContext(self)
+                    result = self.keybindings[key](ctx)
+                    if result == "quit":
+                        return self.cursor
+                    self.status_msg = ctx.status_msg
+
+                live.update(build_panel())
+
+        return self.cursor
+
+
+class ListContext[T]:
+    """Context passed to keybinding callbacks."""
+
+    def __init__(self, list_view: InteractiveList[T]):
+        self._list = list_view
+        self.status_msg: str | None = None
+
+    @property
+    def items(self) -> list[T]:
+        return self._list.items
+
+    @property
+    def cursor(self) -> int:
+        return self._list.cursor
+
+    @cursor.setter
+    def cursor(self, value: int) -> None:
+        self._list.cursor = value
+
+    @property
+    def current(self) -> T | None:
+        if self._list.items and 0 <= self._list.cursor < len(self._list.items):
+            return self._list.items[self._list.cursor]
+        return None
 
 
 class RichTerminalMenu:

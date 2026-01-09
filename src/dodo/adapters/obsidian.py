@@ -89,6 +89,31 @@ class ObsidianAdapter:
         self._write_note("\n".join(lines))
         return updated_item
 
+    def update_text(self, id: str, text: str) -> TodoItem:
+        content = self._read_note()
+        lines = content.splitlines()
+        updated_item = None
+
+        for idx, line in enumerate(lines):
+            item = self._parse_line(line)
+            if item and item.id == id:
+                updated_item = TodoItem(
+                    id=self._generate_id(text, item.created_at),
+                    text=text,
+                    status=item.status,
+                    created_at=item.created_at,
+                    completed_at=item.completed_at,
+                    project=item.project,
+                )
+                lines[idx] = self._format_item(updated_item)
+                break
+
+        if not updated_item:
+            raise KeyError(f"Todo not found: {id}")
+
+        self._write_note("\n".join(lines))
+        return updated_item
+
     def delete(self, id: str) -> None:
         content = self._read_note()
         lines = content.splitlines()

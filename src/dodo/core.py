@@ -38,6 +38,18 @@ class TodoService:
     def complete(self, id: str) -> TodoItem:
         return self._adapter.update(id, Status.DONE)
 
+    def toggle(self, id: str) -> TodoItem:
+        """Toggle status between PENDING and DONE."""
+        item = self._adapter.get(id)
+        if not item:
+            raise KeyError(f"Todo not found: {id}")
+        new_status = Status.PENDING if item.status == Status.DONE else Status.DONE
+        return self._adapter.update(id, new_status)
+
+    def update_text(self, id: str, text: str) -> TodoItem:
+        """Update todo text."""
+        return self._adapter.update_text(id, text)
+
     def delete(self, id: str) -> None:
         self._adapter.delete(id)
 

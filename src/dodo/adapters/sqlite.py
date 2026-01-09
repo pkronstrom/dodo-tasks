@@ -92,6 +92,20 @@ class SqliteAdapter:
             raise KeyError(f"Todo not found: {id}")
         return item
 
+    def update_text(self, id: str, text: str) -> TodoItem:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE todos SET text = ? WHERE id = ?",
+                (text, id),
+            )
+            if cursor.rowcount == 0:
+                raise KeyError(f"Todo not found: {id}")
+
+        item = self.get(id)
+        if not item:
+            raise KeyError(f"Todo not found: {id}")
+        return item
+
     def delete(self, id: str) -> None:
         with self._connect() as conn:
             cursor = conn.execute("DELETE FROM todos WHERE id = ?", (id,))
