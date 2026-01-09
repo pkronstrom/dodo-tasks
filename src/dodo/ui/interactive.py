@@ -336,14 +336,19 @@ def _edit_in_editor(
             subprocess.run(cmd, check=True)
         except (FileNotFoundError, OSError, subprocess.CalledProcessError):
             # Editor failed, try fallbacks
+            original_editor = editor
             for fallback in ["nano", "vi"]:
                 try:
                     subprocess.run([fallback, tmp_path], check=True)
+                    console.print(
+                        f"[yellow]Note:[/yellow] '{original_editor}' failed, used {fallback}"
+                    )
                     break
                 except (FileNotFoundError, OSError):
                     continue
             else:
-                return None  # No editor found
+                console.print(f"[red]Error:[/red] No editor found (tried {editor}, nano, vi)")
+                return None
 
         with open(tmp_path) as fp:
             lines = [ln for ln in fp.readlines() if not ln.startswith("#")]
