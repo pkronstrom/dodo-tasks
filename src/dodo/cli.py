@@ -32,7 +32,7 @@ def main(ctx: typer.Context):
 
 @app.command()
 def add(
-    text: Annotated[str, typer.Argument(help="Todo text")],
+    text: Annotated[list[str], typer.Argument(help="Todo text")],
     global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
 ):
     """Add a todo item."""
@@ -46,7 +46,7 @@ def add(
         target = project_id or "global"
 
     svc = TodoService(cfg, project_id)
-    item = svc.add(text)
+    item = svc.add(" ".join(text))
 
     _save_last_action("add", item.id, target)
 
