@@ -37,11 +37,12 @@ class Config:
         # Settings
         "default_adapter": "markdown",
         "editor": "",  # Empty = use $EDITOR or vim
-        "ai_command": "claude -p '{{system}}\n\n{{prompt}}' --model haiku",
+        "ai_command": "claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model haiku --tools ''",
         "ai_sys_prompt": (
-            "You are a todo formatter. Return a JSON array of clear, actionable todo items. "
-            "If one task, return array with one item. If multiple implied, split them. "
-            "Keep each under 100 chars. Return ONLY valid JSON array."
+            "Convert user input into a JSON array of todo strings. "
+            "NEVER ask questions or add commentary. Output ONLY the JSON array, nothing else. "
+            'If input is one task, return ["task"]. If multiple, split into separate items. '
+            "Keep each item under 100 chars."
         ),
         "obsidian_api_url": "https://localhost:27124",
         "obsidian_api_key": "",

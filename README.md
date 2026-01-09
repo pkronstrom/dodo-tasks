@@ -40,7 +40,7 @@ DODO_AI_COMMAND="llm '{{prompt}}' -s '{{system}}' --schema '{{schema}}'"
 
 ### Claude CLI
 ```bash
-DODO_AI_COMMAND="claude -p '{{prompt}}' --model haiku --json-schema '{{schema}}'"
+DODO_AI_COMMAND="claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model haiku --tools ''"
 ```
 
 ### Gemini CLI (no schema enforcement)

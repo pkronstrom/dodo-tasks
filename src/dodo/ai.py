@@ -5,9 +5,9 @@ import subprocess
 
 DEFAULT_SCHEMA = json.dumps(
     {
-        "type": "array",
-        "items": {"type": "string"},
-        "minItems": 1,
+        "type": "object",
+        "properties": {"tasks": {"type": "array", "items": {"type": "string"}}},
+        "required": ["tasks"],
     }
 )
 
@@ -75,23 +75,41 @@ def run_ai(
         )
 
         if result.returncode != 0:
+            import sys
+
+            print(f"AI command failed (exit {result.returncode})", file=sys.stderr)
+            if result.stderr:
+                print(result.stderr, file=sys.stderr)
             return []
 
-        # Parse JSON array from output
+        # Parse JSON output
         output = result.stdout.strip()
+        data = json.loads(output)
 
-        # Try to extract JSON array if there's surrounding text
-        if "[" in output:
-            start = output.index("[")
-            end = output.rindex("]") + 1
-            output = output[start:end]
+        # Extract tasks from structured_output (claude --output-format json)
+        if isinstance(data, dict) and "structured_output" in data:
+            tasks = data["structured_output"].get("tasks", [])
+        elif isinstance(data, dict) and "tasks" in data:
+            tasks = data["tasks"]
+        elif isinstance(data, list):
+            tasks = data
+        else:
+            print(f"Unexpected output format. Raw: {output[:500]}", file=sys.stderr)
+            return []
 
-        items = json.loads(output)
+        todos = [str(item) for item in tasks if item]
+        if not todos:
+            print(f"AI returned empty list. Raw output: {output[:500]}", file=sys.stderr)
+        return todos
 
-        if isinstance(items, list):
-            return [str(item) for item in items if item]
+    except subprocess.TimeoutExpired:
+        import sys
 
+        print("AI command timed out", file=sys.stderr)
         return []
+    except (json.JSONDecodeError, ValueError) as e:
+        import sys
 
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, ValueError):
+        print(f"Failed to parse AI output: {e}", file=sys.stderr)
+        print(f"Raw output: {result.stdout[:500]}", file=sys.stderr)
         return []
