@@ -13,6 +13,7 @@ from dodo.core import TodoService
 from dodo.models import Status, TodoItem, UndoAction
 from dodo.project import detect_project
 
+from .panel_builder import calculate_visible_range, format_scroll_indicator
 from .rich_menu import RichTerminalMenu
 
 # UI Constants
@@ -119,19 +120,24 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
         if not items:
             lines.append("[dim]No todos - press 'a' to add one[/dim]")
         else:
-            # Keep cursor in bounds
-            if cursor < scroll_offset:
-                scroll_offset = cursor
-            elif cursor >= scroll_offset + max_items:
-                scroll_offset = cursor - max_items + 1
-            scroll_offset = max(0, min(scroll_offset, len(items) - 1))
+            # Calculate visible range
+            new_offset, visible_start, visible_end = calculate_visible_range(
+                cursor=cursor,
+                total_items=len(items),
+                max_visible=max_items,
+                scroll_offset=scroll_offset,
+            )
+            scroll_offset = new_offset
 
-            visible_end = min(scroll_offset + max_items, len(items))
+            # Add scroll indicators
+            above_indicator, below_indicator = format_scroll_indicator(
+                hidden_above=scroll_offset,
+                hidden_below=len(items) - visible_end,
+            )
+            if above_indicator:
+                lines.append(above_indicator)
 
-            if scroll_offset > 0:
-                lines.append(f"[dim]  ↑ {scroll_offset} more[/dim]")
-
-            for i in range(scroll_offset, visible_end):
+            for i in range(visible_start, visible_end):
                 item = items[i]
                 selected = i == cursor
                 done = item.status == Status.DONE
@@ -155,8 +161,8 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
                 else:
                     lines.append(f"{marker} {check} {text}")
 
-            if visible_end < len(items):
-                lines.append(f"[dim]  ↓ {len(items) - visible_end} more[/dim]")
+            if below_indicator:
+                lines.append(below_indicator)
 
         # Status line (with left margin)
         if status_msg:
