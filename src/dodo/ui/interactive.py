@@ -145,7 +145,7 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
     cfg = Config.load()
 
     toggles = cfg.get_toggles()
-    options = [f"{'[x]' if enabled else '[ ]'} {desc}" for _, desc, enabled in toggles]
+    options = [desc for _, desc, _ in toggles]
 
     selected = ui.multi_select(
         options,
