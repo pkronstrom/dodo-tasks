@@ -140,18 +140,19 @@ def _interactive_switch(ui: RichTerminalMenu, cfg: Config) -> tuple[str | None, 
 
 
 def interactive_config(ui: RichTerminalMenu | None = None) -> None:
-    """Unified config editor - toggles, choices, and text in one view."""
+    """Unified config editor using Rich Live display."""
     import os
     import subprocess
-    import sys
     import tempfile
+    import termios
+    import tty
 
-    from simple_term_menu import TerminalMenu
+    from rich.live import Live
+    from rich.text import Text
 
     cfg = Config.load()
     adapters = ["markdown", "sqlite", "obsidian"]
 
-    # Track pending changes (not saved until Enter on "Save")
     pending: dict = {
         "worktree_shared": cfg.worktree_shared,
         "local_storage": cfg.local_storage,
@@ -160,72 +161,106 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
         "ai_command": cfg.ai_command,
     }
 
-    def build_options():
-        def checkbox(val):
-            return "[x]" if val else "[ ]"
+    items = [
+        ("worktree_shared", "Share todos across git worktrees", "toggle"),
+        ("local_storage", "Store todos in project dir", "toggle"),
+        ("timestamps_enabled", "Add timestamps to todo entries", "toggle"),
+        ("default_adapter", "Adapter", "cycle"),
+        ("ai_command", "AI command", "edit"),
+    ]
 
-        def truncate(s, length=40):
-            return s[:length] + "..." if len(s) > length else s
+    cursor = 0
 
-        return [
-            f"{checkbox(pending['worktree_shared'])} Share todos across git worktrees",
-            f"{checkbox(pending['local_storage'])} Store todos in project dir",
-            f"{checkbox(pending['timestamps_enabled'])} Add timestamps to todo entries",
-            f"Adapter: {pending['default_adapter']}",
-            f"AI cmd: {truncate(pending['ai_command'])}",
-            "Save & Exit",
-        ]
+    def get_key():
+        fd = os.sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            ch = os.sys.stdin.read(1)
+            if ch == "\x1b":
+                ch += os.sys.stdin.read(2)
+            return ch
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
-    cursor_idx = 0
-    while True:
-        # Reset terminal state
-        sys.stdout.write("\033[0m")
-        sys.stdout.flush()
+    def render():
+        lines = []
+        lines.append(Text("Config", style="bold"))
+        lines.append(Text("↑↓ navigate, Space/Enter toggle, s save, q quit\n", style="dim"))
 
-        options = build_options()
-        menu = TerminalMenu(
-            options,
-            title="Config (Enter to toggle/edit, Esc to cancel)",
-            cursor_index=cursor_idx,
-            skip_empty_entries=True,
+        for i, (key, label, kind) in enumerate(items):
+            prefix = "> " if i == cursor else "  "
+            style = "reverse" if i == cursor else ""
+
+            if kind == "toggle":
+                check = "[green]✓[/green]" if pending[key] else "[dim]○[/dim]"
+                line = Text.from_markup(f"{prefix}{check} {label}", style=style)
+            elif kind == "cycle":
+                line = Text.from_markup(
+                    f"{prefix}  {label}: [yellow]{pending[key]}[/yellow]", style=style
+                )
+            else:
+                truncated = pending[key][:30] + "..." if len(pending[key]) > 30 else pending[key]
+                line = Text.from_markup(f"{prefix}  {label}: [dim]{truncated}[/dim]", style=style)
+
+            lines.append(line)
+
+        lines.append(Text())
+        lines.append(
+            Text.from_markup(f"{'> ' if cursor == len(items) else '  '}[green]Save & Exit[/green]")
         )
-        choice = menu.show()
 
-        if choice is None:
-            console.print("[dim]Cancelled[/dim]")
-            return
+        return "\n".join(str(line) for line in lines)
 
-        cursor_idx = choice
+    with Live(render(), console=console, refresh_per_second=10, transient=True) as live:
+        while True:
+            key = get_key()
 
-        if choice == 0:
-            pending["worktree_shared"] = not pending["worktree_shared"]
-        elif choice == 1:
-            pending["local_storage"] = not pending["local_storage"]
-        elif choice == 2:
-            pending["timestamps_enabled"] = not pending["timestamps_enabled"]
-        elif choice == 3:
-            idx = adapters.index(pending["default_adapter"])
-            pending["default_adapter"] = adapters[(idx + 1) % len(adapters)]
-        elif choice == 4:
-            editor = os.environ.get("EDITOR", "vim")
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
-                f.write("# AI command template\n")
-                f.write("# Variables: {{prompt}}, {{system}}, {{schema}}\n")
-                f.write("# Lines starting with # are ignored\n\n")
-                f.write(pending["ai_command"])
-                tmp_path = f.name
-            try:
-                subprocess.run([editor, tmp_path], check=True)
-                with open(tmp_path) as f:
-                    lines = [ln for ln in f.readlines() if not ln.startswith("#")]
-                    new_cmd = "".join(lines).strip()
-                if new_cmd:
-                    pending["ai_command"] = new_cmd
-            finally:
-                os.unlink(tmp_path)
-        elif choice == 5:
-            for key, val in pending.items():
-                if getattr(cfg, key) != val:
-                    cfg.set(key, val)
-            console.print("[green]✓[/green] Config saved")
-            return
+            if key == "q" or key == "\x1b":  # q or Esc
+                console.print("[dim]Cancelled[/dim]")
+                return
+            elif key == "s":
+                for k, val in pending.items():
+                    if getattr(cfg, k) != val:
+                        cfg.set(k, val)
+                console.print("[green]✓[/green] Config saved")
+                return
+            elif key == "\x1b[A":  # Up arrow
+                cursor = (cursor - 1) % (len(items) + 1)
+            elif key == "\x1b[B":  # Down arrow
+                cursor = (cursor + 1) % (len(items) + 1)
+            elif key in (" ", "\r", "\n"):  # Space or Enter
+                if cursor == len(items):  # Save & Exit
+                    for k, val in pending.items():
+                        if getattr(cfg, k) != val:
+                            cfg.set(k, val)
+                    console.print("[green]✓[/green] Config saved")
+                    return
+
+                item_key, _, kind = items[cursor]
+                if kind == "toggle":
+                    pending[item_key] = not pending[item_key]
+                elif kind == "cycle":
+                    idx = adapters.index(pending[item_key])
+                    pending[item_key] = adapters[(idx + 1) % len(adapters)]
+                elif kind == "edit":
+                    live.stop()
+                    editor = os.environ.get("EDITOR", "vim")
+                    with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
+                        f.write("# AI command template\n")
+                        f.write("# Variables: {{prompt}}, {{system}}, {{schema}}\n")
+                        f.write("# Lines starting with # are ignored\n\n")
+                        f.write(pending[item_key])
+                        tmp_path = f.name
+                    try:
+                        subprocess.run([editor, tmp_path], check=True)
+                        with open(tmp_path) as fp:
+                            lines = [ln for ln in fp.readlines() if not ln.startswith("#")]
+                            new_val = "".join(lines).strip()
+                        if new_val:
+                            pending[item_key] = new_val
+                    finally:
+                        os.unlink(tmp_path)
+                    live.start()
+
+            live.update(render())
