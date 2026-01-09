@@ -17,6 +17,7 @@ class ConfigMeta:
 
     SETTINGS: dict[str, str] = {
         "default_adapter": "Backend adapter (markdown|sqlite|obsidian)",
+        "editor": "Editor command (empty = use $EDITOR)",
         "ai_command": "AI CLI command template",
         "ai_sys_prompt": "AI system prompt",
         "obsidian_api_url": "Obsidian REST API URL",
@@ -35,6 +36,7 @@ class Config:
         "timestamps_enabled": True,
         # Settings
         "default_adapter": "markdown",
+        "editor": "",  # Empty = use $EDITOR or vim
         "ai_command": "claude -p '{{system}}\n\n{{prompt}}' --model haiku",
         "ai_sys_prompt": (
             "You are a todo formatter. Return a JSON array of clear, actionable todo items. "
