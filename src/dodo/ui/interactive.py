@@ -170,19 +170,19 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
             f"{checkbox(pending['worktree_shared'])} Share todos across git worktrees",
             f"{checkbox(pending['local_storage'])} Store todos in project dir",
             f"{checkbox(pending['timestamps_enabled'])} Add timestamps to todo entries",
-            f"    Adapter: {pending['default_adapter']} ▸",
-            f"    AI cmd: {truncate(pending['ai_command'])} ✎",
-            "────────────────────────",
-            "[Save & Exit]",
+            f"Adapter: {pending['default_adapter']} ▸",
+            f"AI cmd: {truncate(pending['ai_command'])} ✎",
+            "─",
+            "Save & Exit",
         ]
 
     while True:
         options = build_options()
         menu = TerminalMenu(
             options,
-            title="Config (Space/Enter to toggle, Enter to edit, Esc to cancel)",
+            title="Config (Enter to toggle/edit, Esc to cancel)",
             cycle_cursor=True,
-            clear_screen=False,
+            clear_screen=True,
         )
         choice = menu.show()
 
@@ -216,6 +216,8 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
                     pending["ai_command"] = new_cmd
             finally:
                 os.unlink(tmp_path)
+        elif choice == 5:  # Separator - do nothing
+            pass
         elif choice == 6:  # Save & Exit
             for key, val in pending.items():
                 if getattr(cfg, key) != val:
