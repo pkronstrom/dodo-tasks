@@ -222,7 +222,10 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
             elif kind == "cycle":
                 console.print(f"{marker}  {label}: [yellow]{value}[/yellow]")
             else:  # edit
-                display = value[:30] + "..." if len(value) > 30 else value
+                # Collapse newlines and truncate for display
+                display = value.replace("\n", "↵")[:35]
+                if len(value) > 35:
+                    display += "..."
                 console.print(f"{marker}  {label}: [dim]{display}[/dim]")
 
         console.print()
