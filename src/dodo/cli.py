@@ -67,7 +67,7 @@ def list_todos(
     if global_:
         project_id = None
     else:
-        project_id = project or detect_project()
+        project_id = _resolve_project(project) or detect_project()
 
     svc = TodoService(cfg, project_id)
     status = None if all_ else (Status.DONE if done else Status.PENDING)
@@ -215,6 +215,38 @@ def config():
 
 
 # Helpers
+
+
+def _resolve_project(partial: str | None) -> str | None:
+    """Resolve partial project name to full project ID."""
+    if not partial:
+        return None
+
+    cfg = Config.load()
+    projects_dir = cfg.config_dir / "projects"
+
+    if not projects_dir.exists():
+        return partial  # No projects yet, use as-is
+
+    existing = [p.name for p in projects_dir.iterdir() if p.is_dir()]
+
+    # Exact match
+    if partial in existing:
+        return partial
+
+    # Partial match (prefix)
+    matches = [p for p in existing if p.startswith(partial)]
+
+    if len(matches) == 1:
+        return matches[0]
+    elif len(matches) > 1:
+        console.print(f"[yellow]Ambiguous project '{partial}'. Matches:[/yellow]")
+        for m in matches:
+            console.print(f"  - {m}")
+        raise typer.Exit(1)
+
+    # No match - use as-is (new project)
+    return partial
 
 
 def _find_item_by_partial_id(svc: TodoService, partial_id: str):
