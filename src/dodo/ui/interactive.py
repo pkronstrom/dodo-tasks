@@ -143,7 +143,10 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
     """Unified config editor - toggles, choices, and text in one view."""
     import os
     import subprocess
+    import sys
     import tempfile
+
+    from simple_term_menu import TerminalMenu
 
     cfg = Config.load()
     adapters = ["markdown", "sqlite", "obsidian"]
@@ -157,56 +160,53 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
         "ai_command": cfg.ai_command,
     }
 
-    def checkbox(val):
-        return "[green]✓[/green]" if val else "[dim]○[/dim]"
+    def build_options():
+        def checkbox(val):
+            return "[x]" if val else "[ ]"
 
-    def truncate(s, length=35):
-        return s[:length] + "..." if len(s) > length else s
+        def truncate(s, length=40):
+            return s[:length] + "..." if len(s) > length else s
 
-    def print_menu():
-        console.print("\n[bold]Config[/bold] (number to toggle, s to save, q to cancel)\n")
-        console.print(
-            f"  [cyan]1[/cyan] {checkbox(pending['worktree_shared'])} Share todos across git worktrees"
-        )
-        console.print(
-            f"  [cyan]2[/cyan] {checkbox(pending['local_storage'])} Store todos in project dir"
-        )
-        console.print(
-            f"  [cyan]3[/cyan] {checkbox(pending['timestamps_enabled'])} Add timestamps to todo entries"
-        )
-        console.print(f"  [cyan]4[/cyan]   Adapter: [yellow]{pending['default_adapter']}[/yellow]")
-        console.print(f"  [cyan]5[/cyan]   AI cmd: [dim]{truncate(pending['ai_command'])}[/dim]")
-        console.print()
+        return [
+            f"{checkbox(pending['worktree_shared'])} Share todos across git worktrees",
+            f"{checkbox(pending['local_storage'])} Store todos in project dir",
+            f"{checkbox(pending['timestamps_enabled'])} Add timestamps to todo entries",
+            f"Adapter: {pending['default_adapter']}",
+            f"AI cmd: {truncate(pending['ai_command'])}",
+            "Save & Exit",
+        ]
 
+    cursor_idx = 0
     while True:
-        console.clear()
-        print_menu()
+        # Reset terminal state
+        sys.stdout.write("\033[0m")
+        sys.stdout.flush()
 
-        try:
-            key = console.input("[dim]>[/dim] ").strip().lower()
-        except (KeyboardInterrupt, EOFError):
+        options = build_options()
+        menu = TerminalMenu(
+            options,
+            title="Config (Enter to toggle/edit, Esc to cancel)",
+            cursor_index=cursor_idx,
+            skip_empty_entries=True,
+        )
+        choice = menu.show()
+
+        if choice is None:
             console.print("[dim]Cancelled[/dim]")
             return
 
-        if key == "q" or key == "":
-            console.print("[dim]Cancelled[/dim]")
-            return
-        elif key == "s":
-            for k, val in pending.items():
-                if getattr(cfg, k) != val:
-                    cfg.set(k, val)
-            console.print("[green]✓[/green] Config saved")
-            return
-        elif key == "1":
+        cursor_idx = choice
+
+        if choice == 0:
             pending["worktree_shared"] = not pending["worktree_shared"]
-        elif key == "2":
+        elif choice == 1:
             pending["local_storage"] = not pending["local_storage"]
-        elif key == "3":
+        elif choice == 2:
             pending["timestamps_enabled"] = not pending["timestamps_enabled"]
-        elif key == "4":
+        elif choice == 3:
             idx = adapters.index(pending["default_adapter"])
             pending["default_adapter"] = adapters[(idx + 1) % len(adapters)]
-        elif key == "5":
+        elif choice == 4:
             editor = os.environ.get("EDITOR", "vim")
             with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
                 f.write("# AI command template\n")
@@ -223,3 +223,9 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
                     pending["ai_command"] = new_cmd
             finally:
                 os.unlink(tmp_path)
+        elif choice == 5:
+            for key, val in pending.items():
+                if getattr(cfg, key) != val:
+                    cfg.set(key, val)
+            console.print("[green]✓[/green] Config saved")
+            return
