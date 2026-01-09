@@ -1,13 +1,17 @@
 """Interactive menu."""
 
 import sys
+from dataclasses import dataclass
 
+import readchar
 from rich.console import Console
+from rich.live import Live
+from rich.markup import escape
 from rich.panel import Panel
 
 from dodo.config import Config
 from dodo.core import TodoService
-from dodo.models import Status
+from dodo.models import Status, TodoItem
 from dodo.project import detect_project
 
 from .rich_menu import RichTerminalMenu
@@ -86,15 +90,6 @@ def _interactive_add(svc: TodoService, ui: RichTerminalMenu, target: str) -> Non
 
 def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
     """Unified todo management with keyboard shortcuts."""
-    from dataclasses import dataclass
-
-    from rich.console import Console
-    from rich.live import Live
-    from rich.markup import escape
-    from rich.panel import Panel
-
-    from dodo.models import TodoItem
-
     live_console = Console()
 
     @dataclass
@@ -210,8 +205,6 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
     while True:  # Outer loop handles editor/add re-entry
         edit_item: TodoItem | None = None
         add_mode = False
-
-        import readchar
 
         live_console.clear()
         panel, _ = build_display()
@@ -429,8 +422,6 @@ def _config_loop(
 
     while True:  # Outer loop handles editor re-entry without recursion
         edit_triggered = False
-
-        import readchar
 
         with console.screen():
             render()
