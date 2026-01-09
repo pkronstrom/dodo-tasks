@@ -140,15 +140,13 @@ def _interactive_switch(ui: RichTerminalMenu, cfg: Config) -> tuple[str | None, 
 
 
 def interactive_config(ui: RichTerminalMenu | None = None) -> None:
-    """Unified config editor using Rich Live display."""
+    """Unified config editor."""
     import os
     import subprocess
+    import sys
     import tempfile
     import termios
     import tty
-
-    from rich.live import Live
-    from rich.text import Text
 
     cfg = Config.load()
     adapters = ["markdown", "sqlite", "obsidian"]
@@ -172,95 +170,89 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
     cursor = 0
 
     def get_key():
-        fd = os.sys.stdin.fileno()
+        fd = sys.stdin.fileno()
         old = termios.tcgetattr(fd)
         try:
             tty.setraw(fd)
-            ch = os.sys.stdin.read(1)
+            ch = sys.stdin.read(1)
             if ch == "\x1b":
-                ch += os.sys.stdin.read(2)
+                ch += sys.stdin.read(2)
             return ch
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
     def render():
-        lines = []
-        lines.append(Text("Config", style="bold"))
-        lines.append(Text("↑↓ navigate, Space/Enter toggle, s save, q quit\n", style="dim"))
+        console.clear()
+        console.print("[bold]Config[/bold]")
+        console.print("[dim]↑↓ navigate, Space/Enter toggle, s save, q quit[/dim]\n")
 
         for i, (key, label, kind) in enumerate(items):
-            prefix = "> " if i == cursor else "  "
-            style = "reverse" if i == cursor else ""
+            prefix = "[cyan]>[/cyan] " if i == cursor else "  "
 
             if kind == "toggle":
                 check = "[green]✓[/green]" if pending[key] else "[dim]○[/dim]"
-                line = Text.from_markup(f"{prefix}{check} {label}", style=style)
+                console.print(f"{prefix}{check} {label}")
             elif kind == "cycle":
-                line = Text.from_markup(
-                    f"{prefix}  {label}: [yellow]{pending[key]}[/yellow]", style=style
-                )
+                console.print(f"{prefix}  {label}: [yellow]{pending[key]}[/yellow]")
             else:
                 truncated = pending[key][:30] + "..." if len(pending[key]) > 30 else pending[key]
-                line = Text.from_markup(f"{prefix}  {label}: [dim]{truncated}[/dim]", style=style)
+                console.print(f"{prefix}  {label}: [dim]{truncated}[/dim]")
 
-            lines.append(line)
+        console.print()
+        prefix = "[cyan]>[/cyan] " if cursor == len(items) else "  "
+        console.print(f"{prefix}[green]Save & Exit[/green]")
 
-        lines.append(Text())
-        lines.append(
-            Text.from_markup(f"{'> ' if cursor == len(items) else '  '}[green]Save & Exit[/green]")
-        )
+    render()
+    while True:
+        key = get_key()
 
-        return "\n".join(str(line) for line in lines)
-
-    with Live(render(), console=console, refresh_per_second=10, transient=True) as live:
-        while True:
-            key = get_key()
-
-            if key == "q" or key == "\x1b":  # q or Esc
-                console.print("[dim]Cancelled[/dim]")
-                return
-            elif key == "s":
+        if key == "q" or key == "\x1b" or key == "\x1b[":  # q or Esc
+            console.clear()
+            console.print("[dim]Cancelled[/dim]")
+            return
+        elif key == "s":
+            for k, val in pending.items():
+                if getattr(cfg, k) != val:
+                    cfg.set(k, val)
+            console.clear()
+            console.print("[green]✓[/green] Config saved")
+            return
+        elif key == "\x1b[A":  # Up arrow
+            cursor = (cursor - 1) % (len(items) + 1)
+        elif key == "\x1b[B" or key == "\t":  # Down arrow or Tab
+            cursor = (cursor + 1) % (len(items) + 1)
+        elif key in (" ", "\r", "\n"):  # Space or Enter
+            if cursor == len(items):  # Save & Exit
                 for k, val in pending.items():
                     if getattr(cfg, k) != val:
                         cfg.set(k, val)
+                console.clear()
                 console.print("[green]✓[/green] Config saved")
                 return
-            elif key == "\x1b[A":  # Up arrow
-                cursor = (cursor - 1) % (len(items) + 1)
-            elif key == "\x1b[B":  # Down arrow
-                cursor = (cursor + 1) % (len(items) + 1)
-            elif key in (" ", "\r", "\n"):  # Space or Enter
-                if cursor == len(items):  # Save & Exit
-                    for k, val in pending.items():
-                        if getattr(cfg, k) != val:
-                            cfg.set(k, val)
-                    console.print("[green]✓[/green] Config saved")
-                    return
 
-                item_key, _, kind = items[cursor]
-                if kind == "toggle":
-                    pending[item_key] = not pending[item_key]
-                elif kind == "cycle":
-                    idx = adapters.index(pending[item_key])
-                    pending[item_key] = adapters[(idx + 1) % len(adapters)]
-                elif kind == "edit":
-                    live.stop()
-                    editor = os.environ.get("EDITOR", "vim")
-                    with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
-                        f.write("# AI command template\n")
-                        f.write("# Variables: {{prompt}}, {{system}}, {{schema}}\n")
-                        f.write("# Lines starting with # are ignored\n\n")
-                        f.write(pending[item_key])
-                        tmp_path = f.name
-                    try:
-                        subprocess.run([editor, tmp_path], check=True)
-                        with open(tmp_path) as fp:
-                            lines = [ln for ln in fp.readlines() if not ln.startswith("#")]
-                            new_val = "".join(lines).strip()
-                        if new_val:
-                            pending[item_key] = new_val
-                    finally:
-                        os.unlink(tmp_path)
-                    live.start()
+            item_key, _, kind = items[cursor]
+            if kind == "toggle":
+                pending[item_key] = not pending[item_key]
+            elif kind == "cycle":
+                idx = adapters.index(pending[item_key])
+                pending[item_key] = adapters[(idx + 1) % len(adapters)]
+            elif kind == "edit":
+                console.clear()
+                editor = os.environ.get("EDITOR", "vim")
+                with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False) as f:
+                    f.write("# AI command template\n")
+                    f.write("# Variables: {{prompt}}, {{system}}, {{schema}}\n")
+                    f.write("# Lines starting with # are ignored\n\n")
+                    f.write(pending[item_key])
+                    tmp_path = f.name
+                try:
+                    subprocess.run([editor, tmp_path], check=True)
+                    with open(tmp_path) as fp:
+                        file_lines = [ln for ln in fp.readlines() if not ln.startswith("#")]
+                        new_val = "".join(file_lines).strip()
+                    if new_val:
+                        pending[item_key] = new_val
+                finally:
+                    os.unlink(tmp_path)
 
-            live.update(render())
+        render()
