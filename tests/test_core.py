@@ -3,9 +3,9 @@
 from pathlib import Path
 
 import pytest
-from dodo.core import TodoService
 
 from dodo.config import Config
+from dodo.core import TodoService
 from dodo.models import Status
 
 
@@ -23,7 +23,7 @@ class TestTodoServiceAdd:
         config = Config.load(tmp_path / "config")
         svc = TodoService(config, project_id="myapp_abc123")
 
-        item = svc.add("Project todo")
+        svc.add("Project todo")
 
         assert (tmp_path / "config" / "projects" / "myapp_abc123" / "todo.md").exists()
 

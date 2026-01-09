@@ -3,8 +3,8 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from dodo.adapters.obsidian import ObsidianAdapter
 
+from dodo.adapters.obsidian import ObsidianAdapter
 from dodo.models import Status
 
 

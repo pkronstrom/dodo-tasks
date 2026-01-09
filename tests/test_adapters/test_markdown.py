@@ -3,8 +3,8 @@
 from pathlib import Path
 
 import pytest
-from dodo.adapters.markdown import MarkdownAdapter, MarkdownFormat
 
+from dodo.adapters.markdown import MarkdownAdapter, MarkdownFormat
 from dodo.models import Status
 
 
