@@ -1,7 +1,6 @@
 """Interactive menu."""
 
 import sys
-from dataclasses import dataclass
 
 import readchar
 from rich.console import Console
@@ -11,7 +10,7 @@ from rich.panel import Panel
 
 from dodo.config import Config
 from dodo.core import TodoService
-from dodo.models import Status, TodoItem
+from dodo.models import Status, TodoItem, UndoAction
 from dodo.project import detect_project
 
 from .rich_menu import RichTerminalMenu
@@ -91,12 +90,6 @@ def _interactive_add(svc: TodoService, ui: RichTerminalMenu, target: str) -> Non
 def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
     """Unified todo management with keyboard shortcuts."""
     live_console = Console()
-
-    @dataclass
-    class UndoAction:
-        kind: str  # "toggle" | "delete" | "edit"
-        item: TodoItem
-        new_id: str | None = None  # For edit: track new ID after text change
 
     cursor = 0
     scroll_offset = 0
