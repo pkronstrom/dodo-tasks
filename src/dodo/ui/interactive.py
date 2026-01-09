@@ -176,15 +176,19 @@ def interactive_config(ui: RichTerminalMenu | None = None) -> None:
             "Save & Exit",
         ]
 
+    cursor_idx = 0
     while True:
         options = build_options()
         menu = TerminalMenu(
             options,
-            title="Config (Enter to toggle/edit, Esc to cancel)",
-            cycle_cursor=True,
+            title="Config (Enter/Space to toggle, Esc to cancel)",
+            cursor_index=cursor_idx,
+            accept_keys=("enter", "space"),
             clear_screen=True,
         )
         choice = menu.show()
+        if choice is not None:
+            cursor_idx = choice
 
         if choice is None:  # Esc pressed
             console.print("[dim]Cancelled[/dim]")
