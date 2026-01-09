@@ -9,6 +9,8 @@ from rich.live import Live
 from rich.panel import Panel
 from simple_term_menu import TerminalMenu
 
+from dodo.ui.panel_builder import calculate_visible_range, format_scroll_indicator
+
 T = TypeVar("T")
 
 # UI Constants
@@ -86,24 +88,30 @@ class InteractiveList:
             else:
                 # Keep cursor in bounds
                 self.cursor = max(0, min(self.cursor, len(self.items) - 1))
-                if self.cursor < self.scroll_offset:
-                    self.scroll_offset = self.cursor
-                elif self.cursor >= self.scroll_offset + max_items:
-                    self.scroll_offset = self.cursor - max_items + 1
-                self.scroll_offset = max(0, min(self.scroll_offset, len(self.items) - 1))
 
-                visible_end = min(self.scroll_offset + max_items, len(self.items))
+                # Calculate visible range
+                new_offset, visible_start, visible_end = calculate_visible_range(
+                    cursor=self.cursor,
+                    total_items=len(self.items),
+                    max_visible=max_items,
+                    scroll_offset=self.scroll_offset,
+                )
+                self.scroll_offset = new_offset
 
-                if self.scroll_offset > 0:
-                    lines.append(f"[dim]  ↑ {self.scroll_offset} more[/dim]")
+                above_indicator, below_indicator = format_scroll_indicator(
+                    hidden_above=self.scroll_offset,
+                    hidden_below=len(self.items) - visible_end,
+                )
+                if above_indicator:
+                    lines.append(above_indicator)
 
-                for i in range(self.scroll_offset, visible_end):
+                for i in range(visible_start, visible_end):
                     selected = i == self.cursor
                     rendered = self.render_item(self.items[i], selected)
                     lines.append(rendered)
 
-                if visible_end < len(self.items):
-                    lines.append(f"[dim]  ↓ {len(self.items) - visible_end} more[/dim]")
+                if below_indicator:
+                    lines.append(below_indicator)
 
             # Status line (with left margin)
             status_line = f"  {self.status_msg}" if self.status_msg else ""
