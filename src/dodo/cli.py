@@ -159,11 +159,6 @@ def ai(
         raise typer.Exit(1)
 
     cfg = Config.load()
-
-    if not cfg.ai_enabled:
-        console.print("[yellow]AI not enabled.[/yellow] Set DODO_AI_ENABLED=true")
-        raise typer.Exit(1)
-
     project_id = detect_project()
     svc = TodoService(cfg, project_id)
 
