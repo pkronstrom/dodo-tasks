@@ -68,11 +68,12 @@ class SqliteAdapter:
         return [self._row_to_item(row) for row in rows]
 
     def get(self, id: str) -> TodoItem | None:
+        query = """
+            SELECT id, text, status, project, created_at, completed_at
+            FROM todos WHERE id = ?
+        """
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT id, text, status, project, created_at, completed_at FROM todos WHERE id = ?",
-                (id,),
-            ).fetchone()
+            row = conn.execute(query, (id,)).fetchone()
         return self._row_to_item(row) if row else None
 
     def update(self, id: str, status: Status) -> TodoItem:

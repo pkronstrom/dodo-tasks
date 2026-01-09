@@ -20,7 +20,7 @@ class TestFullWorkflow:
 
         # Add
         item1 = svc.add("First todo")
-        item2 = svc.add("Second todo")
+        svc.add("Second todo")
 
         # List pending
         pending = svc.list(status=Status.PENDING)

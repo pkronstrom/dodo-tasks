@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+
 from dodo.config import Config, ConfigMeta
 
 
