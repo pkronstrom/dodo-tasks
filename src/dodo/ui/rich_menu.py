@@ -23,7 +23,7 @@ DEFAULT_TERMINAL_HEIGHT = 24
 # 1. Delete if not needed
 # 2. Refactor _todos_loop in interactive.py to use this
 # Decision pending - keeping for potential Phase 2 refactor
-class InteractiveList:
+class InteractiveList(Generic[T]):
     """Reusable interactive list with customizable keybindings.
 
     Example:

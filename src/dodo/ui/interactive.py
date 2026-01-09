@@ -445,7 +445,7 @@ def _config_loop(
                         pending[item_key] = not pending[item_key]
                         save_item(item_key, pending[item_key])
                     elif kind == "cycle" and options:
-                        idx = options.index(pending[item_key])
+                        idx = options.index(str(pending[item_key]))
                         pending[item_key] = options[(idx + 1) % len(options)]
                         save_item(item_key, pending[item_key])
                     elif kind == "edit":
