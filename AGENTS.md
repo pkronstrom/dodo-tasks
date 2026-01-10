@@ -6,7 +6,7 @@ Python 3.11+, Typer (CLI), Rich (UI), httpx (HTTP), SQLite (stdlib)
 ## Commands
 ```bash
 uv run dodo              # Interactive menu
-uv run pytest tests/     # Run tests (100 total)
+uv run pytest tests/     # Run tests (135 total)
 uv run ruff check src/   # Lint
 uv run mypy src/dodo/    # Type check
 ```
@@ -22,11 +22,13 @@ src/dodo/
 ├── cli_plugins.py     # Plugin commands (lazy-loaded)
 ├── plugins.py         # Plugin discovery, @env parsing
 ├── ai.py              # LLM-assisted todo formatting
-├── adapters/          # Storage backends
+├── adapters/          # Storage backends (lazy-loaded)
 │   ├── base.py        # TodoAdapter Protocol
+│   ├── utils.py       # Shared: ID gen, line parsing, formatting
 │   ├── markdown.py    # File-based (todo.md)
 │   ├── sqlite.py      # Database (todos.db)
 │   └── obsidian.py    # REST API backend
+├── formatters/        # Output formatters (table, jsonl, tsv)
 └── ui/                # Interactive menus
     ├── base.py        # MenuUI Protocol
     ├── rich_menu.py   # simple-term-menu wrapper
@@ -48,6 +50,10 @@ plugins/               # Standalone plugin scripts
 
 **Plugin system**: Standalone scripts in `plugins/` with `@env` comments for config. Lazy-loaded to avoid CLI overhead.
 
+**Lazy adapter loading**: Adapters imported only when used (`core.py:49-64`). Avoids ~53ms httpx import for markdown users.
+
+**Module-level caching**: `Config.load()` and `detect_project()` cache results within single invocation. Clear with `clear_config_cache()` / `clear_project_cache()` in tests.
+
 ## Conventions
 - TDD: Write tests before implementation
 - Type hints on all public functions
@@ -58,3 +64,4 @@ plugins/               # Standalone plugin scripts
 - Unit tests mirror source structure: `tests/test_adapters/test_*.py`
 - Use `tmp_path` fixture for isolated file operations
 - Mock external services (Obsidian) with `monkeypatch`
+- `conftest.py` auto-clears caches between tests (autouse fixture)
