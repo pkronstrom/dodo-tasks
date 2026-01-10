@@ -6,7 +6,6 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
-from rich.table import Table
 
 from dodo.config import Config
 from dodo.core import TodoService
@@ -60,8 +59,11 @@ def list_todos(
     global_: Annotated[bool, typer.Option("-g", "--global")] = False,
     done: Annotated[bool, typer.Option("--done", help="Show completed")] = False,
     all_: Annotated[bool, typer.Option("-a", "--all", help="Show all")] = False,
+    format_: Annotated[str | None, typer.Option("-f", "--format", help="Output format")] = None,
 ):
     """List todos."""
+    from dodo.formatters import get_formatter
+
     cfg = Config.load()
 
     if global_:
@@ -72,7 +74,11 @@ def list_todos(
     svc = TodoService(cfg, project_id)
     status = None if all_ else (Status.DONE if done else Status.PENDING)
     items = svc.list(status=status)
-    _print_todos(items)
+
+    format_str = format_ or cfg.default_format
+    formatter = get_formatter(format_str)
+    output = formatter.format(items)
+    console.print(output)
 
 
 @app.command()
@@ -268,26 +274,6 @@ def _find_item_by_partial_id(svc: TodoService, partial_id: str):
             return item
 
     return None
-
-
-def _print_todos(items: list) -> None:
-    """Pretty print todos as table."""
-    if not items:
-        console.print("[dim]No todos[/dim]")
-        return
-
-    table = Table(show_header=True, header_style="bold")
-    table.add_column("ID", style="dim", width=8)
-    table.add_column("Status", width=6)
-    table.add_column("Created", width=16)
-    table.add_column("Todo")
-
-    for item in items:
-        status = "[green]✓[/green]" if item.status == Status.DONE else "[ ]"
-        created = item.created_at.strftime("%Y-%m-%d %H:%M")
-        table.add_row(item.id, status, created, item.text)
-
-    console.print(table)
 
 
 def _save_last_action(action: str, id: str, target: str) -> None:

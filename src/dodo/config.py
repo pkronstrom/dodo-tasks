@@ -17,6 +17,7 @@ class ConfigMeta:
 
     SETTINGS: dict[str, str] = {
         "default_adapter": "Backend adapter (markdown|sqlite|obsidian)",
+        "default_format": "Output format (table|jsonl|tsv)",
         "editor": "Editor command (empty = use $EDITOR)",
         "ai_command": "AI CLI command template",
         "ai_sys_prompt": "AI system prompt",
@@ -36,6 +37,7 @@ class Config:
         "timestamps_enabled": True,
         # Settings
         "default_adapter": "markdown",
+        "default_format": "table",
         "editor": "",  # Empty = use $EDITOR or vim
         "ai_command": "claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model haiku --tools ''",
         "ai_sys_prompt": (

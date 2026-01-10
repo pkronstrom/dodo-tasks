@@ -1,0 +1,161 @@
+"""Tests for output formatters."""
+
+import json
+from datetime import datetime
+
+import pytest
+
+from dodo.formatters import FORMATTERS, get_formatter
+from dodo.formatters.jsonl import JsonlFormatter
+from dodo.formatters.table import TableFormatter
+from dodo.formatters.tsv import TsvFormatter
+from dodo.models import Status, TodoItem
+
+
+@pytest.fixture
+def sample_items():
+    return [
+        TodoItem(
+            id="abc123",
+            text="Buy milk",
+            status=Status.DONE,
+            created_at=datetime(2024, 1, 9, 10, 30),
+            completed_at=datetime(2024, 1, 9, 11, 0),
+        ),
+        TodoItem(
+            id="def456",
+            text="Call dentist",
+            status=Status.PENDING,
+            created_at=datetime(2024, 1, 10, 14, 0),
+        ),
+    ]
+
+
+class TestFormatterRegistry:
+    def test_all_formatters_registered(self):
+        assert "table" in FORMATTERS
+        assert "jsonl" in FORMATTERS
+        assert "tsv" in FORMATTERS
+
+    def test_get_formatter_table(self):
+        formatter = get_formatter("table")
+        assert isinstance(formatter, TableFormatter)
+
+    def test_get_formatter_jsonl(self):
+        formatter = get_formatter("jsonl")
+        assert isinstance(formatter, JsonlFormatter)
+
+    def test_get_formatter_tsv(self):
+        formatter = get_formatter("tsv")
+        assert isinstance(formatter, TsvFormatter)
+
+    def test_get_formatter_unknown_raises(self):
+        with pytest.raises(ValueError, match="Unknown format"):
+            get_formatter("unknown")
+
+
+class TestTableFormatter:
+    def test_format_empty(self):
+        formatter = TableFormatter()
+        output = formatter.format([])
+        assert output == "[dim]No todos[/dim]"
+
+    def test_format_default_no_id(self, sample_items):
+        formatter = TableFormatter(show_id=False)
+        output = formatter.format(sample_items)
+        # Output is a Rich Table, check it exists
+        assert output is not None
+
+    def test_format_with_id(self, sample_items):
+        formatter = TableFormatter(show_id=True)
+        output = formatter.format(sample_items)
+        assert output is not None
+
+    def test_custom_datetime_format(self, sample_items):
+        formatter = TableFormatter(datetime_fmt="%Y-%m-%d")
+        output = formatter.format(sample_items)
+        assert output is not None
+
+    def test_invalid_datetime_format_fallback(self, sample_items):
+        formatter = TableFormatter(datetime_fmt="%invalid")
+        # Should not raise, uses fallback
+        output = formatter.format(sample_items)
+        assert output is not None
+
+
+class TestTableFormatterParsing:
+    def test_parse_default(self):
+        formatter = get_formatter("table")
+        assert isinstance(formatter, TableFormatter)
+        assert formatter.datetime_fmt == "%m-%d %H:%M"
+        assert formatter.show_id is False
+
+    def test_parse_with_datetime_format(self):
+        formatter = get_formatter("table:%Y-%m-%d")
+        assert isinstance(formatter, TableFormatter)
+        assert formatter.datetime_fmt == "%Y-%m-%d"
+        assert formatter.show_id is False
+
+    def test_parse_with_id(self):
+        formatter = get_formatter("table::id")
+        assert isinstance(formatter, TableFormatter)
+        assert formatter.datetime_fmt == "%m-%d %H:%M"
+        assert formatter.show_id is True
+
+    def test_parse_with_datetime_and_id(self):
+        formatter = get_formatter("table:%m-%d:id")
+        assert isinstance(formatter, TableFormatter)
+        assert formatter.datetime_fmt == "%m-%d"
+        assert formatter.show_id is True
+
+
+class TestJsonlFormatter:
+    def test_format_empty(self):
+        formatter = JsonlFormatter()
+        output = formatter.format([])
+        assert output == ""
+
+    def test_format_single_item(self, sample_items):
+        formatter = JsonlFormatter()
+        output = formatter.format([sample_items[0]])
+        data = json.loads(output)
+        assert data["id"] == "abc123"
+        assert data["text"] == "Buy milk"
+        assert data["status"] == "done"
+        assert data["created_at"] == "2024-01-09T10:30:00"
+        assert data["completed_at"] == "2024-01-09T11:00:00"
+
+    def test_format_multiple_items(self, sample_items):
+        formatter = JsonlFormatter()
+        output = formatter.format(sample_items)
+        lines = output.strip().split("\n")
+        assert len(lines) == 2
+
+        first = json.loads(lines[0])
+        assert first["id"] == "abc123"
+        assert first["status"] == "done"
+
+        second = json.loads(lines[1])
+        assert second["id"] == "def456"
+        assert second["status"] == "pending"
+        assert second["completed_at"] is None
+
+
+class TestTsvFormatter:
+    def test_format_empty(self):
+        formatter = TsvFormatter()
+        output = formatter.format([])
+        assert output == ""
+
+    def test_format_single_item(self, sample_items):
+        formatter = TsvFormatter()
+        output = formatter.format([sample_items[0]])
+        assert output == "abc123\tdone\tBuy milk"
+
+    def test_format_multiple_items(self, sample_items):
+        formatter = TsvFormatter()
+        output = formatter.format(sample_items)
+        lines = output.strip().split("\n")
+        assert len(lines) == 2
+        assert lines[0] == "abc123\tdone\tBuy milk"
+        assert lines[1] == "def456\tpending\tCall dentist"
