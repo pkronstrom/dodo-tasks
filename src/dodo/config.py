@@ -58,6 +58,11 @@ class Config:
         "obsidian_api_url": "https://localhost:27124",
         "obsidian_api_key": "",
         "obsidian_vault_path": "dodo/todos.md",
+        # Plugin system
+        "enabled_plugins": "",  # Comma-separated list of enabled plugins
+        # ntfy-inbox plugin
+        "ntfy_topic": "",  # User's secret ntfy topic
+        "ntfy_server": "https://ntfy.sh",
     }
 
     def __init__(self, config_dir: Path | None = None):
@@ -97,6 +102,12 @@ class Config:
         if name in self.DEFAULTS:
             return self.DEFAULTS[name]
         raise AttributeError(f"Config has no attribute '{name}'")
+
+    @property
+    def enabled_plugins(self) -> set[str]:
+        """Get set of enabled plugin names."""
+        raw = self._data.get("enabled_plugins", self.DEFAULTS["enabled_plugins"])
+        return {p.strip() for p in raw.split(",") if p.strip()}
 
     def get_toggles(self) -> list[tuple[str, str, bool]]:
         """Return (attr, description, enabled) for interactive menu."""

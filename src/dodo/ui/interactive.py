@@ -359,7 +359,8 @@ def _edit_in_editor(
         with open(tmp_path) as fp:
             lines = [ln for ln in fp.readlines() if not ln.startswith("#")]
             new_value = "".join(lines).strip()
-        return new_value if new_value and new_value != current_value else None
+        # Return new value if changed (including clearing to empty)
+        return new_value if new_value != current_value else None
     finally:
         os.unlink(tmp_path)
 
@@ -402,20 +403,17 @@ def _general_config(cfg: Config) -> None:
 
 
 def _plugins_config() -> None:
-    """Show plugin configuration status."""
+    """Interactive plugin configuration with toggles and editable settings."""
     from dodo.plugins import get_all_plugins
 
+    cfg = Config.load()
     plugins = get_all_plugins()
 
-    console.clear()
-
     if not plugins:
+        console.clear()
         console.print(
             Panel(
-                "[dim]No plugins installed.[/dim]\n\n"
-                "Plugins are standalone scripts in:\n"
-                "  ~/.config/dodo/plugins/\n"
-                "  ./plugins/",
+                "[dim]No plugins found.[/dim]\n\nRun 'dodo plugins scan' to discover plugins.",
                 title="[bold]Plugins[/bold]",
                 border_style="blue",
                 width=60,
@@ -425,41 +423,115 @@ def _plugins_config() -> None:
         readchar.readkey()
         return
 
-    lines = []
+    # Build items list: plugin toggles + their config vars
+    # Format: (key, label, kind, options, plugin_name|None)
+    items: list[tuple[str, str, str, list[str] | None, str | None]] = []
+    pending: dict[str, object] = {}
+
     for plugin in plugins:
-        lines.append(f"[bold]{plugin.name}[/bold]")
-        if not plugin.envs:
-            lines.append("  [dim]No configuration required[/dim]")
-        else:
-            for env in plugin.envs:
-                if env.is_set:
-                    val = env.current_value or ""
-                    masked = val[:4] + "..." if len(val) > 8 else "[set]"
-                    status = f"[green]{masked}[/green]"
-                elif env.required:
-                    status = "[red]not set (required)[/red]"
-                elif env.default:
-                    status = f"[dim]default: {env.default}[/dim]"
+        # Plugin enable toggle
+        toggle_key = f"_plugin_{plugin.name}"
+        items.append((toggle_key, f"[bold]{plugin.name}[/bold]", "toggle", None, plugin.name))
+        pending[toggle_key] = plugin.enabled
+
+        # Plugin config vars (indented)
+        for env in plugin.envs:
+            items.append((env.name, f"  {env.name}", "edit", None, None))
+            pending[env.name] = getattr(cfg, env.name, env.default) or ""
+
+    _plugins_config_loop(cfg, items, pending)
+
+
+PluginConfigItem = tuple[str, str, str, list[str] | None, str | None]
+
+
+def _plugins_config_loop(
+    cfg: Config,
+    items: list[PluginConfigItem],
+    pending: dict[str, object],
+) -> None:
+    """Plugin config editor loop. Handles plugin toggles and config vars."""
+
+    cursor = 0
+    total_items = len(items)
+
+    def render() -> None:
+        sys.stdout.write("\033[H")  # Move cursor to top-left
+        sys.stdout.flush()
+        console.print("[bold]Plugins[/bold]                              ")
+        console.print("[dim]↑↓ navigate · space/enter toggle/edit · q exit[/dim]")
+        console.print()
+
+        for i, (key, label, kind, _, plugin_name) in enumerate(items):
+            marker = "[cyan]>[/cyan] " if i == cursor else "  "
+            value = pending[key]
+
+            if kind == "toggle":
+                icon = "[green]✓[/green]" if value else "[dim]○[/dim]"
+                line = f"{marker}{icon} {label}"
+            else:
+                display = str(value).replace("\n", "↵")[:CONFIG_DISPLAY_MAX_LEN] + (
+                    "..." if len(str(value)) > CONFIG_DISPLAY_MAX_LEN else ""
+                )
+                if display:
+                    line = f"{marker}  {label}: [dim]{display}[/dim]"
                 else:
-                    status = "[dim]not set[/dim]"
+                    line = f"{marker}  {label}: [dim](not set)[/dim]"
+            console.print(f"{line:<70}")
 
-                req = " [red]*[/red]" if env.required else ""
-                lines.append(f"  {env.name}{req}: {status}")
-        lines.append("")
+    def save_plugin_toggle(plugin_name: str, enabled: bool) -> None:
+        """Update enabled_plugins in config."""
+        current = cfg.enabled_plugins
+        if enabled:
+            current.add(plugin_name)
+        else:
+            current.discard(plugin_name)
+        cfg.set("enabled_plugins", ",".join(sorted(current)))
 
-    lines.append("[dim]Set env vars in your shell profile (~/.zshrc, ~/.bashrc)[/dim]")
-    lines.append('[dim]Example: export DODO_NTFY_TOPIC="your-secret"[/dim]')
+    def save_config_var(key: str, val: object) -> None:
+        """Save config variable."""
+        if getattr(cfg, key, None) != val:
+            cfg.set(key, val)
 
-    console.print(
-        Panel(
-            "\n".join(lines),
-            title="[bold]Plugins[/bold]",
-            border_style="blue",
-            width=70,
-        )
-    )
-    console.print("\n[dim]Press any key to continue...[/dim]")
-    readchar.readkey()
+    while True:
+        edit_triggered = False
+
+        with console.screen():
+            render()
+            while True:
+                try:
+                    key = readchar.readkey()
+                except KeyboardInterrupt:
+                    return
+
+                if key in (readchar.key.UP, "k"):
+                    cursor = (cursor - 1) % total_items
+                elif key in (readchar.key.DOWN, "j", "\t"):
+                    cursor = (cursor + 1) % total_items
+                elif key == "q":
+                    break
+                elif key in (" ", "\r", "\n"):
+                    item_key, _, kind, _, plugin_name = items[cursor]
+                    if kind == "toggle" and plugin_name:
+                        pending[item_key] = not pending[item_key]
+                        save_plugin_toggle(plugin_name, bool(pending[item_key]))
+                    elif kind == "edit":
+                        edit_triggered = True
+                        break
+
+                render()
+
+        if edit_triggered:
+            item_key = items[cursor][0]
+            new_val = _edit_in_editor(
+                str(pending[item_key]),
+                [f"Edit: {items[cursor][1].strip()}"],
+            )
+            if new_val is not None:
+                pending[item_key] = new_val
+                save_config_var(item_key, new_val)
+        else:
+            break
 
 
 ConfigItem = tuple[str, str, str, list[str] | None]

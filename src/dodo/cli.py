@@ -78,6 +78,12 @@ def list_todos(
 
     format_str = format_ or cfg.default_format
     formatter = get_formatter(format_str)
+
+    # Allow plugins to extend/wrap the formatter
+    from dodo.plugins import apply_hooks
+
+    formatter = apply_hooks("extend_formatter", formatter, cfg)
+
     output = formatter.format(items)
     console.print(output)
 
@@ -217,15 +223,14 @@ def config():
     interactive_config()
 
 
-@app.command()
-def plugins(
-    action: Annotated[str, typer.Argument(help="Action: list, show, run")],
-    name: Annotated[str | None, typer.Argument(help="Plugin name (for show/run)")] = None,
-):
-    """Manage dodo plugins."""
-    from dodo import cli_plugins
+def _register_plugins_subapp() -> None:
+    """Register the plugins subapp with the main app."""
+    from dodo.cli_plugins import plugins_app
 
-    cli_plugins.dispatch(action, name)
+    app.add_typer(plugins_app, name="plugins")
+
+
+_register_plugins_subapp()
 
 
 # Helpers
@@ -301,3 +306,16 @@ def _clear_last_action() -> None:
     state_file = cfg.config_dir / ".last_action"
     if state_file.exists():
         state_file.unlink()
+
+
+def _register_plugin_commands() -> None:
+    """Allow plugins to register additional CLI commands under 'dodo plugins <name>'."""
+    from dodo.cli_plugins import plugins_app
+    from dodo.plugins import apply_hooks
+
+    cfg = Config.load()
+    apply_hooks("register_commands", plugins_app, cfg)
+
+
+# Register plugin commands (lazy - only when CLI is actually used)
+_register_plugin_commands()
