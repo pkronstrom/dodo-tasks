@@ -125,6 +125,23 @@ class ObsidianAdapter:
 
         self._write_note("\n".join(new_lines))
 
+    def export_all(self) -> list[TodoItem]:
+        """Export all todos for migration."""
+        return self.list()
+
+    def import_all(self, items: list[TodoItem]) -> tuple[int, int]:
+        """Import todos. Returns (imported, skipped)."""
+        existing_ids = {i.id for i in self.list()}
+        imported, skipped = 0, 0
+        for item in items:
+            if item.id in existing_ids:
+                skipped += 1
+            else:
+                line = format_todo_line(item)
+                self._append_to_note(line)
+                imported += 1
+        return imported, skipped
+
     # REST API calls
 
     def _read_note(self) -> str:
