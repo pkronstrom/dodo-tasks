@@ -53,6 +53,7 @@ def add(
     console.print(f"[green]✓[/green] Added to {dest}: {item.text} [dim]({item.id})[/dim]")
 
 
+@app.command(name="ls")
 @app.command(name="list")
 def list_todos(
     project: Annotated[str | None, typer.Option("-p", "--project")] = None,
@@ -100,6 +101,7 @@ def done(
     console.print(f"[green]✓[/green] Done: {completed.text}")
 
 
+@app.command(name="remove")
 @app.command()
 def rm(
     id: Annotated[str, typer.Argument(help="Todo ID (or partial)")],
