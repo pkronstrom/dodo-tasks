@@ -5,6 +5,15 @@ import os
 from pathlib import Path
 from typing import Any
 
+# Module-level cache for singleton pattern
+_config_cache: "Config | None" = None
+
+
+def clear_config_cache() -> None:
+    """Clear the config cache. Useful for testing or config reload."""
+    global _config_cache
+    _config_cache = None
+
 
 class ConfigMeta:
     """Schema definition - separate from runtime state."""
@@ -62,10 +71,21 @@ class Config:
 
     @classmethod
     def load(cls, config_dir: Path | None = None) -> "Config":
-        """Factory method - explicit loading."""
+        """Factory method - explicit loading with caching."""
+        global _config_cache
+
+        # Return cached instance if available and no custom dir specified
+        if _config_cache is not None and config_dir is None:
+            return _config_cache
+
         config = cls(config_dir)
         config._load_from_file()
         config._apply_env_overrides()
+
+        # Cache if using default directory
+        if config_dir is None:
+            _config_cache = config
+
         return config
 
     def __getattr__(self, name: str) -> Any:

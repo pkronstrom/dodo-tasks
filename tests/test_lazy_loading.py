@@ -29,6 +29,11 @@ def test_markdown_adapter_not_imported_at_core_import():
 
 def test_adapter_is_imported_when_used(tmp_path, monkeypatch):
     """Verify adapter IS imported when TodoService instantiates it."""
+    # Clear config cache for isolation
+    from dodo.config import clear_config_cache
+
+    clear_config_cache()
+
     # Clear adapter modules (keep base)
     for k in list(sys.modules.keys()):
         if k.startswith("dodo.adapters.") and k != "dodo.adapters.base":

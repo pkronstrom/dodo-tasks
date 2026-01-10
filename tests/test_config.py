@@ -82,3 +82,35 @@ class TestConfigPersistence:
             assert isinstance(name, str)
             assert isinstance(desc, str)
             assert isinstance(value, bool)
+
+
+class TestConfigCaching:
+    def test_config_load_caches_result(self, tmp_path, monkeypatch):
+        """Config.load() should return cached instance on repeated calls."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+
+        # Clear any existing cache
+        from dodo import config
+
+        config._config_cache = None
+
+        cfg1 = config.Config.load()
+        cfg2 = config.Config.load()
+
+        # Should be the same instance
+        assert cfg1 is cfg2
+
+    def test_config_cache_can_be_cleared(self, tmp_path, monkeypatch):
+        """Config cache can be explicitly cleared."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+
+        from dodo import config
+
+        config._config_cache = None
+
+        cfg1 = config.Config.load()
+        config.clear_config_cache()
+        cfg2 = config.Config.load()
+
+        # Should be different instances after cache clear
+        assert cfg1 is not cfg2

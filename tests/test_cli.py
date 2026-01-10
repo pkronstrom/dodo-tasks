@@ -8,6 +8,7 @@ import pytest
 from typer.testing import CliRunner
 
 from dodo.cli import app
+from dodo.config import clear_config_cache
 
 runner = CliRunner()
 
@@ -15,6 +16,8 @@ runner = CliRunner()
 @pytest.fixture
 def cli_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Set up isolated environment for CLI tests."""
+    # Clear config cache to ensure fresh config with new HOME
+    clear_config_cache()
     config_dir = tmp_path / ".config" / "dodo"
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.chdir(tmp_path)
