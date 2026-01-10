@@ -4,14 +4,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dodo.adapters.obsidian import ObsidianAdapter
 from dodo.models import Status
+from dodo.plugins.obsidian.adapter import ObsidianAdapter
 
 
 @pytest.fixture
 def mock_client():
     """Mock httpx client."""
-    with patch("dodo.adapters.obsidian.httpx.Client") as mock:
+    with patch("dodo.plugins.obsidian.adapter.httpx.Client") as mock:
         client = MagicMock()
         mock.return_value = client
         yield client

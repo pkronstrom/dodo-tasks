@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from dodo.adapters.sqlite import SqliteAdapter
 from dodo.models import Status
+from dodo.plugins.sqlite.adapter import SqliteAdapter
 
 
 class TestSqliteAdapterAdd:
