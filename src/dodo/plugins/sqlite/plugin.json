@@ -1,5 +1,5 @@
 {
   "name": "sqlite",
   "version": "1.0.0",
-  "description": "Store todos in a SQLite database file"
+  "description": "SQLite database storage (better for large lists)"
 }

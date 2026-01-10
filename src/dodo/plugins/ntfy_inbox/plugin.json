@@ -1,5 +1,5 @@
 {
   "name": "ntfy-inbox",
   "version": "1.0.0",
-  "description": "Add todos by sending push notifications"
+  "description": "Receive todos via ntfy.sh push notifications"
 }

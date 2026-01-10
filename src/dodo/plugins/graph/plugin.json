@@ -1,5 +1,5 @@
 {
   "name": "graph",
   "version": "1.0.0",
-  "description": "Track dependencies between todos"
+  "description": "Dependency tracking (requires sqlite adapter)"
 }
