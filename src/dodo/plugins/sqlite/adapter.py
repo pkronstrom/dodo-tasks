@@ -112,6 +112,34 @@ class SqliteAdapter:
             if cursor.rowcount == 0:
                 raise KeyError(f"Todo not found: {id}")
 
+    def export_all(self) -> list[TodoItem]:
+        """Export all todos for migration."""
+        return self.list()
+
+    def import_all(self, items: list[TodoItem]) -> tuple[int, int]:
+        """Import todos. Returns (imported, skipped)."""
+        imported, skipped = 0, 0
+        with self._connect() as conn:
+            for item in items:
+                # Check if exists
+                existing = conn.execute("SELECT 1 FROM todos WHERE id = ?", (item.id,)).fetchone()
+                if existing:
+                    skipped += 1
+                else:
+                    conn.execute(
+                        "INSERT INTO todos (id, text, status, project, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?)",
+                        (
+                            item.id,
+                            item.text,
+                            item.status.value,
+                            item.project,
+                            item.created_at.isoformat(),
+                            item.completed_at.isoformat() if item.completed_at else None,
+                        ),
+                    )
+                    imported += 1
+        return imported, skipped
+
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
         self._path.parent.mkdir(parents=True, exist_ok=True)

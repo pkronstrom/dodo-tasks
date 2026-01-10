@@ -112,6 +112,22 @@ class MarkdownAdapter:
 
         self._write_lines(new_lines)
 
+    def export_all(self) -> list[TodoItem]:
+        """Export all todos for migration."""
+        return self._read_items()
+
+    def import_all(self, items: list[TodoItem]) -> tuple[int, int]:
+        """Import todos. Returns (imported, skipped)."""
+        existing_ids = {i.id for i in self._read_items()}
+        imported, skipped = 0, 0
+        for item in items:
+            if item.id in existing_ids:
+                skipped += 1
+            else:
+                self._append_item(item)
+                imported += 1
+        return imported, skipped
+
     # Customization methods (kept for frontmatter/section support)
 
     def _render_file(self, lines: list[str]) -> str:
