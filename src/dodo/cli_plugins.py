@@ -93,17 +93,26 @@ def _scan_plugin_dir(plugins_dir: Path, builtin: bool) -> dict[str, dict]:
         if not init_file.exists():
             continue
 
-        # Try to extract plugin name from module
-        name = entry.name
-        content = init_file.read_text()
-        for line in content.splitlines():
-            if line.strip().startswith("name ="):
-                # Extract name from: name = "plugin-name"
-                try:
-                    name = line.split("=", 1)[1].strip().strip("'\"")
-                except IndexError:
-                    pass
-                break
+        # Read manifest if exists
+        manifest_file = entry / "plugin.json"
+        if manifest_file.exists():
+            manifest = json.loads(manifest_file.read_text())
+            name = manifest.get("name", entry.name)
+            version = manifest.get("version", "0.0.0")
+            description = manifest.get("description", "")
+        else:
+            # Fallback to parsing __init__.py for name
+            name = entry.name
+            version = "0.0.0"
+            description = ""
+            content = init_file.read_text()
+            for line in content.splitlines():
+                if line.strip().startswith("name ="):
+                    try:
+                        name = line.split("=", 1)[1].strip().strip("'\"")
+                    except IndexError:
+                        pass
+                    break
 
         hooks = _detect_hooks(entry)
         if not hooks:
@@ -112,6 +121,8 @@ def _scan_plugin_dir(plugins_dir: Path, builtin: bool) -> dict[str, dict]:
         plugin_info: dict = {
             "builtin": builtin,
             "hooks": hooks,
+            "version": version,
+            "description": description,
         }
         if not builtin:
             plugin_info["path"] = str(entry)
