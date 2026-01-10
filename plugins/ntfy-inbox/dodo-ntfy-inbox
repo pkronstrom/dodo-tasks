@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""ntfy-inbox: Receive todos via ntfy.sh for dodo.
+
+Usage:
+    DODO_NTFY_TOPIC=your-secret-topic ./dodo-ntfy-inbox
+"""
+# @env DODO_NTFY_TOPIC: Your secret ntfy topic (required)
+# @env DODO_NTFY_SERVER: ntfy server URL (default: https://ntfy.sh)
+
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.request
+
+
+def get_config():
+    """Load configuration from environment."""
+    topic = os.environ.get("DODO_NTFY_TOPIC")
+    if not topic:
+        print("Error: DODO_NTFY_TOPIC environment variable is required", file=sys.stderr)
+        print("Set it to your secret ntfy topic name", file=sys.stderr)
+        sys.exit(1)
+
+    server = os.environ.get("DODO_NTFY_SERVER", "https://ntfy.sh")
+    return {"topic": topic, "server": server.rstrip("/")}
+
+
+def process_message(msg: dict) -> None:
+    """Process a single ntfy message and add to dodo."""
+    # Skip non-message events (open, keepalive, etc.)
+    if msg.get("event") != "message":
+        return
+
+    text = msg.get("message", "").strip()
+    if not text:
+        return
+
+    # Title = project name (empty = global)
+    project = msg.get("title", "").strip() or None
+
+    # Check for ai: prefix
+    use_ai = False
+    if text.lower().startswith("ai:"):
+        use_ai = True
+        text = text[3:].strip()
+
+    if not text:
+        return
+
+    # Build command
+    if use_ai:
+        cmd = ["dodo", "ai", text]
+    else:
+        cmd = ["dodo", "add", text]
+
+    if project:
+        cmd.extend(["-p", project])
+
+    # Execute
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            print(f"Added: {text}" + (f" [project: {project}]" if project else ""))
+        else:
+            print(f"Error adding todo: {result.stderr}", file=sys.stderr)
+    except Exception as e:
+        print(f"Error running dodo: {e}", file=sys.stderr)
+
+
+def subscribe_once(config: dict) -> bool:
+    """Subscribe to ntfy topic and process messages. Returns False on error."""
+    url = f"{config['server']}/{config['topic']}/json"
+
+    req = urllib.request.Request(url)
+    req.add_header("Accept", "application/json")
+
+    try:
+        with urllib.request.urlopen(req, timeout=90) as response:
+            for line in response:
+                if not line.strip():
+                    continue
+                try:
+                    msg = json.loads(line.decode("utf-8"))
+                    process_message(msg)
+                except json.JSONDecodeError:
+                    continue
+    except KeyboardInterrupt:
+        raise
+    except Exception as e:
+        print(f"Connection error: {e}", file=sys.stderr)
+        return False
+    return True
+
+
+def subscribe(config: dict) -> None:
+    """Subscribe with automatic reconnection."""
+    print(f"Listening for todos on {config['server']}/{config['topic']}...")
+
+    retry_delay = 5
+    while True:
+        try:
+            if not subscribe_once(config):
+                print(f"Reconnecting in {retry_delay}s...", file=sys.stderr)
+                time.sleep(retry_delay)
+                continue
+        except KeyboardInterrupt:
+            print("\nStopped.")
+            break
+
+
+def main():
+    config = get_config()
+    subscribe(config)
+
+
+if __name__ == "__main__":
+    main()

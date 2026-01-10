@@ -209,6 +209,17 @@ def config():
     interactive_config()
 
 
+@app.command()
+def plugins(
+    action: Annotated[str, typer.Argument(help="Action: list, show, run")],
+    name: Annotated[str | None, typer.Argument(help="Plugin name (for show/run)")] = None,
+):
+    """Manage dodo plugins."""
+    from dodo import cli_plugins
+
+    cli_plugins.dispatch(action, name)
+
+
 # Helpers
 
 

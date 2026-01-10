@@ -366,8 +366,28 @@ def _edit_in_editor(
 
 def interactive_config() -> None:
     """Interactive config editor with arrow key navigation."""
-    cfg = Config.load()
+    from .rich_menu import RichTerminalMenu
 
+    cfg = Config.load()
+    ui = RichTerminalMenu()
+
+    while True:
+        console.clear()
+        console.print(Panel("[bold]Configuration[/bold]", border_style="blue", width=40))
+
+        options = ["General settings", "Plugins", "Back"]
+        choice = ui.select(options)
+
+        if choice is None or choice == 2:
+            break
+        elif choice == 0:
+            _general_config(cfg)
+        elif choice == 1:
+            _plugins_config()
+
+
+def _general_config(cfg: Config) -> None:
+    """General settings config menu."""
     items: list[tuple[str, str, str, list[str] | None]] = [
         ("worktree_shared", "Share todos across git worktrees", "toggle", None),
         ("local_storage", "Store todos in project dir", "toggle", None),
@@ -379,6 +399,67 @@ def interactive_config() -> None:
 
     pending = {key: getattr(cfg, key) for key, *_ in items}
     _config_loop(cfg, items, pending)
+
+
+def _plugins_config() -> None:
+    """Show plugin configuration status."""
+    from dodo.plugins import get_all_plugins
+
+    plugins = get_all_plugins()
+
+    console.clear()
+
+    if not plugins:
+        console.print(
+            Panel(
+                "[dim]No plugins installed.[/dim]\n\n"
+                "Plugins are standalone scripts in:\n"
+                "  ~/.config/dodo/plugins/\n"
+                "  ./plugins/",
+                title="[bold]Plugins[/bold]",
+                border_style="blue",
+                width=60,
+            )
+        )
+        console.print("\n[dim]Press any key to continue...[/dim]")
+        readchar.readkey()
+        return
+
+    lines = []
+    for plugin in plugins:
+        lines.append(f"[bold]{plugin.name}[/bold]")
+        if not plugin.envs:
+            lines.append("  [dim]No configuration required[/dim]")
+        else:
+            for env in plugin.envs:
+                if env.is_set:
+                    val = env.current_value or ""
+                    masked = val[:4] + "..." if len(val) > 8 else "[set]"
+                    status = f"[green]{masked}[/green]"
+                elif env.required:
+                    status = "[red]not set (required)[/red]"
+                elif env.default:
+                    status = f"[dim]default: {env.default}[/dim]"
+                else:
+                    status = "[dim]not set[/dim]"
+
+                req = " [red]*[/red]" if env.required else ""
+                lines.append(f"  {env.name}{req}: {status}")
+        lines.append("")
+
+    lines.append("[dim]Set env vars in your shell profile (~/.zshrc, ~/.bashrc)[/dim]")
+    lines.append('[dim]Example: export DODO_NTFY_TOPIC="your-secret"[/dim]')
+
+    console.print(
+        Panel(
+            "\n".join(lines),
+            title="[bold]Plugins[/bold]",
+            border_style="blue",
+            width=70,
+        )
+    )
+    console.print("\n[dim]Press any key to continue...[/dim]")
+    readchar.readkey()
 
 
 ConfigItem = tuple[str, str, str, list[str] | None]
