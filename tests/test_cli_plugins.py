@@ -26,3 +26,20 @@ def register_commands(app, config):
     assert "test-plugin" in result
     assert result["test-plugin"]["version"] == "2.0.0"
     assert result["test-plugin"]["description"] == "A test plugin"
+
+
+def test_auto_scan_when_registry_missing(tmp_path):
+    """Registry should be auto-created on first load if missing."""
+    from dodo.plugins import _load_registry
+
+    # Use temp config dir with no registry
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+
+    # Load registry - should trigger auto-scan and find builtin plugins
+    registry = _load_registry(config_dir)
+
+    # Should return dict with builtin plugins (sqlite, obsidian, graph, ntfy-inbox)
+    assert isinstance(registry, dict)
+    assert len(registry) > 0, "Should auto-scan and find builtin plugins"
+    assert "sqlite" in registry, "Should find sqlite builtin plugin"
