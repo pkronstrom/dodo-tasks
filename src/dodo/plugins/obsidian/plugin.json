@@ -1,0 +1,5 @@
+{
+  "name": "obsidian",
+  "version": "1.0.0",
+  "description": "Sync todos with Obsidian via REST API"
+}
