@@ -1,12 +1,8 @@
 """Core todo service."""
 
 from pathlib import Path
-from typing import Any
 
 from dodo.adapters.base import TodoAdapter
-from dodo.adapters.markdown import MarkdownAdapter
-from dodo.adapters.obsidian import ObsidianAdapter
-from dodo.adapters.sqlite import SqliteAdapter
 from dodo.config import Config
 from dodo.models import Status, TodoItem
 from dodo.project import detect_project_root
@@ -14,12 +10,6 @@ from dodo.project import detect_project_root
 
 class TodoService:
     """Main service - routes to appropriate adapter."""
-
-    ADAPTERS: dict[str, type[Any]] = {
-        "markdown": MarkdownAdapter,
-        "sqlite": SqliteAdapter,
-        "obsidian": ObsidianAdapter,
-    }
 
     def __init__(self, config: Config, project_id: str | None = None):
         self._config = config
@@ -55,23 +45,25 @@ class TodoService:
 
     def _create_adapter(self) -> TodoAdapter:
         adapter_name = self._config.default_adapter
-        adapter_cls = self.ADAPTERS.get(adapter_name)
-
-        if not adapter_cls:
-            raise ValueError(f"Unknown adapter: {adapter_name}")
 
         if adapter_name == "markdown":
-            return adapter_cls(self._get_markdown_path())
+            from dodo.adapters.markdown import MarkdownAdapter
+
+            return MarkdownAdapter(self._get_markdown_path())
         elif adapter_name == "sqlite":
-            return adapter_cls(self._get_sqlite_path())
+            from dodo.adapters.sqlite import SqliteAdapter
+
+            return SqliteAdapter(self._get_sqlite_path())
         elif adapter_name == "obsidian":
-            return adapter_cls(
+            from dodo.adapters.obsidian import ObsidianAdapter
+
+            return ObsidianAdapter(
                 api_url=self._config.obsidian_api_url,
                 api_key=self._config.obsidian_api_key,
                 vault_path=self._config.obsidian_vault_path,
             )
 
-        raise ValueError(f"Unhandled adapter: {adapter_name}")
+        raise ValueError(f"Unknown adapter: {adapter_name}")
 
     def _get_markdown_path(self) -> Path:
         if self._config.local_storage and self._project_id:
