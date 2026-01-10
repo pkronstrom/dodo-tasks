@@ -6,7 +6,7 @@ Python 3.11+, Typer (CLI), Rich (UI), httpx (HTTP), SQLite (stdlib)
 ## Commands
 ```bash
 uv run dodo              # Interactive menu
-uv run pytest tests/     # Run tests (75 total)
+uv run pytest tests/     # Run tests (100 total)
 uv run ruff check src/   # Lint
 uv run mypy src/dodo/    # Type check
 ```
@@ -18,7 +18,9 @@ src/dodo/
 ├── config.py          # Config with autodiscoverable toggles
 ├── project.py         # Git/worktree project detection
 ├── core.py            # TodoService - routes to adapters
-├── cli.py             # Typer commands (add, list, done, rm, ai)
+├── cli.py             # Typer commands (add, list, done, rm, ai, plugins)
+├── cli_plugins.py     # Plugin commands (lazy-loaded)
+├── plugins.py         # Plugin discovery, @env parsing
 ├── ai.py              # LLM-assisted todo formatting
 ├── adapters/          # Storage backends
 │   ├── base.py        # TodoAdapter Protocol
@@ -29,6 +31,9 @@ src/dodo/
     ├── base.py        # MenuUI Protocol
     ├── rich_menu.py   # simple-term-menu wrapper
     └── interactive.py # Main interactive flow
+
+plugins/               # Standalone plugin scripts
+└── ntfy-inbox/        # Receive todos via ntfy.sh
 ```
 
 ## Key Patterns
@@ -40,6 +45,8 @@ src/dodo/
 **Project isolation**: Todos stored per-project using git root hash. Global todos in `~/.config/dodo/`.
 
 **Frozen dataclasses**: `TodoItem` is immutable. Use `dataclasses.replace()` for modifications.
+
+**Plugin system**: Standalone scripts in `plugins/` with `@env` comments for config. Lazy-loaded to avoid CLI overhead.
 
 ## Conventions
 - TDD: Write tests before implementation
