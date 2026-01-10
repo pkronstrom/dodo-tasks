@@ -523,14 +523,12 @@ def _unified_settings_loop(
 
     def rebuild_adapter_options() -> None:
         """Rebuild adapter cycle options after plugin toggle."""
-        nonlocal status_msg
         registry = _load_registry()
         available = _get_available_adapters(cfg.enabled_plugins, registry)
         # Update the adapter item's options
         for i, item in enumerate(items):
             if item[0] == "default_adapter":
                 items[i] = (item[0], item[1], item[2], available, item[4], item[5])
-                status_msg = f"[dim]Adapters: {', '.join(available)}[/dim]"
                 break
 
     while True:
