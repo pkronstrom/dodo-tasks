@@ -44,7 +44,11 @@ class GraphWrapper:
         project: str | None = None,
         status: Status | None = None,
     ) -> list[TodoItem]:
-        return self._adapter.list(project, status)
+        items = self._adapter.list(project, status)
+        # Attach blocked_by as dynamic attribute (bypass frozen dataclass)
+        for item in items:
+            object.__setattr__(item, "blocked_by", self.get_blockers(item.id))
+        return items
 
     def get(self, id: str) -> TodoItem | None:
         return self._adapter.get(id)
