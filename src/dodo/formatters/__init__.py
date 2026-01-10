@@ -1,9 +1,5 @@
 """Output formatters for dodo list command."""
 
-from typing import Any
-
-from dodo.models import TodoItem
-
 from .base import FormatterProtocol
 from .jsonl import JsonlFormatter
 from .table import TableFormatter
