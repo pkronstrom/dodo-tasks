@@ -132,6 +132,27 @@ def _scan_plugin_dir(plugins_dir: Path, builtin: bool) -> dict[str, dict]:
     return plugins
 
 
+def _scan_and_save_to(config_dir: Path) -> dict:
+    """Scan plugins and save registry to specified config dir."""
+    registry: dict = {}
+
+    # Scan built-in plugins
+    builtin_plugins = _scan_plugin_dir(BUILTIN_PLUGINS_DIR, builtin=True)
+    registry.update(builtin_plugins)
+
+    # Scan user plugins
+    user_plugins_dir = config_dir / "plugins"
+    user_plugins = _scan_plugin_dir(user_plugins_dir, builtin=False)
+    registry.update(user_plugins)
+
+    # Save
+    config_dir.mkdir(parents=True, exist_ok=True)
+    registry_path = config_dir / "plugin_registry.json"
+    registry_path.write_text(json.dumps(registry, indent=2))
+
+    return registry
+
+
 @plugins_app.command()
 def scan() -> None:
     """Scan plugin directories and update the registry."""
