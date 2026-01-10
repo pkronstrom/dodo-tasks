@@ -18,7 +18,7 @@ class ConfigVar:
     default: str
 
 
-def register_adapter(registry: dict) -> None:
+def register_adapter(registry: dict, config) -> None:
     """Register the Obsidian adapter with the adapter registry."""
     from dodo.plugins.obsidian.adapter import ObsidianAdapter
 

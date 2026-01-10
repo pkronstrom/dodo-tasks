@@ -5,7 +5,7 @@ querying and filtering large lists.
 """
 
 
-def register_adapter(registry: dict) -> None:
+def register_adapter(registry: dict, config) -> None:
     """Register the SQLite adapter with the adapter registry."""
     from dodo.plugins.sqlite.adapter import SqliteAdapter
 
