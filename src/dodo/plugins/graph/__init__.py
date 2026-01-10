@@ -17,8 +17,6 @@ if TYPE_CHECKING:
 
     from dodo.config import Config
 
-name = "graph"
-
 
 def register_commands(app: typer.Typer, config: Config) -> None:
     """Add dependency tracking CLI commands under 'dodo plugins graph'."""
