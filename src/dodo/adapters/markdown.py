@@ -1,11 +1,14 @@
 """Markdown file adapter."""
 
-import re
 from dataclasses import dataclass
 from datetime import datetime
-from hashlib import sha1
 from pathlib import Path
 
+from dodo.adapters.utils import (
+    format_todo_line,
+    generate_todo_id,
+    parse_todo_line,
+)
 from dodo.models import Status, TodoItem
 
 
@@ -21,10 +24,8 @@ class MarkdownFormat:
 class MarkdownAdapter:
     """Markdown file backend.
 
-    To extend: modify _parse_line/_format_item or subclass.
+    Uses shared utilities from dodo.adapters.utils for parsing and formatting.
     """
-
-    LINE_PATTERN = re.compile(r"^- \[([ xX])\] (\d{4}[-/]\d{2}[-/]\d{2}[ T]\d{2}:\d{2}) - (.+)$")
 
     def __init__(self, file_path: Path, format: MarkdownFormat | None = None):
         self._path = file_path
@@ -33,7 +34,7 @@ class MarkdownAdapter:
     def add(self, text: str, project: str | None = None) -> TodoItem:
         timestamp = datetime.now()
         item = TodoItem(
-            id=self._generate_id(text, timestamp),
+            id=generate_todo_id(text, timestamp),
             text=text,
             status=Status.PENDING,
             created_at=timestamp,
@@ -69,7 +70,7 @@ class MarkdownAdapter:
                     completed_at=datetime.now() if status == Status.DONE else None,
                     project=item.project,
                 )
-                lines[idx] = self._format_item(updated_item)
+                lines[idx] = format_todo_line(updated_item, self._format.timestamp_fmt)
                 break
 
         if not updated_item:
@@ -85,14 +86,14 @@ class MarkdownAdapter:
         for idx, (line, item) in enumerate(zip(lines, items)):
             if item and item.id == id:
                 updated_item = TodoItem(
-                    id=self._generate_id(text, item.created_at),
+                    id=generate_todo_id(text, item.created_at),
                     text=text,
                     status=item.status,
                     created_at=item.created_at,
                     completed_at=item.completed_at,
                     project=item.project,
                 )
-                lines[idx] = self._format_item(updated_item)
+                lines[idx] = format_todo_line(updated_item, self._format.timestamp_fmt)
                 break
 
         if not updated_item:
@@ -111,31 +112,7 @@ class MarkdownAdapter:
 
         self._write_lines(new_lines)
 
-    # Extension points
-
-    def _parse_line(self, line: str) -> TodoItem | None:
-        """Parse line -> TodoItem. Modify for different formats."""
-        match = self.LINE_PATTERN.match(line.strip())
-        if not match:
-            return None
-
-        checkbox, ts_str, text = match.groups()
-        # Handle both - and / date separators
-        ts_str = ts_str.replace("/", "-").replace("T", " ")
-        timestamp = datetime.strptime(ts_str, "%Y-%m-%d %H:%M")
-
-        return TodoItem(
-            id=self._generate_id(text, timestamp),
-            text=text,
-            status=Status.DONE if checkbox.lower() == "x" else Status.PENDING,
-            created_at=timestamp,
-        )
-
-    def _format_item(self, item: TodoItem) -> str:
-        """TodoItem -> line. Modify for different formats."""
-        checkbox = "x" if item.status == Status.DONE else " "
-        ts = item.created_at.strftime(self._format.timestamp_fmt)
-        return f"- [{checkbox}] {ts} - {item.text}"
+    # Customization methods (kept for frontmatter/section support)
 
     def _render_file(self, lines: list[str]) -> str:
         """Full file content. Modify to add frontmatter/sections."""
@@ -157,24 +134,18 @@ class MarkdownAdapter:
 
     # Private helpers
 
-    def _generate_id(self, text: str, timestamp: datetime) -> str:
-        # Truncate to minute precision for consistent ID generation
-        ts_normalized = timestamp.replace(second=0, microsecond=0)
-        content = f"{text}{ts_normalized.isoformat()}"
-        return sha1(content.encode()).hexdigest()[:8]
-
     def _read_items(self) -> list[TodoItem]:
         if not self._path.exists():
             return []
         content = self._path.read_text()
-        return [item for ln in content.splitlines() if (item := self._parse_line(ln))]
+        return [item for ln in content.splitlines() if (item := parse_todo_line(ln))]
 
     def _read_lines_with_items(self) -> tuple[list[str], list[TodoItem | None]]:
         """Read lines paired with parsed items (None for non-todo lines)."""
         if not self._path.exists():
             return [], []
         lines = self._path.read_text().splitlines()
-        items = [self._parse_line(ln) for ln in lines]
+        items = [parse_todo_line(ln) for ln in lines]
         return lines, items
 
     def _write_lines(self, lines: list[str]) -> None:
@@ -186,8 +157,8 @@ class MarkdownAdapter:
         self._path.parent.mkdir(parents=True, exist_ok=True)
 
         if not self._path.exists():
-            content = self._render_file([self._format_item(item)])
+            content = self._render_file([format_todo_line(item, self._format.timestamp_fmt)])
             self._path.write_text(content)
         else:
             with self._path.open("a") as f:
-                f.write(self._format_item(item) + "\n")
+                f.write(format_todo_line(item, self._format.timestamp_fmt) + "\n")
