@@ -57,3 +57,33 @@ def test_formatter_shows_blocked_by_column():
 
     assert "Blocked" in output or "blocked" in output.lower()
     assert "abc12345" in output
+
+
+def test_tree_formatter_output():
+    """Tree formatter should show dependency hierarchy."""
+    from datetime import datetime
+
+    from dodo.plugins.graph.tree import TreeFormatter
+
+    from dodo.models import Status, TodoItem
+
+    formatter = TreeFormatter()
+
+    now = datetime.now()
+    # Create hierarchy: t1 -> t2 -> t3, and t4 standalone
+    t1 = TodoItem(id="aaa11111", text="Setup", status=Status.PENDING, created_at=now)
+    t2 = TodoItem(id="bbb22222", text="Build", status=Status.PENDING, created_at=now)
+    t3 = TodoItem(id="ccc33333", text="Test", status=Status.PENDING, created_at=now)
+    t4 = TodoItem(id="ddd44444", text="Standalone", status=Status.PENDING, created_at=now)
+
+    object.__setattr__(t1, "blocked_by", [])
+    object.__setattr__(t2, "blocked_by", ["aaa11111"])
+    object.__setattr__(t3, "blocked_by", ["bbb22222"])
+    object.__setattr__(t4, "blocked_by", [])
+
+    output = formatter.format([t1, t2, t3, t4])
+
+    # Should show tree structure
+    assert "Setup" in output
+    assert "Build" in output
+    assert "└" in output or "├" in output
