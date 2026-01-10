@@ -365,26 +365,229 @@ def _edit_in_editor(
         os.unlink(tmp_path)
 
 
-def interactive_config() -> None:
-    """Interactive config editor with arrow key navigation."""
-    from .rich_menu import RichTerminalMenu
+def _get_available_adapters(enabled_plugins: set[str], registry: dict) -> list[str]:
+    """Get adapters: markdown + enabled adapter plugins."""
+    adapters = ["markdown"]
+    for name, info in registry.items():
+        if name in enabled_plugins and "register_adapter" in info.get("hooks", []):
+            adapters.append(name)
+    return adapters
 
-    cfg = Config.load()
-    ui = RichTerminalMenu()
+
+# Settings item format: (key, label, kind, options, plugin_name|None, description|None)
+SettingsItem = tuple[str, str, str, list[str] | None, str | None, str | None]
+
+
+def _build_settings_items(cfg: Config) -> tuple[list[SettingsItem], dict[str, object]]:
+    """Build combined settings items list with plugins."""
+    from dodo.cli_plugins import _load_registry
+    from dodo.plugins import get_all_plugins
+
+    items: list[SettingsItem] = []
+    pending: dict[str, object] = {}
+
+    # Load registry for adapter detection
+    registry = _load_registry()
+    available_adapters = _get_available_adapters(cfg.enabled_plugins, registry)
+
+    # General settings
+    general: list[tuple[str, str, str, list[str] | None, str | None]] = [
+        (
+            "worktree_shared",
+            "Worktree sharing",
+            "toggle",
+            None,
+            "Use same todos file across all git worktrees",
+        ),
+        (
+            "local_storage",
+            "Local storage",
+            "toggle",
+            None,
+            "Store todos in project dir (vs ~/.config/dodo)",
+        ),
+        ("timestamps_enabled", "Timestamps", "toggle", None, "Add created/updated timestamps"),
+        ("default_adapter", "Adapter", "cycle", available_adapters, "Only enabled adapters shown"),
+        ("editor", "Editor", "edit", None, "Leave empty for $EDITOR"),
+    ]
+
+    for key, label, kind, options, desc in general:
+        items.append((key, label, kind, options, None, desc))
+        pending[key] = getattr(cfg, key)
+
+    # Divider
+    items.append(("_divider", "── Plugins ──", "divider", None, None, None))
+
+    # Plugins
+    plugins = get_all_plugins()
+    for plugin in plugins:
+        toggle_key = f"_plugin_{plugin.name}"
+        desc = f"{plugin.version}"
+        if plugin.description:
+            desc = f"{plugin.version} - {plugin.description}"
+        items.append((toggle_key, plugin.name, "toggle", None, plugin.name, desc))
+        pending[toggle_key] = plugin.enabled
+
+        # Plugin config vars
+        for env in plugin.envs:
+            items.append((env.name, f"  {env.name}", "edit", None, None, None))
+            pending[env.name] = getattr(cfg, env.name, env.default) or ""
+
+    return items, pending
+
+
+def _unified_settings_loop(
+    cfg: Config,
+    items: list[SettingsItem],
+    pending: dict[str, object],
+) -> None:
+    """Unified settings editor with divider support and dynamic adapter cycling."""
+    from dodo.cli_plugins import _load_registry
+
+    cursor = 0
+    total_items = len(items)
+    status_msg: str | None = None
+
+    # Find non-divider items for navigation
+    navigable_indices = [i for i, (_, _, kind, *_) in enumerate(items) if kind != "divider"]
+
+    def find_next_navigable(current: int, direction: int) -> int:
+        """Find next navigable index in given direction."""
+        idx = navigable_indices.index(current) if current in navigable_indices else 0
+        idx = (idx + direction) % len(navigable_indices)
+        return navigable_indices[idx]
+
+    def render() -> None:
+        nonlocal status_msg
+        sys.stdout.write("\033[H")  # Move cursor to top-left
+        sys.stdout.flush()
+        console.print("[bold]Settings[/bold]                              ")
+        console.print("[dim]↑↓ navigate · space/enter change · q exit[/dim]")
+        console.print()
+
+        for i, (key, label, kind, options, plugin_name, desc) in enumerate(items):
+            if kind == "divider":
+                console.print(f"  [dim]{label}[/dim]")
+                continue
+
+            marker = "[cyan]>[/cyan] " if i == cursor else "  "
+            value = pending[key]
+
+            if kind == "toggle":
+                icon = "[green]✓[/green]" if value else "[dim]○[/dim]"
+                if plugin_name:
+                    # Plugin toggle - show description
+                    desc_str = f" [dim]{desc}[/dim]" if desc else ""
+                    line = f"{marker}{icon} {label}{desc_str}"
+                else:
+                    # General toggle
+                    line = f"{marker}{icon} {label}"
+            elif kind == "cycle":
+                desc_str = f" [dim]({desc})[/dim]" if desc else ""
+                line = f"{marker}  {label}: [yellow]{value}[/yellow]{desc_str}"
+            else:  # edit
+                display = str(value).replace("\n", "↵")[:CONFIG_DISPLAY_MAX_LEN]
+                if len(str(value)) > CONFIG_DISPLAY_MAX_LEN:
+                    display += "..."
+                if display:
+                    line = f"{marker}  {label}: [dim]{display}[/dim]"
+                else:
+                    line = f"{marker}  {label}: [red](not set)[/red]"
+            console.print(f"{line:<75}")
+
+        # Status message
+        if status_msg:
+            console.print(f"\n  {status_msg}")
+            status_msg = None
+
+    def save_plugin_toggle(plugin_name: str, enabled: bool) -> None:
+        """Update enabled_plugins in config."""
+        current = cfg.enabled_plugins
+        if enabled:
+            current.add(plugin_name)
+        else:
+            current.discard(plugin_name)
+            # Fallback if this was the active adapter
+            if cfg.default_adapter == plugin_name:
+                cfg.set("default_adapter", "markdown")
+                nonlocal status_msg
+                status_msg = "[yellow]Adapter switched to markdown[/yellow]"
+        cfg.set("enabled_plugins", ",".join(sorted(current)))
+
+    def save_item(key: str, val: object) -> None:
+        """Save single item immediately."""
+        if getattr(cfg, key, None) != val:
+            cfg.set(key, val)
+
+    def rebuild_adapter_options() -> None:
+        """Rebuild adapter cycle options after plugin toggle."""
+        registry = _load_registry()
+        available = _get_available_adapters(cfg.enabled_plugins, registry)
+        # Update the adapter item's options
+        for i, item in enumerate(items):
+            if item[0] == "default_adapter":
+                items[i] = (item[0], item[1], item[2], available, item[4], item[5])
+                break
 
     while True:
-        console.clear()
-        console.print(Panel("[bold]Configuration[/bold]", border_style="blue", width=40))
+        edit_triggered = False
 
-        options = ["General settings", "Plugins", "Back"]
-        choice = ui.select(options)
+        with console.screen():
+            render()
+            while True:
+                try:
+                    key = readchar.readkey()
+                except KeyboardInterrupt:
+                    return
 
-        if choice is None or choice == 2:
-            break
-        elif choice == 0:
-            _general_config(cfg)
-        elif choice == 1:
-            _plugins_config()
+                if key in (readchar.key.UP, "k"):
+                    cursor = find_next_navigable(cursor, -1)
+                elif key in (readchar.key.DOWN, "j", "\t"):
+                    cursor = find_next_navigable(cursor, 1)
+                elif key == "q":
+                    break
+                elif key in (" ", "\r", "\n"):
+                    item_key, _, kind, options, plugin_name, _ = items[cursor]
+                    if kind == "toggle":
+                        pending[item_key] = not pending[item_key]
+                        if plugin_name:
+                            save_plugin_toggle(plugin_name, bool(pending[item_key]))
+                            rebuild_adapter_options()
+                        else:
+                            save_item(item_key, pending[item_key])
+                    elif kind == "cycle" and options:
+                        current_val = str(pending[item_key])
+                        if current_val in options:
+                            idx = options.index(current_val)
+                        else:
+                            idx = -1
+                        pending[item_key] = options[(idx + 1) % len(options)]
+                        save_item(item_key, pending[item_key])
+                    elif kind == "edit":
+                        edit_triggered = True
+                        break
+
+                render()
+
+        if edit_triggered:
+            item_key = items[cursor][0]
+            new_val = _edit_in_editor(
+                str(pending[item_key]),
+                [f"Edit: {items[cursor][1].strip()}"],
+            )
+            if new_val is not None:
+                pending[item_key] = new_val
+                save_item(item_key, new_val)
+            continue
+
+        break
+
+
+def interactive_config() -> None:
+    """Interactive unified settings editor."""
+    cfg = Config.load()
+    items, pending = _build_settings_items(cfg)
+    _unified_settings_loop(cfg, items, pending)
 
 
 def _general_config(cfg: Config) -> None:

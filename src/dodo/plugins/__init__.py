@@ -142,6 +142,8 @@ class PluginInfo:
     enabled: bool
     hooks: list[str]
     envs: list[PluginEnvVar]
+    version: str = "0.0.0"
+    description: str = ""
 
 
 def get_all_plugins() -> list[PluginInfo]:
@@ -186,6 +188,15 @@ def get_all_plugins() -> list[PluginInfo]:
             except Exception:
                 pass  # Skip config loading errors
 
-        plugins.append(PluginInfo(name=name, enabled=enabled, hooks=hooks, envs=envs))
+        plugins.append(
+            PluginInfo(
+                name=name,
+                enabled=enabled,
+                hooks=hooks,
+                envs=envs,
+                version=info.get("version", "0.0.0"),
+                description=info.get("description", ""),
+            )
+        )
 
     return plugins
