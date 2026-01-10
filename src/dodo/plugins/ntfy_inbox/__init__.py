@@ -19,8 +19,6 @@ if TYPE_CHECKING:
 
     from dodo.config import Config
 
-name = "ntfy-inbox"
-
 
 @dataclass
 class ConfigVar:

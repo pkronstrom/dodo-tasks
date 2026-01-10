@@ -9,8 +9,6 @@ Docs: https://github.com/coddingtonbear/obsidian-local-rest-api
 
 from dataclasses import dataclass
 
-name = "obsidian"
-
 
 @dataclass
 class ConfigVar:
