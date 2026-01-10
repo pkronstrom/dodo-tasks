@@ -493,7 +493,9 @@ def _unified_settings_loop(
                     line = f"{marker}  {label}: [dim]{display}[/dim]"
                 else:
                     line = f"{marker}  {label}: [red](not set)[/red]"
-            console.print(f"{line:<75}")
+            # Clear to end of line to prevent artifacts from longer previous text
+            sys.stdout.write("\033[K")
+            console.print(line)
 
         # Status message
         if status_msg:
