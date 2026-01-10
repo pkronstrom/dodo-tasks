@@ -223,6 +223,71 @@ def config():
     interactive_config()
 
 
+@app.command()
+def export(
+    output: Annotated[str | None, typer.Option("-o", "--output", help="Output file")] = None,
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Global todos")] = False,
+):
+    """Export todos to jsonl format."""
+    cfg = Config.load()
+
+    if global_:
+        project_id = None
+    else:
+        project_id = detect_project()
+
+    svc = TodoService(cfg, project_id)
+    items = svc.list()
+
+    lines = []
+    for item in items:
+        data = {
+            "id": item.id,
+            "text": item.text,
+            "status": item.status.value,
+            "created_at": item.created_at.isoformat(),
+            "completed_at": item.completed_at.isoformat() if item.completed_at else None,
+            "project": item.project,
+        }
+        lines.append(json.dumps(data))
+
+    content = "\n".join(lines)
+
+    if output:
+        from pathlib import Path
+
+        Path(output).write_text(content + "\n" if content else "")
+        console.print(f"[green]✓[/green] Exported {len(items)} todos to {output}")
+    else:
+        console.print(content)
+
+
+@app.command()
+def info(
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Global info")] = False,
+):
+    """Show current storage info."""
+    cfg = Config.load()
+
+    if global_:
+        project_id = None
+        target = "global"
+    else:
+        project_id = detect_project()
+        target = project_id or "global"
+
+    svc = TodoService(cfg, project_id)
+    items = svc.list()
+
+    pending = sum(1 for i in items if i.status == Status.PENDING)
+    done = sum(1 for i in items if i.status == Status.DONE)
+
+    console.print(f"[bold]Project:[/bold] {target}")
+    console.print(f"[bold]Adapter:[/bold] {cfg.default_adapter}")
+    console.print(f"[bold]Storage:[/bold] {svc.storage_path}")
+    console.print(f"[bold]Todos:[/bold] {len(items)} total ({pending} pending, {done} done)")
+
+
 def _register_plugins_subapp() -> None:
     """Register the plugins subapp with the main app."""
     from dodo.cli_plugins import plugins_app

@@ -82,6 +82,13 @@ class TodoService:
     def delete(self, id: str) -> None:
         self._adapter.delete(id)
 
+    @property
+    def storage_path(self) -> str:
+        """Get the storage path for current adapter."""
+        if hasattr(self._adapter, "_path"):
+            return str(self._adapter._path)
+        return "N/A"
+
     def _create_adapter(self) -> TodoAdapter:
         from dodo.plugins import apply_hooks
 
