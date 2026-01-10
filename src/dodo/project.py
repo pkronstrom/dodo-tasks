@@ -4,6 +4,15 @@ import subprocess
 from hashlib import sha1
 from pathlib import Path
 
+# Module-level cache
+_project_cache: dict[str, str | None] = {}
+
+
+def clear_project_cache() -> None:
+    """Clear the project detection cache. Useful for testing."""
+    global _project_cache
+    _project_cache.clear()
+
 
 def detect_project(path: Path | None = None) -> str | None:
     """Detect project ID from current directory.
@@ -11,12 +20,19 @@ def detect_project(path: Path | None = None) -> str | None:
     Returns: project_id (e.g., 'myapp_d1204e') or None if not in a project.
     """
     path = path or Path.cwd()
+    cache_key = str(path.resolve())
+
+    if cache_key in _project_cache:
+        return _project_cache[cache_key]
 
     git_root = _get_git_root(path)
     if not git_root:
+        _project_cache[cache_key] = None
         return None
 
-    return _make_project_id(git_root)
+    result = _make_project_id(git_root)
+    _project_cache[cache_key] = result
+    return result
 
 
 def detect_project_root(path: Path | None = None, worktree_shared: bool = True) -> Path | None:
