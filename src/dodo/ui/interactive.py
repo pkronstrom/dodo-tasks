@@ -148,12 +148,12 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
 
                 # Marker: blue > for active (colorblind-safe)
                 if selected:
-                    marker = "[dim]>[/dim]" if done else "[dodger_blue2]>[/dodger_blue2]"
+                    marker = "[dim]>[/dim]" if done else "[cyan]>[/cyan]"
                 else:
                     marker = " "
 
                 # Checkbox: blue checkmark for done, orange dot for pending (colorblind-safe)
-                check = "[dodger_blue2]✓[/dodger_blue2]" if done else "[dim]•[/dim]"
+                check = "[blue]✓[/blue]" if done else "[dim]•[/dim]"
 
                 # Text (no wrapping - keep it simple)
                 text = escape(item.text)
@@ -175,9 +175,7 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
             max_input_len = width - 10
             if len(input_display) > max_input_len:
                 input_display = input_display[-max_input_len:]
-            lines.append(
-                f"[dodger_blue2]>[/dodger_blue2] [dim]•[/dim] {input_display}[blink]_[/blink]"
-            )
+            lines.append(f"[cyan]>[/cyan] [dim]•[/dim] {input_display}[blink]_[/blink]")
 
         # Status line (with left margin)
         if input_mode:
@@ -192,7 +190,9 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
         if input_mode:
             footer = "[dim]  enter save · esc cancel[/dim]"
         else:
-            footer = "[dim]  ↑↓/jk · space toggle · e edit · d del · u undo · a add · A editor · q quit[/dim]"
+            footer = (
+                "[dim]  ↑↓/jk · space toggle · e edit · d del · u undo · a/A add · q quit[/dim]"
+            )
 
         # Calculate panel height: content + blank + status + footer + borders
         # +1 blank before items (already added), +1 blank after, +1 status, +1 footer, +2 borders
@@ -411,11 +411,6 @@ def _interactive_switch(
     parent_name = parent_root.name if parent_root else None
 
     # Get current storage path
-    current_project_id = (
-        None if current_target == "global" else detect_project(worktree_shared=cfg.worktree_shared)
-    )
-    current_path = _get_project_storage_path(cfg, current_project_id, cfg.worktree_shared)
-
     # Build local options: (key, name, path_display, disabled) - relevant to current working dir
     local_options: list[tuple[str, str, str | Path | None, bool]] = []
     added_projects: set[str] = set()
@@ -508,11 +503,11 @@ def _interactive_switch(
                 lines.append("")
                 continue
 
-            marker = "[dodger_blue2]>[/dodger_blue2] " if i == cursor else "  "
+            marker = "[cyan]>[/cyan] " if i == cursor else "  "
             path_str = f"  [dim]{_shorten_path(path, cfg.config_dir)}[/dim]" if path else ""
 
             if key == "_toggle":
-                lines.append(f"{marker}[dodger_blue2]{name}[/dodger_blue2]")
+                lines.append(f"{marker}[cyan]{name}[/cyan]")
             elif disabled:
                 # Current item - show as greyed with (current) label
                 lines.append(f"{marker}[dim]{name}{path_str} (current)[/dim]")
@@ -870,7 +865,12 @@ def _build_settings_items(
     ]
     for key, label, kind, options, desc in pre_backend:
         items.append((key, label, kind, options, None, desc))
-        pending[key] = getattr(cfg, key)
+        # Convert string values to bool for toggles (config may store "true"/"false" strings)
+        val = getattr(cfg, key)
+        if kind == "toggle" and isinstance(val, str):
+            pending[key] = val.lower() in ("true", "1", "yes")
+        else:
+            pending[key] = val
 
     # Backend setting
     items.append(("default_adapter", "Backend", "cycle", available_adapters, None, None))
@@ -897,16 +897,33 @@ def _build_settings_items(
     plugins = get_all_plugins()
     for plugin in plugins:
         toggle_key = f"_plugin_{plugin.name}"
-        desc = f"{plugin.version}"
+        # Short description for plugin (version only, or first few words of description)
+        desc = plugin.version
         if plugin.description:
-            desc = f"{plugin.version} - {plugin.description}"
-        items.append((toggle_key, plugin.name, "toggle", None, plugin.name, desc))
+            # Take first ~20 chars of description
+            short_desc = plugin.description[:25].rstrip()
+            if len(plugin.description) > 25:
+                short_desc = short_desc.rsplit(" ", 1)[0]  # Cut at word boundary
+            desc = short_desc
+        items.append((toggle_key, plugin.name, "plugin", None, plugin.name, desc))
         pending[toggle_key] = plugin.enabled
 
-        # Plugin config vars
-        for env in plugin.envs:
-            items.append((env.name, f"  {env.name}", "edit", None, None, None))
-            pending[env.name] = getattr(cfg, env.name, env.default) or ""
+        # Only show plugin config vars if plugin is enabled (collapse disabled)
+        if plugin.enabled:
+            for env in plugin.envs:
+                # Use ConfigVar's kind/label/description if available
+                kind = getattr(env, "kind", "edit")
+                label = getattr(env, "label", None) or env.name
+                desc = getattr(env, "description", None)
+                options = getattr(env, "options", None)
+                # Pass plugin.name to mark this as a plugin setting (for indentation)
+                items.append((env.name, label, kind, options, plugin.name, desc))
+                # For toggle kind, convert string value to bool
+                val = getattr(cfg, env.name, env.default) or ""
+                if kind == "toggle":
+                    pending[env.name] = str(val).lower() in ("true", "1", "yes")
+                else:
+                    pending[env.name] = val
 
     return items, pending
 
@@ -979,8 +996,11 @@ def _run_migration(
 
     if skipped > 0 and imported == 0:
         # All items skipped - show debug info
-        return f"[yellow]Skipped {skipped} (already exist)[/yellow]\n[dim]From: {source_path}\nTo: {target_path}[/dim]"
-    return f"[dodger_blue2]Migrated {imported} todos[/dodger_blue2] ({skipped} skipped)"
+        return (
+            f"[yellow]Skipped {skipped} (already exist)[/yellow]\n"
+            f"[dim]From: {source_path}\nTo: {target_path}[/dim]"
+        )
+    return f"[cyan]Migrated {imported} todos[/cyan] ({skipped} skipped)"
 
 
 def _unified_settings_loop(
@@ -993,10 +1013,9 @@ def _unified_settings_loop(
     from dodo.cli_plugins import _load_registry
 
     cursor = 0
-    total_items = len(items)
     status_msg: str | None = None
 
-    # Find non-divider items for navigation
+    # Find navigable items (not dividers)
     navigable_indices = [i for i, (_, _, kind, *_) in enumerate(items) if kind != "divider"]
 
     def find_next_navigable(current: int, direction: int) -> int:
@@ -1013,8 +1032,9 @@ def _unified_settings_loop(
         console.print("[dim]↑↓ navigate · space/enter change · q exit[/dim]")
         console.print()
 
-        # Fixed column for descriptions (after label + value)
-        desc_col = 38
+        # Layout columns (using ~80 char width)
+        value_col = 28  # Column where checkmarks/values start
+        desc_col = 50  # Column where description starts
 
         for i, (key, label, kind, options, plugin_name, desc) in enumerate(items):
             if kind == "divider":
@@ -1022,38 +1042,65 @@ def _unified_settings_loop(
                 console.print(f"  [dim]{label}[/dim]")
                 continue
 
-            marker = "[dodger_blue2]>[/dodger_blue2] " if i == cursor else "  "
+            marker = "[cyan]>[/cyan]" if i == cursor else " "
             value = pending[key]
+            # Plugin config vars are indented (plugin_name set but kind != "plugin")
+            is_plugin_setting = plugin_name and kind != "plugin"
+            indent = "  " if is_plugin_setting else ""
 
-            if kind == "toggle":
-                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dim]☐[/dim]"
-                base = f"{marker}{icon} {label}"
-                # Pad to align descriptions
-                padding = max(0, desc_col - len(label) - 6)
-                desc_str = f"{' ' * padding}[dim]{desc}[/dim]" if desc else ""
-                line = f"{base}{desc_str}"
-            elif kind == "cycle":
-                base = f"{marker}  {label}: [dodger_blue2]{value}[/dodger_blue2]"
-                padding = max(0, desc_col - len(label) - len(str(value)) - 6)
-                desc_str = f"{' ' * padding}[dim]{desc}[/dim]" if desc else ""
-                line = f"{base}{desc_str}"
-            elif kind == "action":
-                # Use arrow icon for migrate actions
-                base = f"{marker}→ [dodger_blue2]{label}[/dodger_blue2]"
-                padding = max(0, desc_col - len(label) - 6)
-                desc_str = f"{' ' * padding}[dim]{desc}[/dim]" if desc else ""
-                line = f"{base}{desc_str}"
-            else:  # edit
-                display = str(value).replace("\n", "↵")[:CONFIG_DISPLAY_MAX_LEN]
-                if len(str(value)) > CONFIG_DISPLAY_MAX_LEN:
-                    display += "..."
-                if display:
-                    base = f"{marker}  {label}: [dim]{display}[/dim]"
+            if kind == "plugin":
+                # Plugin: name + checkmark + description
+                # Enabled plugins use cyan to stand out from regular settings
+                check = "[bold blue]✓[/bold blue]" if value else " "
+                if value:
+                    name_part = f" {marker} [cyan]{label}[/cyan]"
                 else:
-                    base = f"{marker}  {label}: [red](not set)[/red]"
-                padding = max(0, desc_col - len(label) - len(display) - 6)
-                desc_str = f"{' ' * padding}[dim]{desc}[/dim]" if desc else ""
-                line = f"{base}{desc_str}"
+                    name_part = f" {marker} [dim]{label}[/dim]"
+                label_len = len(indent) + len(label) + 3  # " > " = 3 chars
+                pad1 = max(1, value_col - label_len)
+                pad2 = max(1, desc_col - value_col - 1)
+                desc_str = f"[dim]{desc}[/dim]" if desc else ""
+                line = f"{name_part}{' ' * pad1}{check}{' ' * pad2}{desc_str}"
+            elif kind == "toggle":
+                # Toggle: label + checkmark + description
+                check = "[bold blue]✓[/bold blue]" if value else " "
+                base = f" {marker} {indent}{label}"
+                label_len = len(indent) + len(label) + 3
+                pad1 = max(1, value_col - label_len)
+                pad2 = max(1, desc_col - value_col - 1)
+                desc_str = f"[dim]{desc}[/dim]" if desc else ""
+                line = f"{base}{' ' * pad1}{check}{' ' * pad2}{desc_str}"
+            elif kind == "cycle":
+                # Cycle: label + value + description (value at value_col)
+                base = f" {marker} {indent}{label}"
+                label_len = len(indent) + len(label) + 3
+                pad1 = max(1, value_col - label_len)
+                val_str = f"[cyan]{value}[/cyan]"
+                pad2 = max(1, desc_col - value_col - len(str(value)))
+                desc_str = f"[dim]{desc}[/dim]" if desc else ""
+                line = f"{base}{' ' * pad1}{val_str}{' ' * pad2}{desc_str}"
+            elif kind == "action":
+                # Migrate action - cyan arrow at value_col
+                base = f" {marker} {indent}{label}"
+                label_len = len(indent) + len(label) + 3
+                pad1 = max(1, value_col - label_len)
+                pad2 = max(1, desc_col - value_col - 1)
+                desc_str = f"[dim]{desc}[/dim]" if desc else ""
+                line = f"{base}{' ' * pad1}[cyan]→[/cyan]{' ' * pad2}{desc_str}"
+            else:  # edit
+                # Edit: label + value at value_col + description
+                max_val_len = 18
+                display = str(value).replace("\n", "↵")[:max_val_len]
+                if len(str(value)) > max_val_len:
+                    display += "…"
+                if not display:
+                    display = "–"
+                base = f" {marker} {indent}{label}"
+                label_len = len(indent) + len(label) + 3
+                pad1 = max(1, value_col - label_len)
+                pad2 = max(1, desc_col - value_col - len(display))
+                desc_str = f"[dim]{desc}[/dim]" if desc else ""
+                line = f"{base}{' ' * pad1}[dim]{display}[/dim]{' ' * pad2}{desc_str}"
             # Clear to end of line to prevent artifacts from longer previous text
             sys.stdout.write("\033[K")
             console.print(line)
@@ -1172,11 +1219,26 @@ def _unified_settings_loop(
                     break
                 elif key in (" ", "\r", "\n"):
                     item_key, _, kind, options, plugin_name, _ = items[cursor]
-                    if kind == "toggle":
+                    if kind == "plugin":
+                        # Plugin toggle - rebuild items to show/hide config vars
                         pending[item_key] = not pending[item_key]
+                        save_plugin_toggle(plugin_name, bool(pending[item_key]))
+                        rebuild_adapter_options()
+                        # Rebuild entire items list to show/hide plugin config vars
+                        items[:], pending_new = _build_settings_items(cfg, project_id)
+                        pending.clear()
+                        pending.update(pending_new)
+                        navigable_indices[:] = [
+                            idx for idx, (_, _, k, *_) in enumerate(items) if k != "divider"
+                        ]
+                        # Keep cursor valid
+                        if cursor >= len(navigable_indices):
+                            cursor = max(0, len(navigable_indices) - 1)
+                    elif kind == "toggle":
+                        pending[item_key] = not pending[item_key]
+                        # Plugin config vars save as strings, general toggles as booleans
                         if plugin_name:
-                            save_plugin_toggle(plugin_name, bool(pending[item_key]))
-                            rebuild_adapter_options()
+                            save_item(item_key, "true" if pending[item_key] else "false")
                         else:
                             save_item(item_key, pending[item_key])
                     elif kind == "cycle" and options:
@@ -1309,11 +1371,11 @@ def _plugins_config_loop(
         console.print()
 
         for i, (key, label, kind, _, plugin_name) in enumerate(items):
-            marker = "[dodger_blue2]>[/dodger_blue2] " if i == cursor else "  "
+            marker = "[cyan]>[/cyan] " if i == cursor else "  "
             value = pending[key]
 
             if kind == "toggle":
-                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dim]☐[/dim]"
+                icon = "[blue]✓[/blue]" if value else "[dim]☐[/dim]"
                 line = f"{marker}{icon} {label}"
             else:
                 display = str(value).replace("\n", "↵")[:CONFIG_DISPLAY_MAX_LEN] + (
@@ -1401,14 +1463,14 @@ def _config_loop(
         console.print()
 
         for i, (key, label, kind, _) in enumerate(items):
-            marker = "[dodger_blue2]>[/dodger_blue2] " if i == cursor else "  "
+            marker = "[cyan]>[/cyan] " if i == cursor else "  "
             value = pending[key]
 
             if kind == "toggle":
-                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dim]☐[/dim]"
+                icon = "[blue]✓[/blue]" if value else "[dim]☐[/dim]"
                 line = f"{marker}{icon} {label}"
             elif kind == "cycle":
-                line = f"{marker}  {label}: [dodger_blue2]{value}[/dodger_blue2]"
+                line = f"{marker}  {label}: [cyan]{value}[/cyan]"
             else:
                 display = str(value).replace("\n", "↵")[:CONFIG_DISPLAY_MAX_LEN] + (
                     "..." if len(str(value)) > CONFIG_DISPLAY_MAX_LEN else ""
