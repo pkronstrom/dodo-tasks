@@ -26,7 +26,7 @@ def cli_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 class TestCliAdd:
     def test_add_creates_todo(self, cli_env):
-        with patch("dodo.cli.detect_project", return_value=None):
+        with patch("dodo.project.detect_project", return_value=None):
             result = runner.invoke(app, ["add", "Test todo"])
 
         assert result.exit_code == 0, f"Failed: {result.output}"
@@ -34,7 +34,7 @@ class TestCliAdd:
         assert "Test todo" in result.stdout
 
     def test_add_global_flag(self, cli_env):
-        with patch("dodo.cli.detect_project", return_value=None):
+        with patch("dodo.project.detect_project", return_value=None):
             result = runner.invoke(app, ["add", "-g", "Global todo"])
 
         assert result.exit_code == 0, f"Failed: {result.output}"
@@ -43,14 +43,14 @@ class TestCliAdd:
 
 class TestCliList:
     def test_list_empty(self, cli_env):
-        with patch("dodo.cli.detect_project", return_value=None):
+        with patch("dodo.project.detect_project", return_value=None):
             result = runner.invoke(app, ["list"])
 
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "No todos" in result.stdout
 
     def test_list_shows_todos(self, cli_env):
-        with patch("dodo.cli.detect_project", return_value=None):
+        with patch("dodo.project.detect_project", return_value=None):
             runner.invoke(app, ["add", "First todo"])
             result = runner.invoke(app, ["list"])
 
@@ -60,7 +60,7 @@ class TestCliList:
 
 class TestCliDone:
     def test_done_marks_complete(self, cli_env):
-        with patch("dodo.cli.detect_project", return_value=None):
+        with patch("dodo.project.detect_project", return_value=None):
             # Add a todo first
             add_result = runner.invoke(app, ["add", "Test todo"])
             assert add_result.exit_code == 0, f"Add failed: {add_result.output}"
@@ -78,7 +78,7 @@ class TestCliDone:
 
 class TestCliUndo:
     def test_undo_removes_last_add(self, cli_env):
-        with patch("dodo.cli.detect_project", return_value=None):
+        with patch("dodo.project.detect_project", return_value=None):
             runner.invoke(app, ["add", "To be undone"])
             result = runner.invoke(app, ["undo"])
 
@@ -88,7 +88,7 @@ class TestCliUndo:
 
 class TestCliRm:
     def test_rm_deletes_todo(self, cli_env):
-        with patch("dodo.cli.detect_project", return_value=None):
+        with patch("dodo.project.detect_project", return_value=None):
             add_result = runner.invoke(app, ["add", "To delete"])
             assert add_result.exit_code == 0, f"Add failed: {add_result.output}"
 

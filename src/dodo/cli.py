@@ -1,16 +1,17 @@
 """CLI commands."""
 
+from __future__ import annotations
+
 import json
 import sys
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 import typer
 from rich.console import Console
 
-from dodo.config import Config
-from dodo.core import TodoService
-from dodo.models import Status
-from dodo.project import detect_project
+if TYPE_CHECKING:
+    from dodo.config import Config
+    from dodo.core import TodoService
 
 app = typer.Typer(
     name="dodo",
@@ -18,6 +19,27 @@ app = typer.Typer(
     no_args_is_help=False,
 )
 console = Console()
+
+
+def _get_config() -> Config:
+    """Lazy import and load config."""
+    from dodo.config import Config
+
+    return Config.load()
+
+
+def _get_service(config: Config, project_id: str | None) -> TodoService:
+    """Lazy import and create service."""
+    from dodo.core import TodoService
+
+    return TodoService(config, project_id)
+
+
+def _detect_project(worktree_shared: bool = False) -> str | None:
+    """Lazy import and detect project."""
+    from dodo.project import detect_project
+
+    return detect_project(worktree_shared=worktree_shared)
 
 
 @app.callback(invoke_without_command=True)
@@ -35,16 +57,16 @@ def add(
     global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
 ):
     """Add a todo item."""
-    cfg = Config.load()
+    cfg = _get_config()
 
     if global_:
         target = "global"
         project_id = None
     else:
-        project_id = detect_project(worktree_shared=cfg.worktree_shared)
+        project_id = _detect_project(worktree_shared=cfg.worktree_shared)
         target = project_id or "global"
 
-    svc = TodoService(cfg, project_id)
+    svc = _get_service(cfg, project_id)
     item = svc.add(" ".join(text))
 
     _save_last_action("add", item.id, target)
@@ -64,17 +86,18 @@ def list_todos(
 ):
     """List todos."""
     from dodo.formatters import get_formatter
+    from dodo.models import Status
 
-    cfg = Config.load()
+    cfg = _get_config()
 
     if global_:
         project_id = None
     else:
-        project_id = _resolve_project(project) or detect_project(
+        project_id = _resolve_project(project) or _detect_project(
             worktree_shared=cfg.worktree_shared
         )
 
-    svc = TodoService(cfg, project_id)
+    svc = _get_service(cfg, project_id)
     status = None if all_ else (Status.DONE if done else Status.PENDING)
     items = svc.list(status=status)
 
@@ -95,9 +118,9 @@ def done(
     id: Annotated[str, typer.Argument(help="Todo ID (or partial)")],
 ):
     """Mark todo as done."""
-    cfg = Config.load()
-    project_id = detect_project(worktree_shared=cfg.worktree_shared)
-    svc = TodoService(cfg, project_id)
+    cfg = _get_config()
+    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
+    svc = _get_service(cfg, project_id)
 
     # Try to find matching ID
     item = _find_item_by_partial_id(svc, id)
@@ -115,9 +138,9 @@ def rm(
     id: Annotated[str, typer.Argument(help="Todo ID (or partial)")],
 ):
     """Remove a todo."""
-    cfg = Config.load()
-    project_id = detect_project(worktree_shared=cfg.worktree_shared)
-    svc = TodoService(cfg, project_id)
+    cfg = _get_config()
+    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
+    svc = _get_service(cfg, project_id)
 
     item = _find_item_by_partial_id(svc, id)
     if not item:
@@ -137,9 +160,9 @@ def undo():
         console.print("[yellow]Nothing to undo[/yellow]")
         raise typer.Exit(0)
 
-    cfg = Config.load()
+    cfg = _get_config()
     project_id = None if last["target"] == "global" else last["target"]
-    svc = TodoService(cfg, project_id)
+    svc = _get_service(cfg, project_id)
 
     try:
         item = svc.get(last["id"])
@@ -174,9 +197,9 @@ def ai(
         console.print("[red]Error:[/red] Provide text or pipe input")
         raise typer.Exit(1)
 
-    cfg = Config.load()
-    project_id = detect_project(worktree_shared=cfg.worktree_shared)
-    svc = TodoService(cfg, project_id)
+    cfg = _get_config()
+    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
+    svc = _get_service(cfg, project_id)
 
     from dodo.ai import run_ai
 
@@ -203,8 +226,8 @@ def init(
     local: Annotated[bool, typer.Option("--local", help="Store todos in project dir")] = False,
 ):
     """Initialize dodo for current project."""
-    cfg = Config.load()
-    project_id = detect_project(worktree_shared=cfg.worktree_shared)
+    cfg = _get_config()
+    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
 
     if not project_id:
         console.print("[red]Error:[/red] Not in a git repository")
@@ -230,14 +253,14 @@ def export(
     global_: Annotated[bool, typer.Option("-g", "--global", help="Global todos")] = False,
 ):
     """Export todos to jsonl format."""
-    cfg = Config.load()
+    cfg = _get_config()
 
     if global_:
         project_id = None
     else:
-        project_id = detect_project(worktree_shared=cfg.worktree_shared)
+        project_id = _detect_project(worktree_shared=cfg.worktree_shared)
 
-    svc = TodoService(cfg, project_id)
+    svc = _get_service(cfg, project_id)
     items = svc.list()
 
     lines = []
@@ -268,16 +291,18 @@ def info(
     global_: Annotated[bool, typer.Option("-g", "--global", help="Global info")] = False,
 ):
     """Show current storage info."""
-    cfg = Config.load()
+    from dodo.models import Status
+
+    cfg = _get_config()
 
     if global_:
         project_id = None
         target = "global"
     else:
-        project_id = detect_project(worktree_shared=cfg.worktree_shared)
+        project_id = _detect_project(worktree_shared=cfg.worktree_shared)
         target = project_id or "global"
 
-    svc = TodoService(cfg, project_id)
+    svc = _get_service(cfg, project_id)
     items = svc.list()
 
     pending = sum(1 for i in items if i.status == Status.PENDING)
@@ -293,6 +318,11 @@ def _register_plugins_subapp() -> None:
     """Register the plugins subapp with the main app."""
     from dodo.cli_plugins import plugins_app
 
+    @plugins_app.callback()
+    def plugins_callback() -> None:
+        """Register plugin commands lazily when plugins subcommand is accessed."""
+        _register_plugin_commands()
+
     app.add_typer(plugins_app, name="plugins")
 
 
@@ -307,7 +337,7 @@ def _resolve_project(partial: str | None) -> str | None:
     if not partial:
         return None
 
-    cfg = Config.load()
+    cfg = _get_config()
     projects_dir = cfg.config_dir / "projects"
 
     if not projects_dir.exists():
@@ -351,7 +381,7 @@ def _find_item_by_partial_id(svc: TodoService, partial_id: str):
 
 def _save_last_action(action: str, id: str, target: str) -> None:
     """Save last action for undo."""
-    cfg = Config.load()
+    cfg = _get_config()
     state_file = cfg.config_dir / ".last_action"
     state_file.parent.mkdir(parents=True, exist_ok=True)
     state_file.write_text(json.dumps({"action": action, "id": id, "target": target}))
@@ -359,7 +389,7 @@ def _save_last_action(action: str, id: str, target: str) -> None:
 
 def _load_last_action() -> dict | None:
     """Load last action."""
-    cfg = Config.load()
+    cfg = _get_config()
     state_file = cfg.config_dir / ".last_action"
     if not state_file.exists():
         return None
@@ -368,20 +398,27 @@ def _load_last_action() -> dict | None:
 
 def _clear_last_action() -> None:
     """Clear last action after undo."""
-    cfg = Config.load()
+    cfg = _get_config()
     state_file = cfg.config_dir / ".last_action"
     if state_file.exists():
         state_file.unlink()
 
 
+_plugin_commands_registered = False
+
+
 def _register_plugin_commands() -> None:
-    """Allow plugins to register additional CLI commands under 'dodo plugins <name>'."""
+    """Allow plugins to register additional CLI commands under 'dodo plugins <name>'.
+
+    Called lazily on first plugin subcommand access to avoid import-time overhead.
+    """
+    global _plugin_commands_registered
+    if _plugin_commands_registered:
+        return
+    _plugin_commands_registered = True
+
     from dodo.cli_plugins import plugins_app
     from dodo.plugins import apply_hooks
 
-    cfg = Config.load()
+    cfg = _get_config()
     apply_hooks("register_commands", plugins_app, cfg)
-
-
-# Register plugin commands (lazy - only when CLI is actually used)
-_register_plugin_commands()

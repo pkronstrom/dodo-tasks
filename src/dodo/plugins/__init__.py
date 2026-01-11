@@ -185,8 +185,8 @@ def get_all_plugins() -> list[PluginInfo]:
                                 current_value=env_val or config_val or None,
                             )
                         )
-            except Exception:
-                pass  # Skip config loading errors
+            except (ImportError, AttributeError, TypeError):
+                pass  # Skip plugins that fail to load or have invalid register_config
 
         plugins.append(
             PluginInfo(

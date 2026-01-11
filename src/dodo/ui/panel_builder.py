@@ -21,6 +21,9 @@ def calculate_visible_range(
     if total_items == 0:
         return 0, 0, 0
 
+    # Clamp cursor to valid range first
+    cursor = max(0, min(cursor, total_items - 1))
+
     # Adjust scroll to keep cursor visible
     if cursor < scroll_offset:
         scroll_offset = cursor

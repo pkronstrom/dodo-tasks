@@ -60,7 +60,7 @@ class SqliteAdapter:
             query += " AND status = ?"
             params.append(status.value)
 
-        query += " ORDER BY created_at DESC"
+        query += " ORDER BY created_at ASC"
 
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()

@@ -10,12 +10,28 @@ Only works with SQLite adapter (requires database for dependency storage).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import typer
 
     from dodo.config import Config
+
+
+@dataclass
+class ConfigVar:
+    """Configuration variable declaration."""
+
+    name: str
+    default: str
+
+
+def register_config() -> list[ConfigVar]:
+    """Declare config variables for this plugin."""
+    return [
+        ConfigVar("graph_tree_view", "false"),  # Show deps as tree in `dodo ls`
+    ]
 
 
 def register_commands(app: typer.Typer, config: Config) -> None:
@@ -47,7 +63,14 @@ def extend_adapter(adapter, config: Config):
 
 
 def extend_formatter(formatter, config: Config):
-    """Extend formatter to show blocked_by column."""
+    """Extend formatter to show blocked_by column or tree view."""
+    # Check if tree view is enabled in config
+    tree_view = getattr(config, "graph_tree_view", "false")
+    if str(tree_view).lower() in ("true", "1", "yes"):
+        from dodo.plugins.graph.tree import TreeFormatter
+
+        return TreeFormatter()
+
     from dodo.plugins.graph.formatter import GraphFormatter
 
     return GraphFormatter(formatter)
