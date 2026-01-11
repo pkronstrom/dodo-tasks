@@ -55,3 +55,26 @@ def test_corrupted_registry_triggers_rescan(tmp_path: Path, monkeypatch):
 
     # Should have rescanned instead of crashing
     assert "test-plugin" in result
+
+
+def test_corrupted_last_action_returns_none(tmp_path: Path, monkeypatch):
+    """Corrupted .last_action file should return None."""
+    from unittest.mock import MagicMock
+
+    from dodo.cli import _load_last_action
+
+    clear_config_cache()
+
+    cfg_dir = tmp_path / "config"
+    cfg_dir.mkdir()
+    last_action_file = cfg_dir / ".last_action"
+    last_action_file.write_text("{broken json")
+
+    # Mock _get_config to return our temp dir
+    mock_config = MagicMock()
+    mock_config.config_dir = cfg_dir
+
+    monkeypatch.setattr("dodo.cli._get_config", lambda: mock_config)
+
+    result = _load_last_action()
+    assert result is None
