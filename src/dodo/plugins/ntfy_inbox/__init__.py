@@ -26,13 +26,17 @@ class ConfigVar:
 
     name: str
     default: str
+    label: str | None = None
+    kind: str = "edit"
+    options: list[str] | None = None
+    description: str | None = None
 
 
 def register_config() -> list[ConfigVar]:
     """Declare config variables for this plugin."""
     return [
-        ConfigVar("ntfy_topic", ""),  # Required - user's secret topic
-        ConfigVar("ntfy_server", "https://ntfy.sh"),
+        ConfigVar("ntfy_topic", "", label="Topic", description="your secret topic"),
+        ConfigVar("ntfy_server", "https://ntfy.sh", label="Server", description="ntfy server URL"),
     ]
 
 

@@ -16,6 +16,10 @@ class ConfigVar:
 
     name: str
     default: str
+    label: str | None = None
+    kind: str = "edit"
+    options: list[str] | None = None
+    description: str | None = None
 
 
 def register_adapter(registry: dict, config) -> None:
@@ -28,7 +32,14 @@ def register_adapter(registry: dict, config) -> None:
 def register_config() -> list[ConfigVar]:
     """Declare config variables for this plugin."""
     return [
-        ConfigVar("obsidian_api_url", "https://localhost:27124"),
-        ConfigVar("obsidian_api_key", ""),
-        ConfigVar("obsidian_vault_path", "dodo/todos.md"),
+        ConfigVar(
+            "obsidian_api_url",
+            "https://localhost:27124",
+            label="API URL",
+            description="REST API endpoint",
+        ),
+        ConfigVar("obsidian_api_key", "", label="API Key", description="authentication key"),
+        ConfigVar(
+            "obsidian_vault_path", "dodo/todos.md", label="Vault path", description="path in vault"
+        ),
     ]
