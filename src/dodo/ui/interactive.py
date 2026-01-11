@@ -1026,14 +1026,14 @@ def _unified_settings_loop(
             value = pending[key]
 
             if kind == "toggle":
-                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dim]•[/dim]"
+                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dim]☐[/dim]"
                 base = f"{marker}{icon} {label}"
                 # Pad to align descriptions
                 padding = max(0, desc_col - len(label) - 6)
                 desc_str = f"{' ' * padding}[dim]{desc}[/dim]" if desc else ""
                 line = f"{base}{desc_str}"
             elif kind == "cycle":
-                base = f"{marker}  {label}: [dark_orange]{value}[/dark_orange]"
+                base = f"{marker}  {label}: [dodger_blue2]{value}[/dodger_blue2]"
                 padding = max(0, desc_col - len(label) - len(str(value)) - 6)
                 desc_str = f"{' ' * padding}[dim]{desc}[/dim]" if desc else ""
                 line = f"{base}{desc_str}"
@@ -1313,7 +1313,7 @@ def _plugins_config_loop(
             value = pending[key]
 
             if kind == "toggle":
-                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dim]•[/dim]"
+                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dim]☐[/dim]"
                 line = f"{marker}{icon} {label}"
             else:
                 display = str(value).replace("\n", "↵")[:CONFIG_DISPLAY_MAX_LEN] + (
@@ -1405,10 +1405,10 @@ def _config_loop(
             value = pending[key]
 
             if kind == "toggle":
-                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dim]•[/dim]"
+                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dim]☐[/dim]"
                 line = f"{marker}{icon} {label}"
             elif kind == "cycle":
-                line = f"{marker}  {label}: [dark_orange]{value}[/dark_orange]"
+                line = f"{marker}  {label}: [dodger_blue2]{value}[/dodger_blue2]"
             else:
                 display = str(value).replace("\n", "↵")[:CONFIG_DISPLAY_MAX_LEN] + (
                     "..." if len(str(value)) > CONFIG_DISPLAY_MAX_LEN else ""
