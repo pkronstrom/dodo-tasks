@@ -309,49 +309,59 @@ def _interactive_switch(
 ) -> tuple[str | None, str]:
     from dodo.project import detect_worktree_parent
 
-    # Detect what the current directory's project would be
-    detected = detect_project(worktree_shared=cfg.worktree_shared)
-    detected_name = detected or "global"
+    # Always detect worktree's own project (without sharing)
+    worktree_project = detect_project(worktree_shared=False)
+    worktree_name = worktree_project or "global"
 
     # Detect if in a worktree with a parent repo
     is_worktree, parent_root, parent_id = detect_worktree_parent()
+    parent_name = parent_root.name if parent_root else None
 
     # Build options based on current context
     options = []
-    if current_target != "global":
-        options.append("Switch to global")
-    if detected_name != current_target:
-        options.append(f"Switch to {detected_name} (current dir)")
+    option_keys = []  # Track what each option means
 
-    # If in worktree and not sharing, offer parent's todos
-    if is_worktree and parent_id and not cfg.worktree_shared:
-        parent_name = parent_root.name if parent_root else parent_id
-        options.append(f"Use {parent_name}'s todos (enable worktree sharing)")
+    if current_target != "global":
+        options.append("Global todos")
+        option_keys.append("global")
+
+    # Show worktree's own project if not current
+    if worktree_name != current_target and worktree_name != "global":
+        options.append(f"{worktree_name} (this directory)")
+        option_keys.append("worktree")
+
+    # Show parent's project if in worktree and not current
+    if is_worktree and parent_id and parent_name != current_target:
+        options.append(f"{parent_name} (parent repo)")
+        option_keys.append("parent")
 
     options.append("Enter project name")
-
-    if not options:
-        # Already on the only option
-        return None if current_target == "global" else current_target, current_target
+    option_keys.append("custom")
 
     title = f"Current: {current_target}"
     choice = ui.select(options, title=title)
 
     if choice is None:
-        # Cancelled
+        # Cancelled - keep current
         return None if current_target == "global" else current_target, current_target
 
-    selected = options[choice]
-    if selected == "Switch to global":
+    key = option_keys[choice]
+    if key == "global":
+        cfg.set("worktree_shared", False)
         return None, "global"
-    elif selected.startswith("Switch to ") and "(current dir)" in selected:
-        return detected, detected_name
-    elif "enable worktree sharing" in selected:
+    elif key == "worktree":
+        cfg.set("worktree_shared", False)
+        return worktree_project, worktree_name
+    elif key == "parent":
         cfg.set("worktree_shared", True)
-        return parent_id, parent_root.name if parent_root else parent_id
-    elif selected == "Enter project name":
+        return parent_id, parent_name
+    elif key == "custom":
         name = ui.input("Project name:")
-        return name, name or "global"
+        if name:
+            cfg.set("worktree_shared", False)
+            return name, name
+        # Cancelled
+        return None if current_target == "global" else current_target, current_target
 
     return None, "global"
 
@@ -501,8 +511,7 @@ def _build_settings_items(
 
     # Settings before backend
     pre_backend: list[tuple[str, str, str, list[str] | None, str | None]] = [
-        ("worktree_shared", "Worktree sharing", "toggle", None, "use parent's todo list"),
-        ("local_storage", "Local storage", "toggle", None, "use .dodo/ in project"),
+        ("local_storage", "Local storage", "toggle", None, "store in project dir"),
         ("timestamps_enabled", "Timestamps", "toggle", None, "show times in list"),
     ]
     for key, label, kind, options, desc in pre_backend:
@@ -850,7 +859,6 @@ def interactive_config(project_id: str | None = None) -> None:
 def _general_config(cfg: Config) -> None:
     """General settings config menu."""
     items: list[tuple[str, str, str, list[str] | None]] = [
-        ("worktree_shared", "Share todos across git worktrees", "toggle", None),
         ("local_storage", "Store todos in project dir", "toggle", None),
         ("timestamps_enabled", "Add timestamps to todo entries", "toggle", None),
         ("default_adapter", "Adapter", "cycle", ["markdown", "sqlite", "obsidian"]),
