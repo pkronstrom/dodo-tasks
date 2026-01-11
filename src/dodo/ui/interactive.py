@@ -75,11 +75,14 @@ def interactive_menu() -> None:
             _interactive_add(svc, ui, target)
         elif choice == 2:
             interactive_config(project_id)
-            # Reload config and service in case adapter changed
+            # Reload config and service in case settings changed
             from dodo.config import clear_config_cache
 
             clear_config_cache()
             cfg = Config.load()
+            # Re-detect project in case worktree_shared changed
+            project_id = detect_project(worktree_shared=cfg.worktree_shared)
+            target = project_id or "global"
             svc = TodoService(cfg, project_id)
         elif choice == 3:
             project_id, target = _interactive_switch(ui, target, cfg)
