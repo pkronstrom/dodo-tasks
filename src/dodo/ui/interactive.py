@@ -304,9 +304,48 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
         break  # Normal exit
 
 
+def _get_project_storage_path(cfg: Config, project_id: str | None, worktree_shared: bool) -> Path:
+    """Get storage path for a project configuration."""
+    from dodo.project import detect_project_root
+
+    if cfg.local_storage and project_id:
+        root = detect_project_root(worktree_shared=worktree_shared)
+        if root:
+            if cfg.default_adapter == "sqlite":
+                return root / ".dodo" / "todos.db"
+            return root / "dodo.md"
+
+    if project_id:
+        project_dir = cfg.config_dir / "projects" / project_id
+        if cfg.default_adapter == "sqlite":
+            return project_dir / "todos.db"
+        return project_dir / "todo.md"
+
+    if cfg.default_adapter == "sqlite":
+        return cfg.config_dir / "todos.db"
+    return cfg.config_dir / "todo.md"
+
+
+def _shorten_path(path: Path, max_len: int = 50) -> str:
+    """Shorten path for display, keeping important parts."""
+    s = str(path)
+    home = str(Path.home())
+    if s.startswith(home):
+        s = "~" + s[len(home) :]
+    if len(s) <= max_len:
+        return s
+    # Keep filename and shorten middle
+    parts = s.split("/")
+    if len(parts) > 3:
+        return f"{parts[0]}/.../{'/'.join(parts[-2:])}"
+    return s
+
+
 def _interactive_switch(
     ui: RichTerminalMenu, current_target: str, cfg: Config
 ) -> tuple[str | None, str]:
+    import readchar
+
     from dodo.project import detect_worktree_parent
 
     # Always detect worktree's own project (without sharing)
@@ -317,50 +356,84 @@ def _interactive_switch(
     is_worktree, parent_root, parent_id = detect_worktree_parent()
     parent_name = parent_root.name if parent_root else None
 
-    # Build options based on current context
-    options = []
-    option_keys = []  # Track what each option means
+    # Get current storage path
+    current_project_id = (
+        None if current_target == "global" else detect_project(worktree_shared=cfg.worktree_shared)
+    )
+    current_path = _get_project_storage_path(cfg, current_project_id, cfg.worktree_shared)
+
+    # Build options: (key, name, path)
+    options: list[tuple[str, str, Path | None]] = []
 
     if current_target != "global":
-        options.append("Global todos")
-        option_keys.append("global")
+        global_path = _get_project_storage_path(cfg, None, False)
+        options.append(("global", "global", global_path))
 
     # Show worktree's own project if not current
     if worktree_name != current_target and worktree_name != "global":
-        options.append(f"{worktree_name} (this directory)")
-        option_keys.append("worktree")
+        wt_path = _get_project_storage_path(cfg, worktree_project, False)
+        options.append(("worktree", worktree_name, wt_path))
 
     # Show parent's project if in worktree and not current
     if is_worktree and parent_id and parent_name != current_target:
-        options.append(f"{parent_name} (parent repo)")
-        option_keys.append("parent")
+        parent_path = _get_project_storage_path(cfg, parent_id, True)
+        options.append(("parent", parent_name, parent_path))
 
-    options.append("Enter project name")
-    option_keys.append("custom")
+    options.append(("custom", "Enter project name", None))
 
-    title = f"Current: {current_target}"
-    choice = ui.select(options, title=title)
+    cursor = 0
 
-    if choice is None:
-        # Cancelled - keep current
-        return None if current_target == "global" else current_target, current_target
+    def render() -> None:
+        sys.stdout.write("\033[H\033[J")  # Clear screen
+        console.print("[bold]Switch Project[/bold]")
+        console.print()
+        console.print(f"  [dim]current:[/dim] [cyan]{current_target}[/cyan]")
+        console.print(f"  [dim]storage:[/dim] [dim]{_shorten_path(current_path)}[/dim]")
+        console.print()
+        console.print("[dim]↑↓ navigate · enter select · q cancel[/dim]")
+        console.print()
 
-    key = option_keys[choice]
-    if key == "global":
+        for i, (key, name, path) in enumerate(options):
+            marker = "[cyan]>[/cyan] " if i == cursor else "  "
+            if key == "custom":
+                console.print(f"{marker}[yellow]{name}[/yellow]")
+            else:
+                path_str = f"  [dim]{_shorten_path(path)}[/dim]" if path else ""
+                console.print(f"{marker}[bold]{name}[/bold]{path_str}")
+
+    while True:
+        render()
+        try:
+            key = readchar.readkey()
+        except KeyboardInterrupt:
+            return None if current_target == "global" else current_target, current_target
+
+        if key in (readchar.key.UP, "k"):
+            cursor = (cursor - 1) % len(options)
+        elif key in (readchar.key.DOWN, "j"):
+            cursor = (cursor + 1) % len(options)
+        elif key == "q":
+            return None if current_target == "global" else current_target, current_target
+        elif key in ("\r", "\n", " "):
+            break
+
+    selected_key, selected_name, _ = options[cursor]
+
+    if selected_key == "global":
         cfg.set("worktree_shared", False)
         return None, "global"
-    elif key == "worktree":
+    elif selected_key == "worktree":
         cfg.set("worktree_shared", False)
         return worktree_project, worktree_name
-    elif key == "parent":
+    elif selected_key == "parent":
         cfg.set("worktree_shared", True)
         return parent_id, parent_name
-    elif key == "custom":
+    elif selected_key == "custom":
+        console.print()
         name = ui.input("Project name:")
         if name:
             cfg.set("worktree_shared", False)
             return name, name
-        # Cancelled
         return None if current_target == "global" else current_target, current_target
 
     return None, "global"
