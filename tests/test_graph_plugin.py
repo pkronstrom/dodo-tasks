@@ -27,7 +27,7 @@ def test_list_attaches_blocked_by(tmp_path):
 
 
 def test_formatter_shows_blocked_by_column():
-    """GraphFormatter should add blocked_by column when items have it."""
+    """GraphFormatter wrapper should add blocked_by column when items have it."""
     from datetime import datetime
     from io import StringIO
 
@@ -37,8 +37,8 @@ def test_formatter_shows_blocked_by_column():
     from dodo.models import Status, TodoItem
     from dodo.plugins.graph.formatter import GraphFormatter
 
-    base = TableFormatter()
-    formatter = GraphFormatter(base)
+    # GraphFormatter wraps the base TableFormatter
+    formatter = GraphFormatter(TableFormatter())
 
     now = datetime.now()
     # Create items with blocked_by
@@ -62,10 +62,12 @@ def test_formatter_shows_blocked_by_column():
 def test_tree_formatter_output():
     """Tree formatter should show dependency hierarchy."""
     from datetime import datetime
+    from io import StringIO
 
-    from dodo.plugins.graph.tree import TreeFormatter
+    from rich.console import Console
 
     from dodo.models import Status, TodoItem
+    from dodo.plugins.graph.tree import TreeFormatter
 
     formatter = TreeFormatter()
 
@@ -81,7 +83,13 @@ def test_tree_formatter_output():
     object.__setattr__(t3, "blocked_by", ["bbb22222"])
     object.__setattr__(t4, "blocked_by", [])
 
-    output = formatter.format([t1, t2, t3, t4])
+    result = formatter.format([t1, t2, t3, t4])
+
+    # Render to string
+    output_buf = StringIO()
+    console = Console(file=output_buf, force_terminal=True)
+    console.print(result)
+    output = output_buf.getvalue()
 
     # Should show tree structure
     assert "Setup" in output

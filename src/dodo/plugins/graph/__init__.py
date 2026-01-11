@@ -32,16 +32,35 @@ FORMATTERS = ["tree"]
 
 @dataclass
 class ConfigVar:
-    """Configuration variable declaration."""
+    """Configuration variable declaration.
+
+    Attributes:
+        name: Config key name
+        default: Default value as string
+        label: Human-readable label (defaults to name)
+        kind: Type of setting - "toggle", "edit", or "cycle"
+        options: List of options for cycle type
+        description: Help text for the setting
+    """
 
     name: str
     default: str
+    label: str | None = None
+    kind: str = "edit"  # "toggle", "edit", "cycle"
+    options: list[str] | None = None
+    description: str | None = None
 
 
 def register_config() -> list[ConfigVar]:
     """Declare config variables for this plugin."""
     return [
-        ConfigVar("graph_tree_view", "false"),  # Show deps as tree in `dodo ls`
+        ConfigVar(
+            "graph_tree_view",
+            "false",
+            label="Tree view",
+            kind="toggle",
+            description="Show deps as tree in list view",
+        ),
     ]
 
 
@@ -100,11 +119,11 @@ def extend_adapter(adapter, config: Config):
 
 
 def extend_formatter(formatter, config: Config):
-    """Switch to tree view if enabled in config.
+    """Wrap formatter to add blocked_by column, or switch to tree view.
 
-    Note: blocked_by data is handled by the base formatters directly -
-    they check for the attribute and include it automatically.
+    The GraphFormatter wrapper keeps plugin-specific logic out of core formatters.
     """
+    from dodo.plugins.graph.formatter import GraphFormatter
     from dodo.plugins.graph.tree import TreeFormatter
 
     # If user explicitly requested tree format, don't override
@@ -116,5 +135,5 @@ def extend_formatter(formatter, config: Config):
     if str(tree_view).lower() in ("true", "1", "yes"):
         return TreeFormatter()
 
-    # No wrapping needed - formatters handle blocked_by natively
-    return formatter
+    # Wrap formatter to add blocked_by column when present
+    return GraphFormatter(formatter)

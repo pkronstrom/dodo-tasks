@@ -10,13 +10,9 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-# Import plugin utilities from canonical location (DRY)
+# Import plugin utilities from canonical location
 from dodo.plugins import (
     _detect_hooks,
-    _scan_and_save,
-)
-from dodo.plugins import (
-    _load_registry as _load_registry_cached,
 )
 
 console = Console()
@@ -38,7 +34,9 @@ def _get_config_dir() -> Path:
 
 def _load_registry() -> dict:
     """Load plugin registry from JSON file (uses cached version from plugins module)."""
-    return _load_registry_cached(_get_config_dir())
+    from dodo.plugins import load_registry
+
+    return load_registry(_get_config_dir())
 
 
 def _save_registry(registry: dict) -> None:
@@ -52,11 +50,11 @@ def _save_registry(registry: dict) -> None:
 @plugins_app.command()
 def scan() -> None:
     """Scan plugin directories and update the registry."""
-    from dodo.plugins import clear_plugin_cache
+    from dodo.plugins import clear_plugin_cache, scan_and_save
 
     # Clear cache and rescan
     clear_plugin_cache()
-    registry = _scan_and_save(_get_config_dir())
+    registry = scan_and_save(_get_config_dir())
 
     console.print(f"[green]Scanned[/green] {len(registry)} plugin(s)")
     for name, info in sorted(registry.items()):

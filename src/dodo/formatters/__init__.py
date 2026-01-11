@@ -40,9 +40,9 @@ def _get_plugin_formatter(name: str) -> type | None:
 
     for plugin_name, info in registry.items():
         if plugin_name in enabled and name in info.get("formatters", []):
-            from dodo.plugins import _import_plugin
+            from dodo.plugins import import_plugin
 
-            plugin = _import_plugin(plugin_name, None)
+            plugin = import_plugin(plugin_name, None)
             if hasattr(plugin, "register_formatters"):
                 formatters = plugin.register_formatters()
                 return formatters.get(name)

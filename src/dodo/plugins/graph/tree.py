@@ -14,12 +14,14 @@ class TreeFormatter:
 
     MAX_WIDTH = 120  # Maximum width even on wide terminals
     MAX_LINES = 5  # Maximum lines per item before truncation
-    ID_WIDTH = 10  # "• abc12345 " prefix width
+    ID_WIDTH = 10  # "• abc12345 " prefix width (icon + space + 8-char id + space)
 
     def __init__(self, max_width: int | None = None):
         # Get terminal width, cap at MAX_WIDTH
         term_width = shutil.get_terminal_size().columns
         self.max_width = min(max_width or term_width, self.MAX_WIDTH)
+        # Derive continuation indent from ID_WIDTH (icon is 1 char visually)
+        self._cont_indent = " " * (self.ID_WIDTH + 1)
 
     def _get_id(self, item) -> str:
         """Get ID from item or wrapped item."""
@@ -39,51 +41,24 @@ class TreeFormatter:
             return item.item.status
         return item.status
 
-    def _wrap_text(self, text: str, width: int, indent: int = 0) -> list[str]:
-        """Wrap text to width, returning list of lines.
+    def _wrap_text(self, text: str, width: int) -> list[str]:
+        """Wrap text to width using stdlib textwrap."""
+        import textwrap
 
-        First line uses full width, subsequent lines are indented.
-        """
         if width <= 0:
             return [text]
 
-        lines = []
-        remaining = text
+        return textwrap.wrap(
+            text,
+            width=width,
+            break_long_words=False,
+            break_on_hyphens=False,
+        ) or [text]  # Return original if wrap returns empty
 
-        # First line
-        if len(remaining) <= width:
-            return [remaining]
-
-        # Find wrap point (prefer space)
-        wrap_at = width
-        space_pos = remaining.rfind(" ", 0, width)
-        if space_pos > width // 2:  # Only use space if not too early
-            wrap_at = space_pos
-
-        lines.append(remaining[:wrap_at].rstrip())
-        remaining = remaining[wrap_at:].lstrip()
-
-        # Subsequent lines with indent
-        subsequent_width = width - indent
-        while remaining:
-            if len(remaining) <= subsequent_width:
-                lines.append(remaining)
-                break
-
-            wrap_at = subsequent_width
-            space_pos = remaining.rfind(" ", 0, subsequent_width)
-            if space_pos > subsequent_width // 2:
-                wrap_at = space_pos
-
-            lines.append(remaining[:wrap_at].rstrip())
-            remaining = remaining[wrap_at:].lstrip()
-
-        return lines
-
-    def format(self, items: list[TodoItemView]) -> str:
+    def format(self, items: list[TodoItemView]):
         """Format items as a dependency tree.
 
-        Returns a Rich-renderable Tree object that will be printed by cli.py.
+        Returns a Rich Group containing Tree objects for rendering.
         """
         from rich.console import Group
         from rich.tree import Tree
@@ -116,7 +91,7 @@ class TreeFormatter:
             text = self._get_text(item)
 
             # Colorblind-safe: blue for done, dim for pending (lighter than orange)
-            icon = "[dodger_blue2]✓[/dodger_blue2]" if is_done else "[dim]•[/dim]"
+            icon = "[blue]✓[/blue]" if is_done else "[dim]•[/dim]"
             id_str = f"[dim]{item_id[:8]}[/dim]"
 
             # Calculate available width for text
@@ -127,12 +102,12 @@ class TreeFormatter:
 
             # Child count indicator
             kids = children.get(item_id, [])
-            suffix = f" [dodger_blue2]→{len(kids)}[/dodger_blue2]" if kids and not is_done else ""
+            suffix = f" [cyan]→{len(kids)}[/cyan]" if kids and not is_done else ""
             suffix_len = len(f" →{len(kids)}") if kids and not is_done else 0
 
-            # Wrap text
-            text_width = max(20, available - suffix_len)
-            lines = self._wrap_text(text, text_width, indent=0)
+            # Wrap text (min width 1 to handle narrow terminals gracefully)
+            text_width = max(1, available - suffix_len)
+            lines = self._wrap_text(text, text_width)
 
             # Truncate to max lines
             if len(lines) > self.MAX_LINES:
@@ -140,13 +115,12 @@ class TreeFormatter:
                 lines.append("…")
 
             # Continuation line prefix: preserve tree branch if node has children
-            # "• abc12345 " = 11 chars, but icon is 1 char visually
-            cont_indent = "           "  # 11 spaces to align under text
+            # Use derived indent from ID_WIDTH
             if kids:
                 # Show vertical bar to indicate tree continues
-                cont_prefix = f"[dim]│[/dim]{cont_indent[1:]}"
+                cont_prefix = f"[dim]│[/dim]{self._cont_indent[1:]}"
             else:
-                cont_prefix = cont_indent
+                cont_prefix = self._cont_indent
 
             # Format output
             if is_done:
