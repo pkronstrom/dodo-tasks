@@ -41,7 +41,7 @@ def add(
         target = "global"
         project_id = None
     else:
-        project_id = detect_project()
+        project_id = detect_project(worktree_shared=cfg.worktree_shared)
         target = project_id or "global"
 
     svc = TodoService(cfg, project_id)
@@ -70,7 +70,9 @@ def list_todos(
     if global_:
         project_id = None
     else:
-        project_id = _resolve_project(project) or detect_project()
+        project_id = _resolve_project(project) or detect_project(
+            worktree_shared=cfg.worktree_shared
+        )
 
     svc = TodoService(cfg, project_id)
     status = None if all_ else (Status.DONE if done else Status.PENDING)
@@ -94,7 +96,7 @@ def done(
 ):
     """Mark todo as done."""
     cfg = Config.load()
-    project_id = detect_project()
+    project_id = detect_project(worktree_shared=cfg.worktree_shared)
     svc = TodoService(cfg, project_id)
 
     # Try to find matching ID
@@ -114,7 +116,7 @@ def rm(
 ):
     """Remove a todo."""
     cfg = Config.load()
-    project_id = detect_project()
+    project_id = detect_project(worktree_shared=cfg.worktree_shared)
     svc = TodoService(cfg, project_id)
 
     item = _find_item_by_partial_id(svc, id)
@@ -173,7 +175,7 @@ def ai(
         raise typer.Exit(1)
 
     cfg = Config.load()
-    project_id = detect_project()
+    project_id = detect_project(worktree_shared=cfg.worktree_shared)
     svc = TodoService(cfg, project_id)
 
     from dodo.ai import run_ai
@@ -201,13 +203,12 @@ def init(
     local: Annotated[bool, typer.Option("--local", help="Store todos in project dir")] = False,
 ):
     """Initialize dodo for current project."""
-    project_id = detect_project()
+    cfg = Config.load()
+    project_id = detect_project(worktree_shared=cfg.worktree_shared)
 
     if not project_id:
         console.print("[red]Error:[/red] Not in a git repository")
         raise typer.Exit(1)
-
-    cfg = Config.load()
 
     if local:
         cfg.set("local_storage", True)
@@ -234,7 +235,7 @@ def export(
     if global_:
         project_id = None
     else:
-        project_id = detect_project()
+        project_id = detect_project(worktree_shared=cfg.worktree_shared)
 
     svc = TodoService(cfg, project_id)
     items = svc.list()
@@ -273,7 +274,7 @@ def info(
         project_id = None
         target = "global"
     else:
-        project_id = detect_project()
+        project_id = detect_project(worktree_shared=cfg.worktree_shared)
         target = project_id or "global"
 
     svc = TodoService(cfg, project_id)

@@ -30,7 +30,7 @@ console = Console()
 def interactive_menu() -> None:
     """Main interactive menu when running bare 'dodo'."""
     cfg = Config.load()
-    project_id = detect_project()
+    project_id = detect_project(worktree_shared=cfg.worktree_shared)
     target = project_id or "global"
     svc = TodoService(cfg, project_id)
     ui = RichTerminalMenu()
@@ -307,7 +307,7 @@ def _interactive_switch(
     from dodo.project import detect_worktree_parent
 
     # Detect what the current directory's project would be
-    detected = detect_project()
+    detected = detect_project(worktree_shared=cfg.worktree_shared)
     detected_name = detected or "global"
 
     # Detect if in a worktree with a parent repo
@@ -344,9 +344,7 @@ def _interactive_switch(
     elif selected.startswith("Switch to ") and "(current dir)" in selected:
         return detected, detected_name
     elif "enable worktree sharing" in selected:
-        # Enable worktree sharing (requires local_storage to work)
         cfg.set("worktree_shared", True)
-        cfg.set("local_storage", True)
         return parent_id, parent_root.name if parent_root else parent_id
     elif selected == "Enter project name":
         name = ui.input("Project name:")
@@ -791,11 +789,6 @@ def _unified_settings_loop(
                             rebuild_adapter_options()
                         else:
                             save_item(item_key, pending[item_key])
-                            # worktree_shared requires local_storage to work
-                            if item_key == "worktree_shared" and pending[item_key]:
-                                pending["local_storage"] = True
-                                save_item("local_storage", True)
-                                status_msg = "[dim]Local storage enabled (required for worktree sharing)[/dim]"
                     elif kind == "cycle" and options:
                         current_val = str(pending[item_key])
                         if current_val in options:
