@@ -634,7 +634,7 @@ def _unified_settings_loop(
             elif kind == "action":
                 # Use arrow icon for migrate actions
                 base = f"{marker}→ [cyan]{label}[/cyan]"
-                padding = max(0, desc_col - len(label) - 5)
+                padding = max(0, desc_col - len(label) - 6)
                 desc_str = f"{' ' * padding}[dim]{desc}[/dim]" if desc else ""
                 line = f"{base}{desc_str}"
             else:  # edit
