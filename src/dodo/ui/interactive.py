@@ -1,6 +1,7 @@
 """Interactive menu."""
 
 import sys
+from pathlib import Path
 
 import readchar
 from rich.console import Console
@@ -73,7 +74,7 @@ def interactive_menu() -> None:
         elif choice == 1:
             _interactive_add(svc, ui, target)
         elif choice == 2:
-            interactive_config()
+            interactive_config(project_id)
             # Reload config and service in case adapter changed
             from dodo.config import clear_config_cache
 
@@ -380,18 +381,37 @@ def _get_available_adapters(enabled_plugins: set[str], registry: dict) -> list[s
     return adapters
 
 
-def _detect_other_adapter_files(cfg: Config, current_adapter: str) -> list[tuple[str, int]]:
+def _get_storage_paths(cfg: Config, project_id: str | None) -> tuple[Path, Path]:
+    """Get markdown and sqlite paths for current context."""
+    from dodo.project import detect_project_root
+
+    config_dir = cfg.config_dir
+
+    # Determine base path
+    if cfg.local_storage and project_id:
+        root = detect_project_root(worktree_shared=cfg.worktree_shared)
+        if root:
+            return root / "dodo.md", root / ".dodo" / "todos.db"
+
+    if project_id:
+        project_dir = config_dir / "projects" / project_id
+        return project_dir / "todo.md", project_dir / "todos.db"
+
+    return config_dir / "todo.md", config_dir / "todos.db"
+
+
+def _detect_other_adapter_files(
+    cfg: Config, current_adapter: str, project_id: str | None
+) -> list[tuple[str, int]]:
     """Detect other adapter storage files with todo counts.
 
     Returns list of (adapter_name, todo_count) for adapters with data.
     """
-
     results = []
-    config_dir = cfg.config_dir
+    md_path, db_path = _get_storage_paths(cfg, project_id)
 
     # Check markdown
     if current_adapter != "markdown":
-        md_path = config_dir / "todo.md"
         if md_path.exists():
             from dodo.adapters.markdown import MarkdownAdapter
 
@@ -405,7 +425,6 @@ def _detect_other_adapter_files(cfg: Config, current_adapter: str) -> list[tuple
 
     # Check sqlite
     if current_adapter != "sqlite":
-        db_path = config_dir / "todos.db"
         if db_path.exists():
             from dodo.plugins.sqlite.adapter import SqliteAdapter
 
@@ -424,7 +443,9 @@ def _detect_other_adapter_files(cfg: Config, current_adapter: str) -> list[tuple
 SettingsItem = tuple[str, str, str, list[str] | None, str | None, str | None]
 
 
-def _build_settings_items(cfg: Config) -> tuple[list[SettingsItem], dict[str, object]]:
+def _build_settings_items(
+    cfg: Config, project_id: str | None = None
+) -> tuple[list[SettingsItem], dict[str, object]]:
     """Build combined settings items list with plugins."""
     from dodo.cli_plugins import _load_registry
     from dodo.plugins import get_all_plugins
@@ -440,35 +461,11 @@ def _build_settings_items(cfg: Config) -> tuple[list[SettingsItem], dict[str, ob
     items.append(("_header", "── General ──", "divider", None, None, None))
 
     general: list[tuple[str, str, str, list[str] | None, str | None]] = [
-        (
-            "worktree_shared",
-            "Worktree sharing",
-            "toggle",
-            None,
-            "Use same todos for all worktrees of a repo",
-        ),
-        (
-            "local_storage",
-            "Local storage",
-            "toggle",
-            None,
-            "Store todos in .dodo/ within project",
-        ),
-        (
-            "timestamps_enabled",
-            "Timestamps",
-            "toggle",
-            None,
-            "Show created/completed times in list",
-        ),
-        (
-            "default_adapter",
-            "Adapter",
-            "cycle",
-            available_adapters,
-            "Storage backend (enable plugins for more)",
-        ),
-        ("editor", "Editor", "edit", None, "Command to open for editing ($EDITOR if empty)"),
+        ("worktree_shared", "Worktree sharing", "toggle", None, "share across worktrees"),
+        ("local_storage", "Local storage", "toggle", None, "use .dodo/ in project"),
+        ("timestamps_enabled", "Timestamps", "toggle", None, "show times in list"),
+        ("default_adapter", "Adapter", "cycle", available_adapters, "storage backend"),
+        ("editor", "Editor", "edit", None, "defaults to $EDITOR"),
     ]
 
     for key, label, kind, options, desc in general:
@@ -476,7 +473,7 @@ def _build_settings_items(cfg: Config) -> tuple[list[SettingsItem], dict[str, ob
         pending[key] = getattr(cfg, key)
 
     # Check for migrate options (other adapters with data)
-    other_adapters = _detect_other_adapter_files(cfg, cfg.default_adapter)
+    other_adapters = _detect_other_adapter_files(cfg, cfg.default_adapter, project_id)
     for adapter_name, count in other_adapters:
         migrate_key = f"_migrate_{adapter_name}"
         items.append(
@@ -513,19 +510,21 @@ def _build_settings_items(cfg: Config) -> tuple[list[SettingsItem], dict[str, ob
     return items, pending
 
 
-def _run_migration(cfg: Config, source_adapter: str, target_adapter: str) -> str:
+def _run_migration(
+    cfg: Config, source_adapter: str, target_adapter: str, project_id: str | None
+) -> str:
     """Run migration from source to target adapter. Returns status message."""
-    config_dir = cfg.config_dir
+    md_path, db_path = _get_storage_paths(cfg, project_id)
 
     # Get source adapter instance
     if source_adapter == "markdown":
         from dodo.adapters.markdown import MarkdownAdapter
 
-        source = MarkdownAdapter(config_dir / "todo.md")
+        source = MarkdownAdapter(md_path)
     elif source_adapter == "sqlite":
         from dodo.plugins.sqlite.adapter import SqliteAdapter
 
-        source = SqliteAdapter(config_dir / "todos.db")
+        source = SqliteAdapter(db_path)
     else:
         return f"[red]Unknown source adapter: {source_adapter}[/red]"
 
@@ -533,11 +532,11 @@ def _run_migration(cfg: Config, source_adapter: str, target_adapter: str) -> str
     if target_adapter == "markdown":
         from dodo.adapters.markdown import MarkdownAdapter
 
-        target = MarkdownAdapter(config_dir / "todo.md")
+        target = MarkdownAdapter(md_path)
     elif target_adapter == "sqlite":
         from dodo.plugins.sqlite.adapter import SqliteAdapter
 
-        target = SqliteAdapter(config_dir / "todos.db")
+        target = SqliteAdapter(db_path)
     else:
         return f"[red]Unknown target adapter: {target_adapter}[/red]"
 
@@ -563,6 +562,7 @@ def _unified_settings_loop(
     cfg: Config,
     items: list[SettingsItem],
     pending: dict[str, object],
+    project_id: str | None = None,
 ) -> None:
     """Unified settings editor with divider support and dynamic adapter cycling."""
     from dodo.cli_plugins import _load_registry
@@ -588,8 +588,12 @@ def _unified_settings_loop(
         console.print("[dim]↑↓ navigate · space/enter change · q exit[/dim]")
         console.print()
 
+        # Fixed column for descriptions (after label + value)
+        desc_col = 38
+
         for i, (key, label, kind, options, plugin_name, desc) in enumerate(items):
             if kind == "divider":
+                sys.stdout.write("\033[K")
                 console.print(f"  [dim]{label}[/dim]")
                 continue
 
@@ -598,25 +602,41 @@ def _unified_settings_loop(
 
             if kind == "toggle":
                 icon = "[green]✓[/green]" if value else "[dim]○[/dim]"
-                desc_str = f" [dim]({desc})[/dim]" if desc else ""
-                line = f"{marker}{icon} {label}{desc_str}"
+                base = f"{marker}{icon} {label}"
+                # Pad to align descriptions
+                padding = max(0, desc_col - len(label) - 6)
+                desc_str = f"{' ' * padding}[dim]{desc}[/dim]" if desc else ""
+                line = f"{base}{desc_str}"
             elif kind == "cycle":
-                desc_str = f" [dim]({desc})[/dim]" if desc else ""
-                line = f"{marker}  {label}: [yellow]{value}[/yellow]{desc_str}"
+                base = f"{marker}  {label}: [yellow]{value}[/yellow]"
+                padding = max(0, desc_col - len(label) - len(str(value)) - 6)
+                desc_str = f"{' ' * padding}[dim]{desc}[/dim]" if desc else ""
+                line = f"{base}{desc_str}"
             elif kind == "action":
-                desc_str = f" [dim]({desc})[/dim]" if desc else ""
-                line = f"{marker}  [cyan]{label}[/cyan]{desc_str}"
+                # Use arrow icon for migrate actions
+                base = f"{marker}→ [cyan]{label}[/cyan]"
+                padding = max(0, desc_col - len(label) - 5)
+                desc_str = f"{' ' * padding}[dim]{desc}[/dim]" if desc else ""
+                line = f"{base}{desc_str}"
             else:  # edit
                 display = str(value).replace("\n", "↵")[:CONFIG_DISPLAY_MAX_LEN]
                 if len(str(value)) > CONFIG_DISPLAY_MAX_LEN:
                     display += "..."
                 if display:
-                    line = f"{marker}  {label}: [dim]{display}[/dim]"
+                    base = f"{marker}  {label}: [dim]{display}[/dim]"
                 else:
-                    line = f"{marker}  {label}: [red](not set)[/red]"
+                    base = f"{marker}  {label}: [red](not set)[/red]"
+                padding = max(0, desc_col - len(label) - len(display) - 6)
+                desc_str = f"{' ' * padding}[dim]{desc}[/dim]" if desc else ""
+                line = f"{base}{desc_str}"
             # Clear to end of line to prevent artifacts from longer previous text
             sys.stdout.write("\033[K")
             console.print(line)
+
+        # Clear any remaining lines from previous render (e.g., after removing migrate row)
+        for _ in range(3):
+            sys.stdout.write("\033[K\n")
+        sys.stdout.write("\033[3A")  # Move back up
 
         # Status message
         if status_msg:
@@ -692,7 +712,9 @@ def _unified_settings_loop(
                     elif kind == "action" and item_key.startswith("_migrate_"):
                         # Run migration
                         source_adapter = str(pending[item_key])
-                        result = _run_migration(cfg, source_adapter, cfg.default_adapter)
+                        result = _run_migration(
+                            cfg, source_adapter, cfg.default_adapter, project_id
+                        )
                         status_msg = result
                         # Remove migrate row and rebuild navigable indices
                         for idx, item in enumerate(items):
@@ -721,11 +743,11 @@ def _unified_settings_loop(
         break
 
 
-def interactive_config() -> None:
+def interactive_config(project_id: str | None = None) -> None:
     """Interactive unified settings editor."""
     cfg = Config.load()
-    items, pending = _build_settings_items(cfg)
-    _unified_settings_loop(cfg, items, pending)
+    items, pending = _build_settings_items(cfg, project_id)
+    _unified_settings_loop(cfg, items, pending, project_id)
 
 
 def _general_config(cfg: Config) -> None:
