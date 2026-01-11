@@ -21,6 +21,16 @@ __all__ = [
     "apply_hooks",
     "clear_plugin_cache",
     "get_all_plugins",
+    # Exposed for cli_plugins.py
+    "_detect_hooks",
+    "_detect_commands",
+    "_detect_formatters",
+    "_scan_plugin_dir",
+    "_scan_and_save",
+    "_load_registry",
+    "_import_plugin",
+    "_KNOWN_HOOKS",
+    "_BUILTIN_PLUGINS_DIR",
 ]
 
 T = TypeVar("T")

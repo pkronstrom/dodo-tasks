@@ -10,6 +10,15 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+# Import plugin utilities from canonical location (DRY)
+from dodo.plugins import (
+    _detect_hooks,
+    _scan_and_save,
+)
+from dodo.plugins import (
+    _load_registry as _load_registry_cached,
+)
+
 console = Console()
 
 # Typer subapp for plugins
@@ -18,19 +27,6 @@ plugins_app = typer.Typer(
     help="Manage dodo plugins.",
     no_args_is_help=True,
 )
-
-# Built-in plugin locations
-BUILTIN_PLUGINS_DIR = Path(__file__).parent / "plugins"
-USER_PLUGINS_DIR = Path.home() / ".config" / "dodo" / "plugins"
-
-# Known hooks that plugins can implement
-KNOWN_HOOKS = [
-    "register_commands",
-    "register_config",
-    "register_adapter",
-    "extend_adapter",
-    "extend_formatter",
-]
 
 
 def _get_config_dir() -> Path:
@@ -42,9 +38,7 @@ def _get_config_dir() -> Path:
 
 def _load_registry() -> dict:
     """Load plugin registry from JSON file (uses cached version from plugins module)."""
-    from dodo.plugins import _load_registry as load_registry_cached
-
-    return load_registry_cached(_get_config_dir())
+    return _load_registry_cached(_get_config_dir())
 
 
 def _save_registry(registry: dict) -> None:
@@ -55,143 +49,10 @@ def _save_registry(registry: dict) -> None:
     registry_path.write_text(json.dumps(registry, indent=2))
 
 
-def _detect_hooks(plugin_path: Path) -> list[str]:
-    """Detect which hooks a plugin implements by inspecting its __init__.py."""
-    init_file = plugin_path / "__init__.py"
-    if not init_file.exists():
-        return []
-
-    hooks = []
-    content = init_file.read_text()
-
-    for hook in KNOWN_HOOKS:
-        # Check for function definition
-        if f"def {hook}(" in content:
-            hooks.append(hook)
-
-    return hooks
-
-
-def _detect_commands(plugin_path: Path) -> list[str]:
-    """Detect COMMANDS declaration in plugin __init__.py."""
-    import re
-
-    init_file = plugin_path / "__init__.py"
-    if not init_file.exists():
-        return []
-
-    content = init_file.read_text()
-    match = re.search(r"COMMANDS\s*=\s*\[([^\]]*)\]", content)
-    if match:
-        items = match.group(1)
-        return [s.strip().strip("\"'") for s in items.split(",") if s.strip().strip("\"'")]
-    return []
-
-
-def _detect_formatters(plugin_path: Path) -> list[str]:
-    """Detect FORMATTERS declaration in plugin __init__.py."""
-    import re
-
-    init_file = plugin_path / "__init__.py"
-    if not init_file.exists():
-        return []
-
-    content = init_file.read_text()
-    match = re.search(r"FORMATTERS\s*=\s*\[([^\]]*)\]", content)
-    if match:
-        items = match.group(1)
-        return [s.strip().strip("\"'") for s in items.split(",") if s.strip().strip("\"'")]
-    return []
-
-
-def _scan_plugin_dir(plugins_dir: Path, builtin: bool) -> dict[str, dict]:
-    """Scan a directory for Python module plugins."""
-    plugins = {}
-
-    if not plugins_dir.exists():
-        return plugins
-
-    for entry in plugins_dir.iterdir():
-        if not entry.is_dir():
-            continue
-        if entry.name.startswith((".", "_")):
-            continue
-        if entry.name == "__pycache__":
-            continue
-
-        init_file = entry / "__init__.py"
-        if not init_file.exists():
-            continue
-
-        # Read manifest if exists
-        manifest_file = entry / "plugin.json"
-        if manifest_file.exists():
-            manifest = json.loads(manifest_file.read_text())
-            name = manifest.get("name", entry.name)
-            version = manifest.get("version", "0.0.0")
-            description = manifest.get("description", "")
-        else:
-            # Fallback to parsing __init__.py for name
-            name = entry.name
-            version = "0.0.0"
-            description = ""
-            content = init_file.read_text()
-            for line in content.splitlines():
-                if line.strip().startswith("name ="):
-                    try:
-                        name = line.split("=", 1)[1].strip().strip("'\"")
-                    except IndexError:
-                        pass
-                    break
-
-        hooks = _detect_hooks(entry)
-        commands = _detect_commands(entry)
-        formatters = _detect_formatters(entry)
-
-        if not hooks and not commands and not formatters:
-            continue  # Skip plugins with nothing to offer
-
-        plugin_info: dict = {
-            "builtin": builtin,
-            "hooks": hooks,
-            "commands": commands,
-            "formatters": formatters,
-            "version": version,
-            "description": description,
-        }
-        if not builtin:
-            plugin_info["path"] = str(entry)
-
-        plugins[name] = plugin_info
-
-    return plugins
-
-
-def _scan_and_save_to(config_dir: Path) -> dict:
-    """Scan plugins and save registry to specified config dir."""
-    registry: dict = {}
-
-    # Scan built-in plugins
-    builtin_plugins = _scan_plugin_dir(BUILTIN_PLUGINS_DIR, builtin=True)
-    registry.update(builtin_plugins)
-
-    # Scan user plugins
-    user_plugins_dir = config_dir / "plugins"
-    user_plugins = _scan_plugin_dir(user_plugins_dir, builtin=False)
-    registry.update(user_plugins)
-
-    # Save
-    config_dir.mkdir(parents=True, exist_ok=True)
-    registry_path = config_dir / "plugin_registry.json"
-    registry_path.write_text(json.dumps(registry, indent=2))
-
-    return registry
-
-
 @plugins_app.command()
 def scan() -> None:
     """Scan plugin directories and update the registry."""
-    from dodo.plugins import _scan_and_save, clear_plugin_cache
+    from dodo.plugins import clear_plugin_cache
 
     # Clear cache and rescan
     clear_plugin_cache()
