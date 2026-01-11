@@ -40,6 +40,10 @@ def interactive_menu() -> None:
         pending = sum(1 for i in items if i.status == Status.PENDING)
         done = sum(1 for i in items if i.status == Status.DONE)
 
+        # Get storage path for display
+        storage_path = _get_project_storage_path(cfg, project_id, cfg.worktree_shared)
+        storage_display = _shorten_path(storage_path)
+
         # Adaptive panel width
         term_width = console.width or DEFAULT_PANEL_WIDTH
         panel_width = min(84, term_width)  # max 80 + 4 for borders
@@ -48,7 +52,7 @@ def interactive_menu() -> None:
         console.print(
             Panel(
                 f"[bold]Project:[/bold] {target}\n"
-                f"[bold]Backend:[/bold] {cfg.default_adapter}\n"
+                f"[bold]Storage:[/bold] [dim]{storage_display}[/dim]\n"
                 f"[bold]Todos:[/bold] {pending} pending, {done} done",
                 title="dodo",
                 border_style="blue",
@@ -362,8 +366,8 @@ def _interactive_switch(
     )
     current_path = _get_project_storage_path(cfg, current_project_id, cfg.worktree_shared)
 
-    # Build options: (key, name, path)
-    options: list[tuple[str, str, Path | None]] = []
+    # Build options: (key, name, path_display)
+    options: list[tuple[str, str, str | Path | None]] = []
 
     if current_target != "global":
         global_path = _get_project_storage_path(cfg, None, False)
@@ -379,7 +383,9 @@ def _interactive_switch(
         parent_path = _get_project_storage_path(cfg, parent_id, True)
         options.append(("parent", parent_name, parent_path))
 
-    options.append(("custom", "Enter project name", None))
+    # New project path template
+    new_project_path = _shorten_path(cfg.config_dir / "projects" / "<name>" / "dodo.md")
+    options.append(("custom", "New", new_project_path))
 
     cursor = 0
 
@@ -394,7 +400,7 @@ def _interactive_switch(
         for i, (key, name, path) in enumerate(options):
             marker = "[cyan]>[/cyan] " if i == cursor else "  "
             if key == "custom":
-                line = f"{marker}[yellow]{name}[/yellow]"
+                line = f"{marker}[yellow]{name}[/yellow]  [dim]{path}[/dim]"
             else:
                 path_str = f"  [dim]{_shorten_path(path)}[/dim]" if path else ""
                 line = f"{marker}[bold]{name}[/bold]{path_str}"
