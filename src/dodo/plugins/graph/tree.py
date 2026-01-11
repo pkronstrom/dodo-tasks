@@ -110,13 +110,13 @@ class TreeFormatter:
         # Render using rich Tree
         rendered: set[str] = set()
 
-        def format_item(item, depth: int = 0) -> str:
+        def format_item(item, depth: int = 0, has_more_siblings: bool = False) -> str:
             item_id = self._get_id(item)
             is_done = self._get_status(item) == Status.DONE
             text = self._get_text(item)
 
-            # Colorblind-safe: blue for done, orange for pending
-            icon = "[dodger_blue2]✓[/dodger_blue2]" if is_done else "[dark_orange]•[/dark_orange]"
+            # Colorblind-safe: blue for done, dim for pending (lighter than orange)
+            icon = "[dodger_blue2]✓[/dodger_blue2]" if is_done else "[dim]•[/dim]"
             id_str = f"[dim]{item_id[:8]}[/dim]"
 
             # Calculate available width for text
@@ -127,17 +127,26 @@ class TreeFormatter:
 
             # Child count indicator
             kids = children.get(item_id, [])
-            suffix = f" [orange1]→{len(kids)}[/orange1]" if kids and not is_done else ""
+            suffix = f" [dodger_blue2]→{len(kids)}[/dodger_blue2]" if kids and not is_done else ""
             suffix_len = len(f" →{len(kids)}") if kids and not is_done else 0
 
             # Wrap text
             text_width = max(20, available - suffix_len)
-            lines = self._wrap_text(text, text_width, indent=2)
+            lines = self._wrap_text(text, text_width, indent=0)
 
             # Truncate to max lines
             if len(lines) > self.MAX_LINES:
                 lines = lines[: self.MAX_LINES - 1]
                 lines.append("…")
+
+            # Continuation line prefix: preserve tree branch if node has children
+            # "• abc12345 " = 11 chars, but icon is 1 char visually
+            cont_indent = "           "  # 11 spaces to align under text
+            if kids:
+                # Show vertical bar to indicate tree continues
+                cont_prefix = f"[dim]│[/dim]{cont_indent[1:]}"
+            else:
+                cont_prefix = cont_indent
 
             # Format output
             if is_done:
@@ -145,7 +154,7 @@ class TreeFormatter:
                 first_line = f"{icon} {id_str} [dim strike]{lines[0]}[/dim strike]"
                 if len(lines) > 1:
                     continuation = "\n".join(
-                        f"             [dim strike]{line}[/dim strike]" for line in lines[1:]
+                        f"{cont_prefix}[dim strike]{line}[/dim strike]" for line in lines[1:]
                     )
                     return f"{first_line}\n{continuation}"
                 return first_line
@@ -153,7 +162,7 @@ class TreeFormatter:
                 # Pending items
                 first_line = f"{icon} {id_str} {lines[0]}{suffix}"
                 if len(lines) > 1:
-                    continuation = "\n".join(f"             {line}" for line in lines[1:])
+                    continuation = "\n".join(f"{cont_prefix}{line}" for line in lines[1:])
                     return f"{first_line}\n{continuation}"
                 return first_line
 
