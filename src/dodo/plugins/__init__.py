@@ -38,20 +38,26 @@ def clear_plugin_cache() -> None:
 
 
 def _load_registry(config_dir: Path) -> dict:
-    """Load registry from file, with caching. Auto-scan if missing."""
+    """Load registry from file, with caching. Auto-scan if missing or corrupted."""
     global _registry_cache
     if _registry_cache is not None:
         return _registry_cache
 
     path = config_dir / "plugin_registry.json"
     if path.exists():
-        _registry_cache = json.loads(path.read_text())
-    else:
-        # Auto-scan on first run
-        from dodo.cli_plugins import _scan_and_save_to
+        try:
+            content = path.read_text()
+            if content.strip():
+                _registry_cache = json.loads(content)
+                return _registry_cache
+        except json.JSONDecodeError:
+            # Corrupted registry - rescan
+            pass
 
-        _registry_cache = _scan_and_save_to(config_dir)
+    # Auto-scan on first run or if corrupted
+    from dodo.cli_plugins import _scan_and_save_to
 
+    _registry_cache = _scan_and_save_to(config_dir)
     return _registry_cache
 
 
