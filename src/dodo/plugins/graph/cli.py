@@ -25,7 +25,7 @@ def _get_graph_adapter():
     from dodo.project import detect_project
 
     cfg = Config.load()
-    project_id = detect_project()
+    project_id = detect_project(worktree_shared=cfg.worktree_shared)
     svc = TodoService(cfg, project_id)
 
     adapter = svc._adapter

@@ -14,18 +14,26 @@ def clear_project_cache() -> None:
     _project_cache.clear()
 
 
-def detect_project(path: Path | None = None) -> str | None:
+def detect_project(path: Path | None = None, worktree_shared: bool = False) -> str | None:
     """Detect project ID from current directory.
+
+    Args:
+        path: Directory to detect from (default: cwd)
+        worktree_shared: If True, use parent repo root for worktrees
 
     Returns: project_id (e.g., 'myapp_d1204e') or None if not in a project.
     """
     path = path or Path.cwd()
-    cache_key = str(path.resolve())
+    cache_key = f"{path.resolve()}:{worktree_shared}"
 
     if cache_key in _project_cache:
         return _project_cache[cache_key]
 
-    git_root = _get_git_root(path)
+    if worktree_shared:
+        git_root = _get_git_common_root(path)
+    else:
+        git_root = _get_git_root(path)
+
     if not git_root:
         _project_cache[cache_key] = None
         return None
