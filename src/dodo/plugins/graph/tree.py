@@ -33,13 +33,14 @@ class TreeFormatter:
         return item.status
 
     def format(self, items: list[TodoItemView]) -> str:
-        """Format items as a dependency tree."""
-        from rich.console import Console
+        """Format items as a dependency tree.
+
+        Returns a Rich-renderable Tree object that will be printed by cli.py.
+        """
+        from rich.console import Group
         from rich.tree import Tree
 
         from dodo.models import Status
-
-        console = Console()
 
         # Build lookup by ID
         by_id = {self._get_id(item): item for item in items}
@@ -100,9 +101,5 @@ class TreeFormatter:
             add_children(tree, item_id)
             trees.append(tree)
 
-        # Render to string
-        with console.capture() as capture:
-            for tree in trees:
-                console.print(tree)
-
-        return capture.get().rstrip()
+        # Return a Group of trees - Rich will render this properly
+        return Group(*trees)
