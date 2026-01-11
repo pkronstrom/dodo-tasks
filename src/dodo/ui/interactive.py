@@ -74,6 +74,12 @@ def interactive_menu() -> None:
             _interactive_add(svc, ui, target)
         elif choice == 2:
             interactive_config()
+            # Reload config and service in case adapter changed
+            from dodo.config import clear_config_cache
+
+            clear_config_cache()
+            cfg = Config.load()
+            svc = TodoService(cfg, project_id)
         elif choice == 3:
             project_id, target = _interactive_switch(ui)
             svc = TodoService(cfg, project_id)
@@ -374,6 +380,46 @@ def _get_available_adapters(enabled_plugins: set[str], registry: dict) -> list[s
     return adapters
 
 
+def _detect_other_adapter_files(cfg: Config, current_adapter: str) -> list[tuple[str, int]]:
+    """Detect other adapter storage files with todo counts.
+
+    Returns list of (adapter_name, todo_count) for adapters with data.
+    """
+
+    results = []
+    config_dir = cfg.config_dir
+
+    # Check markdown
+    if current_adapter != "markdown":
+        md_path = config_dir / "todo.md"
+        if md_path.exists():
+            from dodo.adapters.markdown import MarkdownAdapter
+
+            try:
+                adapter = MarkdownAdapter(md_path)
+                count = len(adapter.list())
+                if count > 0:
+                    results.append(("markdown", count))
+            except Exception:
+                pass
+
+    # Check sqlite
+    if current_adapter != "sqlite":
+        db_path = config_dir / "todos.db"
+        if db_path.exists():
+            from dodo.plugins.sqlite.adapter import SqliteAdapter
+
+            try:
+                adapter = SqliteAdapter(db_path)
+                count = len(adapter.list())
+                if count > 0:
+                    results.append(("sqlite", count))
+            except Exception:
+                pass
+
+    return results
+
+
 # Settings item format: (key, label, kind, options, plugin_name|None, description|None)
 SettingsItem = tuple[str, str, str, list[str] | None, str | None, str | None]
 
@@ -429,6 +475,22 @@ def _build_settings_items(cfg: Config) -> tuple[list[SettingsItem], dict[str, ob
         items.append((key, label, kind, options, None, desc))
         pending[key] = getattr(cfg, key)
 
+    # Check for migrate options (other adapters with data)
+    other_adapters = _detect_other_adapter_files(cfg, cfg.default_adapter)
+    for adapter_name, count in other_adapters:
+        migrate_key = f"_migrate_{adapter_name}"
+        items.append(
+            (
+                migrate_key,
+                f"  Migrate from {adapter_name}",
+                "action",
+                None,
+                None,
+                f"{count} todos available",
+            )
+        )
+        pending[migrate_key] = adapter_name  # Store source adapter name
+
     # Empty line + Plugins header
     items.append(("_spacer", "", "divider", None, None, None))
     items.append(("_divider", "── Plugins ──", "divider", None, None, None))
@@ -449,6 +511,52 @@ def _build_settings_items(cfg: Config) -> tuple[list[SettingsItem], dict[str, ob
             pending[env.name] = getattr(cfg, env.name, env.default) or ""
 
     return items, pending
+
+
+def _run_migration(cfg: Config, source_adapter: str, target_adapter: str) -> str:
+    """Run migration from source to target adapter. Returns status message."""
+    config_dir = cfg.config_dir
+
+    # Get source adapter instance
+    if source_adapter == "markdown":
+        from dodo.adapters.markdown import MarkdownAdapter
+
+        source = MarkdownAdapter(config_dir / "todo.md")
+    elif source_adapter == "sqlite":
+        from dodo.plugins.sqlite.adapter import SqliteAdapter
+
+        source = SqliteAdapter(config_dir / "todos.db")
+    else:
+        return f"[red]Unknown source adapter: {source_adapter}[/red]"
+
+    # Get target adapter instance
+    if target_adapter == "markdown":
+        from dodo.adapters.markdown import MarkdownAdapter
+
+        target = MarkdownAdapter(config_dir / "todo.md")
+    elif target_adapter == "sqlite":
+        from dodo.plugins.sqlite.adapter import SqliteAdapter
+
+        target = SqliteAdapter(config_dir / "todos.db")
+    else:
+        return f"[red]Unknown target adapter: {target_adapter}[/red]"
+
+    # Export from source
+    try:
+        items = source.export_all()
+    except Exception as e:
+        return f"[red]Export failed: {e}[/red]"
+
+    if not items:
+        return "[yellow]No todos to migrate[/yellow]"
+
+    # Import to target
+    try:
+        imported, skipped = target.import_all(items)
+    except Exception as e:
+        return f"[red]Import failed: {e}[/red]"
+
+    return f"[green]Migrated {imported} todos[/green] ({skipped} already existed)"
 
 
 def _unified_settings_loop(
@@ -490,16 +598,14 @@ def _unified_settings_loop(
 
             if kind == "toggle":
                 icon = "[green]✓[/green]" if value else "[dim]○[/dim]"
-                if plugin_name:
-                    # Plugin toggle - show description
-                    desc_str = f" [dim]{desc}[/dim]" if desc else ""
-                    line = f"{marker}{icon} {label}{desc_str}"
-                else:
-                    # General toggle
-                    line = f"{marker}{icon} {label}"
+                desc_str = f" [dim]({desc})[/dim]" if desc else ""
+                line = f"{marker}{icon} {label}{desc_str}"
             elif kind == "cycle":
                 desc_str = f" [dim]({desc})[/dim]" if desc else ""
                 line = f"{marker}  {label}: [yellow]{value}[/yellow]{desc_str}"
+            elif kind == "action":
+                desc_str = f" [dim]({desc})[/dim]" if desc else ""
+                line = f"{marker}  [cyan]{label}[/cyan]{desc_str}"
             else:  # edit
                 display = str(value).replace("\n", "↵")[:CONFIG_DISPLAY_MAX_LEN]
                 if len(str(value)) > CONFIG_DISPLAY_MAX_LEN:
@@ -583,6 +689,21 @@ def _unified_settings_loop(
                     elif kind == "edit":
                         edit_triggered = True
                         break
+                    elif kind == "action" and item_key.startswith("_migrate_"):
+                        # Run migration
+                        source_adapter = str(pending[item_key])
+                        result = _run_migration(cfg, source_adapter, cfg.default_adapter)
+                        status_msg = result
+                        # Remove migrate row and rebuild navigable indices
+                        for idx, item in enumerate(items):
+                            if item[0] == item_key:
+                                items.pop(idx)
+                                break
+                        navigable_indices[:] = [
+                            i for i, (_, _, k, *_) in enumerate(items) if k != "divider"
+                        ]
+                        if cursor >= len(navigable_indices):
+                            cursor = max(0, len(navigable_indices) - 1)
 
                 render()
 
