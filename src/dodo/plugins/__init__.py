@@ -18,19 +18,13 @@ if TYPE_CHECKING:
     from dodo.config import Config
 
 __all__ = [
+    # Public API
     "apply_hooks",
     "clear_plugin_cache",
     "get_all_plugins",
-    # Exposed for cli_plugins.py
-    "_detect_hooks",
-    "_detect_commands",
-    "_detect_formatters",
-    "_scan_plugin_dir",
-    "_scan_and_save",
-    "_load_registry",
-    "_import_plugin",
-    "_KNOWN_HOOKS",
-    "_BUILTIN_PLUGINS_DIR",
+    "load_registry",
+    "import_plugin",
+    "scan_and_save",
 ]
 
 T = TypeVar("T")
@@ -178,7 +172,7 @@ def _scan_plugin_dir(plugins_dir: Path, builtin: bool) -> dict[str, dict]:
     return plugins
 
 
-def _scan_and_save(config_dir: Path) -> dict:
+def scan_and_save(config_dir: Path) -> dict:
     """Scan plugins and save registry to specified config dir."""
     registry: dict = {}
 
@@ -199,7 +193,7 @@ def _scan_and_save(config_dir: Path) -> dict:
     return registry
 
 
-def _load_registry(config_dir: Path) -> dict:
+def load_registry(config_dir: Path) -> dict:
     """Load registry from file, with caching. Auto-scan if missing or corrupted."""
     global _registry_cache
     if _registry_cache is not None:
@@ -217,11 +211,11 @@ def _load_registry(config_dir: Path) -> dict:
             pass
 
     # Auto-scan on first run or if corrupted
-    _registry_cache = _scan_and_save(config_dir)
+    _registry_cache = scan_and_save(config_dir)
     return _registry_cache
 
 
-def _import_plugin(name: str, path: str | None) -> ModuleType:
+def import_plugin(name: str, path: str | None) -> ModuleType:
     """Import plugin module, with caching."""
     cache_key = path or name
     if cache_key in _plugin_cache:
@@ -253,7 +247,7 @@ def _get_enabled_plugins(hook: str, config: Config):
 
     All plugins require explicit enabling via config.
     """
-    registry = _load_registry(config.config_dir)
+    registry = load_registry(config.config_dir)
     enabled = config.enabled_plugins
 
     for name, info in registry.items():
@@ -266,7 +260,7 @@ def _get_enabled_plugins(hook: str, config: Config):
 
         # Import happens HERE - only for plugins with matching hook
         path = None if info.get("builtin") else info.get("path")
-        yield _import_plugin(name, path)
+        yield import_plugin(name, path)
 
 
 def apply_hooks(hook: str, target: T, config: Config) -> T:
@@ -298,6 +292,11 @@ class PluginEnvVar:
     required: bool
     is_set: bool
     current_value: str | None
+    # Optional fields from ConfigVar
+    label: str | None = None
+    kind: str = "edit"  # "toggle", "edit", "cycle"
+    options: list[str] | None = None
+    description: str | None = None
 
 
 @dataclass
@@ -320,7 +319,7 @@ def get_all_plugins() -> list[PluginInfo]:
     from dodo.config import Config
 
     config = Config.load()
-    registry = _load_registry(config.config_dir)
+    registry = load_registry(config.config_dir)
     enabled_set = config.enabled_plugins
 
     plugins = []
@@ -333,7 +332,7 @@ def get_all_plugins() -> list[PluginInfo]:
         if "register_config" in hooks:
             try:
                 path = None if info.get("builtin") else info.get("path")
-                module = _import_plugin(name, path)
+                module = import_plugin(name, path)
                 register_config = getattr(module, "register_config", None)
                 if register_config:
                     for cfg_var in register_config():
@@ -349,6 +348,11 @@ def get_all_plugins() -> list[PluginInfo]:
                                 required=not cfg_var.default,
                                 is_set=is_set,
                                 current_value=env_val or config_val or None,
+                                # Copy optional fields from ConfigVar
+                                label=getattr(cfg_var, "label", None),
+                                kind=getattr(cfg_var, "kind", "edit"),
+                                options=getattr(cfg_var, "options", None),
+                                description=getattr(cfg_var, "description", None),
                             )
                         )
             except (ImportError, AttributeError, TypeError):

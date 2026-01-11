@@ -20,19 +20,7 @@ class JsonlFormatter:
 
         lines = []
         for item in items:
-            # to_dict() handles both TodoItem and TodoItemView
-            if hasattr(item, "to_dict"):
-                obj = item.to_dict()
-            else:
-                # Fallback for plain items
-                obj = {
-                    "id": item.id,
-                    "text": item.text,
-                    "status": item.status.value,
-                    "created_at": item.created_at.isoformat(),
-                    "completed_at": item.completed_at.isoformat() if item.completed_at else None,
-                    "project": item.project,
-                }
-            lines.append(json.dumps(obj))
+            # Both TodoItem and TodoItemView implement to_dict()
+            lines.append(json.dumps(item.to_dict()))
 
         return "\n".join(lines)
