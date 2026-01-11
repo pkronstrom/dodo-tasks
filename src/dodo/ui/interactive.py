@@ -384,38 +384,50 @@ def _interactive_switch(
     cursor = 0
 
     def render() -> None:
-        sys.stdout.write("\033[H\033[J")  # Clear screen
-        console.print("[bold]Switch Project[/bold]")
+        sys.stdout.write("\033[H")  # Move to top
+        console.print("[bold]Switch Project[/bold]                              ")
         console.print()
         console.print(f"  [dim]current:[/dim] [cyan]{current_target}[/cyan]")
         console.print(f"  [dim]storage:[/dim] [dim]{_shorten_path(current_path)}[/dim]")
-        console.print()
-        console.print("[dim]↑↓ navigate · enter select · q cancel[/dim]")
         console.print()
 
         for i, (key, name, path) in enumerate(options):
             marker = "[cyan]>[/cyan] " if i == cursor else "  "
             if key == "custom":
-                console.print(f"{marker}[yellow]{name}[/yellow]")
+                line = f"{marker}[yellow]{name}[/yellow]"
             else:
                 path_str = f"  [dim]{_shorten_path(path)}[/dim]" if path else ""
-                console.print(f"{marker}[bold]{name}[/bold]{path_str}")
+                line = f"{marker}[bold]{name}[/bold]{path_str}"
+            sys.stdout.write("\033[K")  # Clear line
+            console.print(line)
 
-    while True:
-        render()
-        try:
-            key = readchar.readkey()
-        except KeyboardInterrupt:
-            return None if current_target == "global" else current_target, current_target
+        console.print()
+        console.print("[dim]↑↓ navigate · enter select · q cancel[/dim]")
 
-        if key in (readchar.key.UP, "k"):
-            cursor = (cursor - 1) % len(options)
-        elif key in (readchar.key.DOWN, "j"):
-            cursor = (cursor + 1) % len(options)
-        elif key == "q":
-            return None if current_target == "global" else current_target, current_target
-        elif key in ("\r", "\n", " "):
-            break
+    # Hide cursor during selection
+    sys.stdout.write("\033[?25l")
+    sys.stdout.flush()
+
+    try:
+        while True:
+            render()
+            try:
+                key = readchar.readkey()
+            except KeyboardInterrupt:
+                return None if current_target == "global" else current_target, current_target
+
+            if key in (readchar.key.UP, "k"):
+                cursor = (cursor - 1) % len(options)
+            elif key in (readchar.key.DOWN, "j"):
+                cursor = (cursor + 1) % len(options)
+            elif key == "q":
+                return None if current_target == "global" else current_target, current_target
+            elif key in ("\r", "\n", " "):
+                break
+    finally:
+        # Restore cursor
+        sys.stdout.write("\033[?25h")
+        sys.stdout.flush()
 
     selected_key, selected_name, _ = options[cursor]
 
