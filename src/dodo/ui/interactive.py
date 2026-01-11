@@ -353,24 +353,9 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
 
 def _get_project_storage_path(cfg: Config, project_id: str | None, worktree_shared: bool) -> Path:
     """Get storage path for a project configuration."""
-    from dodo.project import detect_project_root
+    from dodo.storage import get_storage_path
 
-    if cfg.local_storage and project_id:
-        root = detect_project_root(worktree_shared=worktree_shared)
-        if root:
-            if cfg.default_adapter == "sqlite":
-                return root / ".dodo" / "dodo.db"
-            return root / "dodo.md"
-
-    if project_id:
-        project_dir = cfg.config_dir / "projects" / project_id
-        if cfg.default_adapter == "sqlite":
-            return project_dir / "dodo.db"
-        return project_dir / "dodo.md"
-
-    if cfg.default_adapter == "sqlite":
-        return cfg.config_dir / "dodo.db"
-    return cfg.config_dir / "dodo.md"
+    return get_storage_path(cfg, project_id, cfg.default_adapter, worktree_shared)
 
 
 def _shorten_path(path: Path, config_dir: Path | None = None, max_len: int = 50) -> str:
@@ -809,21 +794,11 @@ def _get_available_adapters(enabled_plugins: set[str], registry: dict) -> list[s
 
 def _get_storage_paths(cfg: Config, project_id: str | None) -> tuple[Path, Path]:
     """Get markdown and sqlite paths for current context."""
-    from dodo.project import detect_project_root
+    from dodo.storage import get_storage_path
 
-    config_dir = cfg.config_dir
-
-    # Determine base path
-    if cfg.local_storage and project_id:
-        root = detect_project_root(worktree_shared=cfg.worktree_shared)
-        if root:
-            return root / "dodo.md", root / ".dodo" / "dodo.db"
-
-    if project_id:
-        project_dir = config_dir / "projects" / project_id
-        return project_dir / "dodo.md", project_dir / "dodo.db"
-
-    return config_dir / "dodo.md", config_dir / "dodo.db"
+    md_path = get_storage_path(cfg, project_id, "markdown", cfg.worktree_shared)
+    db_path = get_storage_path(cfg, project_id, "sqlite", cfg.worktree_shared)
+    return md_path, db_path
 
 
 def _detect_other_adapter_files(

@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 from dodo.adapters.base import TodoAdapter
 from dodo.config import Config
 from dodo.models import Status, TodoItem
-from dodo.project import detect_project_root
 
 if TYPE_CHECKING:
     pass
@@ -132,22 +131,21 @@ class TodoService:
                 return adapter_cls()
 
     def _get_markdown_path(self) -> Path:
-        if self._config.local_storage and self._project_id:
-            root = detect_project_root(worktree_shared=self._config.worktree_shared)
-            if root:
-                return root / "dodo.md"
+        from dodo.storage import get_storage_path
 
-        if self._project_id:
-            return self._config.config_dir / "projects" / self._project_id / "dodo.md"
-
-        return self._config.config_dir / "dodo.md"
+        return get_storage_path(
+            self._config,
+            self._project_id,
+            "markdown",
+            self._config.worktree_shared,
+        )
 
     def _get_sqlite_path(self) -> Path:
-        if self._config.local_storage and self._project_id:
-            root = detect_project_root(worktree_shared=self._config.worktree_shared)
-            if root:
-                return root / ".dodo" / "dodo.db"
+        from dodo.storage import get_storage_path
 
-        if self._project_id:
-            return self._config.config_dir / "projects" / self._project_id / "dodo.db"
-        return self._config.config_dir / "dodo.db"
+        return get_storage_path(
+            self._config,
+            self._project_id,
+            "sqlite",
+            self._config.worktree_shared,
+        )
