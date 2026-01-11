@@ -50,10 +50,15 @@ class TableFormatter:
         table.add_column("Created", width=len(self._format_datetime(items[0].created_at)))
         table.add_column("Todo")
         if has_blocked:
-            table.add_column("Blocked by", style="yellow")
+            table.add_column("Blocked by", style="dark_orange")
 
         for item in items:
-            status = "[green]✓[/green]" if item.status == Status.DONE else "[ ]"
+            # Colorblind-safe: blue checkmark for done
+            status = (
+                "[dodger_blue2]✓[/dodger_blue2]"
+                if item.status == Status.DONE
+                else "[dark_orange]•[/dark_orange]"
+            )
             created = self._format_datetime(item.created_at)
 
             row = []

@@ -70,14 +70,15 @@ class TreeFormatter:
         def format_item(item) -> str:
             item_id = self._get_id(item)
             is_done = self._get_status(item) == Status.DONE
-            icon = "[green]✓[/green]" if is_done else "[cyan]○[/cyan]"
+            # Colorblind-safe: blue for done, orange for pending
+            icon = "[dodger_blue2]✓[/dodger_blue2]" if is_done else "[dark_orange]•[/dark_orange]"
             text = truncate(self._get_text(item), self.max_width)
 
             if is_done:
                 return f"{icon} [dim]{item_id[:8]}[/dim] [dim strike]{text}[/dim strike]"
 
             kids = children.get(item_id, [])
-            arrow = f" [yellow]→{len(kids)}[/yellow]" if kids else ""
+            arrow = f" [orange1]→{len(kids)}[/orange1]" if kids else ""
             return f"{icon} [dim]{item_id[:8]}[/dim] {text}{arrow}"
 
         def add_children(tree_node, parent_id: str) -> None:

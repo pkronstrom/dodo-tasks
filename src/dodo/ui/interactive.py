@@ -146,14 +146,14 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
                 selected = i == cursor and not input_mode  # Hide selection in input mode
                 done = item.status == Status.DONE
 
-                # Marker: cyan > for active, dim > for done (hidden in input mode)
+                # Marker: blue > for active (colorblind-safe)
                 if selected:
-                    marker = "[dim]>[/dim]" if done else "[cyan]>[/cyan]"
+                    marker = "[dim]>[/dim]" if done else "[dodger_blue2]>[/dodger_blue2]"
                 else:
                     marker = " "
 
-                # Checkbox
-                check = "[green]●[/green]" if done else "[dim]○[/dim]"
+                # Checkbox: blue checkmark for done, orange dot for pending (colorblind-safe)
+                check = "[dodger_blue2]✓[/dodger_blue2]" if done else "[dark_orange]•[/dark_orange]"
 
                 # Text (no wrapping - keep it simple)
                 text = escape(item.text)
@@ -175,7 +175,9 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
             max_input_len = width - 10
             if len(input_display) > max_input_len:
                 input_display = input_display[-max_input_len:]
-            lines.append(f"[cyan]>[/cyan] [dim]○[/dim] {input_display}[blink]_[/blink]")
+            lines.append(
+                f"[dodger_blue2]>[/dodger_blue2] [dark_orange]•[/dark_orange] {input_display}[blink]_[/blink]"
+            )
 
         # Status line (with left margin)
         if input_mode:
@@ -506,16 +508,16 @@ def _interactive_switch(
                 lines.append("")
                 continue
 
-            marker = "[cyan]>[/cyan] " if i == cursor else "  "
+            marker = "[dodger_blue2]>[/dodger_blue2] " if i == cursor else "  "
             path_str = f"  [dim]{_shorten_path(path, cfg.config_dir)}[/dim]" if path else ""
 
             if key == "_toggle":
-                lines.append(f"{marker}[cyan]{name}[/cyan]")
+                lines.append(f"{marker}[dodger_blue2]{name}[/dodger_blue2]")
             elif disabled:
                 # Current item - show as greyed with (current) label
                 lines.append(f"{marker}[dim]{name}{path_str} (current)[/dim]")
             elif key == "custom":
-                lines.append(f"{marker}[yellow]{name}[/yellow]{path_str}")
+                lines.append(f"{marker}[dark_orange]{name}[/dark_orange]{path_str}")
             else:
                 lines.append(f"{marker}[bold]{name}[/bold]{path_str}")
 
@@ -978,7 +980,7 @@ def _run_migration(
     if skipped > 0 and imported == 0:
         # All items skipped - show debug info
         return f"[yellow]Skipped {skipped} (already exist)[/yellow]\n[dim]From: {source_path}\nTo: {target_path}[/dim]"
-    return f"[green]Migrated {imported} todos[/green] ({skipped} skipped)"
+    return f"[dodger_blue2]Migrated {imported} todos[/dodger_blue2] ({skipped} skipped)"
 
 
 def _unified_settings_loop(
@@ -1020,24 +1022,24 @@ def _unified_settings_loop(
                 console.print(f"  [dim]{label}[/dim]")
                 continue
 
-            marker = "[cyan]>[/cyan] " if i == cursor else "  "
+            marker = "[dodger_blue2]>[/dodger_blue2] " if i == cursor else "  "
             value = pending[key]
 
             if kind == "toggle":
-                icon = "[green]✓[/green]" if value else "[dim]○[/dim]"
+                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dark_orange]•[/dark_orange]"
                 base = f"{marker}{icon} {label}"
                 # Pad to align descriptions
                 padding = max(0, desc_col - len(label) - 6)
                 desc_str = f"{' ' * padding}[dim]{desc}[/dim]" if desc else ""
                 line = f"{base}{desc_str}"
             elif kind == "cycle":
-                base = f"{marker}  {label}: [yellow]{value}[/yellow]"
+                base = f"{marker}  {label}: [dark_orange]{value}[/dark_orange]"
                 padding = max(0, desc_col - len(label) - len(str(value)) - 6)
                 desc_str = f"{' ' * padding}[dim]{desc}[/dim]" if desc else ""
                 line = f"{base}{desc_str}"
             elif kind == "action":
                 # Use arrow icon for migrate actions
-                base = f"{marker}→ [cyan]{label}[/cyan]"
+                base = f"{marker}→ [dodger_blue2]{label}[/dodger_blue2]"
                 padding = max(0, desc_col - len(label) - 6)
                 desc_str = f"{' ' * padding}[dim]{desc}[/dim]" if desc else ""
                 line = f"{base}{desc_str}"
@@ -1307,11 +1309,11 @@ def _plugins_config_loop(
         console.print()
 
         for i, (key, label, kind, _, plugin_name) in enumerate(items):
-            marker = "[cyan]>[/cyan] " if i == cursor else "  "
+            marker = "[dodger_blue2]>[/dodger_blue2] " if i == cursor else "  "
             value = pending[key]
 
             if kind == "toggle":
-                icon = "[green]✓[/green]" if value else "[dim]○[/dim]"
+                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dark_orange]•[/dark_orange]"
                 line = f"{marker}{icon} {label}"
             else:
                 display = str(value).replace("\n", "↵")[:CONFIG_DISPLAY_MAX_LEN] + (
@@ -1399,14 +1401,14 @@ def _config_loop(
         console.print()
 
         for i, (key, label, kind, _) in enumerate(items):
-            marker = "[cyan]>[/cyan] " if i == cursor else "  "
+            marker = "[dodger_blue2]>[/dodger_blue2] " if i == cursor else "  "
             value = pending[key]
 
             if kind == "toggle":
-                icon = "[green]✓[/green]" if value else "[dim]○[/dim]"
+                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dark_orange]•[/dark_orange]"
                 line = f"{marker}{icon} {label}"
             elif kind == "cycle":
-                line = f"{marker}  {label}: [yellow]{value}[/yellow]"
+                line = f"{marker}  {label}: [dark_orange]{value}[/dark_orange]"
             else:
                 display = str(value).replace("\n", "↵")[:CONFIG_DISPLAY_MAX_LEN] + (
                     "..." if len(str(value)) > CONFIG_DISPLAY_MAX_LEN else ""
