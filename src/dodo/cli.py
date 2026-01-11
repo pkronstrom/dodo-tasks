@@ -42,6 +42,79 @@ def _detect_project(worktree_shared: bool = False) -> str | None:
     return detect_project(worktree_shared=worktree_shared)
 
 
+# --- Plugin command routing ---
+
+
+def _load_json_file(path) -> dict:
+    """Load JSON file directly, return empty dict if missing."""
+    from pathlib import Path
+
+    path = Path(path)
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except json.JSONDecodeError:
+        return {}
+
+
+def _get_config_dir():
+    """Get config directory path."""
+    from pathlib import Path
+
+    return Path.home() / ".config" / "dodo"
+
+
+def _get_plugin_for_command(argv: list[str]) -> tuple[str, bool] | None:
+    """Check if argv matches an enabled plugin's command.
+
+    Returns (plugin_name, is_root_command) or None if no match.
+    """
+    if len(argv) < 2:
+        return None
+
+    config_dir = _get_config_dir()
+    registry = _load_json_file(config_dir / "plugin_registry.json")
+    config = _load_json_file(config_dir / "config.json")
+    enabled = set(filter(None, config.get("enabled_plugins", "").split(",")))
+
+    # Build lookup key from argv
+    if argv[1] == "plugins" and len(argv) > 2:
+        key = f"plugins/{argv[2]}"
+        is_root = False
+    else:
+        key = argv[1]
+        is_root = True
+
+    # Find plugin that owns this command
+    for plugin_name, info in registry.items():
+        if plugin_name in enabled and key in info.get("commands", []):
+            return (plugin_name, is_root)
+
+    return None
+
+
+def _register_plugin_for_command(plugin_name: str, is_root: bool) -> None:
+    """Load plugin and register its commands."""
+    from dodo.plugins import _import_plugin
+
+    plugin = _import_plugin(plugin_name, None)
+    cfg = _get_config()
+
+    if is_root and hasattr(plugin, "register_root_commands"):
+        plugin.register_root_commands(app, cfg)
+    elif hasattr(plugin, "register_commands"):
+        from dodo.cli_plugins import plugins_app
+
+        plugin.register_commands(plugins_app, cfg)
+
+
+# Check if argv matches a plugin command and register it at module load
+_plugin_match = _get_plugin_for_command(sys.argv)
+if _plugin_match:
+    _register_plugin_for_command(_plugin_match[0], _plugin_match[1])
+
+
 @app.callback(invoke_without_command=True)
 def main(ctx: typer.Context):
     """Launch interactive menu if no command given."""
