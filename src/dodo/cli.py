@@ -109,10 +109,40 @@ def _register_plugin_for_command(plugin_name: str, is_root: bool) -> None:
         plugin.register_commands(plugins_app, cfg)
 
 
+def _register_all_plugin_root_commands() -> None:
+    """Register all enabled plugins' root commands (for --help display)."""
+    from dodo.plugins import _import_plugin
+
+    config_dir = _get_config_dir()
+    registry = _load_json_file(config_dir / "plugin_registry.json")
+    config = _load_json_file(config_dir / "config.json")
+    enabled = set(filter(None, config.get("enabled_plugins", "").split(",")))
+
+    cfg = _get_config()
+    registered = set()
+
+    for plugin_name, info in registry.items():
+        if plugin_name not in enabled:
+            continue
+        if not info.get("commands"):
+            continue
+        if plugin_name in registered:
+            continue
+
+        plugin = _import_plugin(plugin_name, None)
+        if hasattr(plugin, "register_root_commands"):
+            plugin.register_root_commands(app, cfg)
+            registered.add(plugin_name)
+
+
 # Check if argv matches a plugin command and register it at module load
-_plugin_match = _get_plugin_for_command(sys.argv)
-if _plugin_match:
-    _register_plugin_for_command(_plugin_match[0], _plugin_match[1])
+# For --help, register all plugin commands so they appear in help output
+if "--help" in sys.argv or "-h" in sys.argv:
+    _register_all_plugin_root_commands()
+else:
+    _plugin_match = _get_plugin_for_command(sys.argv)
+    if _plugin_match:
+        _register_plugin_for_command(_plugin_match[0], _plugin_match[1])
 
 
 @app.callback(invoke_without_command=True)
