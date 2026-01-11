@@ -4,7 +4,10 @@ from dodo.models import TodoItem
 
 
 class TsvFormatter:
-    """Format todos as tab-separated values."""
+    """Format todos as tab-separated values.
+
+    Columns: id, status, text, [blocked_by if present]
+    """
 
     NAME = "tsv"
 
@@ -12,8 +15,15 @@ class TsvFormatter:
         if not items:
             return ""
 
+        # Check if any item has blocked_by
+        has_blocked = any(getattr(item, "blocked_by", None) for item in items)
+
         lines = []
         for item in items:
-            lines.append(f"{item.id}\t{item.status.value}\t{item.text}")
+            row = [item.id, item.status.value, item.text]
+            if has_blocked:
+                blocked = getattr(item, "blocked_by", None) or []
+                row.append(", ".join(b[:8] for b in blocked))
+            lines.append("\t".join(row))
 
         return "\n".join(lines)

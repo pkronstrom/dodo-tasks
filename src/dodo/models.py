@@ -23,6 +23,17 @@ class TodoItem:
     completed_at: datetime | None = None
     project: str | None = None
 
+    def to_dict(self) -> dict:
+        """Serialize to dict for formatters."""
+        return {
+            "id": self.id,
+            "text": self.text,
+            "status": self.status.value,
+            "created_at": self.created_at.isoformat(),
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "project": self.project,
+        }
+
 
 @dataclass
 class TodoItemView:
@@ -58,6 +69,13 @@ class TodoItemView:
     @property
     def project(self) -> str | None:
         return self.item.project
+
+    def to_dict(self) -> dict:
+        """Serialize to dict, including extension fields."""
+        d = self.item.to_dict()
+        if self.blocked_by is not None:
+            d["blocked_by"] = self.blocked_by
+        return d
 
 
 @dataclass

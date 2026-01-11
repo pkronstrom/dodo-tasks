@@ -100,7 +100,11 @@ def extend_adapter(adapter, config: Config):
 
 
 def extend_formatter(formatter, config: Config):
-    """Extend formatter to show blocked_by column or tree view."""
+    """Switch to tree view if enabled in config.
+
+    Note: blocked_by data is handled by the base formatters directly -
+    they check for the attribute and include it automatically.
+    """
     from dodo.plugins.graph.tree import TreeFormatter
 
     # If user explicitly requested tree format, don't override
@@ -112,14 +116,5 @@ def extend_formatter(formatter, config: Config):
     if str(tree_view).lower() in ("true", "1", "yes"):
         return TreeFormatter()
 
-    # Wrap supported formatters (table, jsonl, tsv) to add blocked_by info
-    from dodo.formatters.jsonl import JsonlFormatter
-    from dodo.formatters.table import TableFormatter
-    from dodo.formatters.tsv import TsvFormatter
-
-    if isinstance(formatter, (TableFormatter, JsonlFormatter, TsvFormatter)):
-        from dodo.plugins.graph.formatter import GraphFormatter
-
-        return GraphFormatter(formatter)
-
+    # No wrapping needed - formatters handle blocked_by natively
     return formatter

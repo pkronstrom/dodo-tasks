@@ -8,7 +8,10 @@ from dodo.models import Status, TodoItem
 
 
 class TableFormatter:
-    """Format todos as a Rich table."""
+    """Format todos as a Rich table.
+
+    Automatically includes blocked_by column if items have dependencies.
+    """
 
     NAME = "table"
 
@@ -22,9 +25,22 @@ class TableFormatter:
         except ValueError:
             return dt.strftime("%m-%d %H:%M")
 
+    def _format_blocked(self, item) -> str:
+        """Format blocked_by list as string."""
+        blocked = getattr(item, "blocked_by", None) or []
+        if not blocked:
+            return ""
+        result = ", ".join(b[:8] for b in blocked[:3])
+        if len(blocked) > 3:
+            result += f" (+{len(blocked) - 3})"
+        return result
+
     def format(self, items: list[TodoItem]) -> Any:
         if not items:
             return "[dim]No todos[/dim]"
+
+        # Check if any item has blocked_by
+        has_blocked = any(getattr(item, "blocked_by", None) for item in items)
 
         table = Table(show_header=True, header_style="bold")
 
@@ -33,13 +49,20 @@ class TableFormatter:
         table.add_column("Done", width=6)
         table.add_column("Created", width=len(self._format_datetime(items[0].created_at)))
         table.add_column("Todo")
+        if has_blocked:
+            table.add_column("Blocked by", style="yellow")
 
         for item in items:
             status = "[green]✓[/green]" if item.status == Status.DONE else "[ ]"
             created = self._format_datetime(item.created_at)
+
+            row = []
             if self.show_id:
-                table.add_row(item.id, status, created, item.text)
-            else:
-                table.add_row(status, created, item.text)
+                row.append(item.id[:8])
+            row.extend([status, created, item.text])
+            if has_blocked:
+                row.append(self._format_blocked(item))
+
+            table.add_row(*row)
 
         return table
