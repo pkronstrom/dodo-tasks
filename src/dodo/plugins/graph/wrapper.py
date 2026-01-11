@@ -44,11 +44,15 @@ class GraphWrapper:
         project: str | None = None,
         status: Status | None = None,
     ) -> list[TodoItem]:
+        from dodo.models import TodoItemView
+
         items = self._adapter.list(project, status)
-        # Attach blocked_by as dynamic attribute (bypass frozen dataclass)
+        # Wrap items with dependency info using TodoItemView
+        views = []
         for item in items:
-            object.__setattr__(item, "blocked_by", self.get_blockers(item.id))
-        return items
+            view = TodoItemView(item=item, blocked_by=self.get_blockers(item.id))
+            views.append(view)
+        return views
 
     def get(self, id: str) -> TodoItem | None:
         return self._adapter.get(id)

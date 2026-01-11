@@ -25,6 +25,42 @@ class TodoItem:
 
 
 @dataclass
+class TodoItemView:
+    """Mutable view of a TodoItem with optional extension fields.
+
+    Used when plugins need to attach additional data (e.g., blocked_by).
+    """
+
+    item: TodoItem
+    blocked_by: list[str] | None = None
+
+    # Delegate common properties
+    @property
+    def id(self) -> str:
+        return self.item.id
+
+    @property
+    def text(self) -> str:
+        return self.item.text
+
+    @property
+    def status(self) -> Status:
+        return self.item.status
+
+    @property
+    def created_at(self) -> datetime:
+        return self.item.created_at
+
+    @property
+    def completed_at(self) -> datetime | None:
+        return self.item.completed_at
+
+    @property
+    def project(self) -> str | None:
+        return self.item.project
+
+
+@dataclass
 class UndoAction:
     """Represents an undoable action in the UI."""
 
