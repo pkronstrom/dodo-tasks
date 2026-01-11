@@ -101,11 +101,15 @@ def extend_adapter(adapter, config: Config):
 
 def extend_formatter(formatter, config: Config):
     """Extend formatter to show blocked_by column or tree view."""
-    # Check if tree view is enabled in config
+    from dodo.plugins.graph.tree import TreeFormatter
+
+    # If user explicitly requested tree format, don't override
+    if isinstance(formatter, TreeFormatter):
+        return formatter
+
+    # Check if tree view is enabled in config as default
     tree_view = getattr(config, "graph_tree_view", "false")
     if str(tree_view).lower() in ("true", "1", "yes"):
-        from dodo.plugins.graph.tree import TreeFormatter
-
         return TreeFormatter()
 
     from dodo.plugins.graph.formatter import GraphFormatter
