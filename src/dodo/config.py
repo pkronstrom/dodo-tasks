@@ -122,7 +122,13 @@ class Config:
 
     def _load_from_file(self) -> None:
         if self._config_file.exists():
-            self._data = json.loads(self._config_file.read_text())
+            try:
+                content = self._config_file.read_text()
+                if content.strip():
+                    self._data = json.loads(content)
+            except json.JSONDecodeError:
+                # Corrupted config - use defaults, will be fixed on next save
+                self._data = {}
 
     def _save(self) -> None:
         self._config_dir.mkdir(parents=True, exist_ok=True)
