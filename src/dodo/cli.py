@@ -372,11 +372,18 @@ def _find_item_by_partial_id(svc: TodoService, partial_id: str):
         return item
 
     # Try partial match
-    for item in svc.list():
-        if item.id.startswith(partial_id):
-            return item
+    matches = [item for item in svc.list() if item.id.startswith(partial_id)]
 
-    return None
+    if len(matches) == 0:
+        return None
+    elif len(matches) == 1:
+        return matches[0]
+    else:
+        # Ambiguous - show options and exit
+        console.print(f"[yellow]Ambiguous ID '{partial_id}'. Matches:[/yellow]")
+        for m in matches:
+            console.print(f"  - {m.id}: {m.text[:50]}")
+        raise typer.Exit(1)
 
 
 def _save_last_action(action: str, id: str, target: str) -> None:
