@@ -117,9 +117,25 @@ def remove_dep(
 
 
 @dep_app.command(name="list")
-def list_deps() -> None:
+def list_deps(
+    tree: Annotated[bool, typer.Option("--tree", "-t", help="Show as tree")] = False,
+) -> None:
     """List all dependencies."""
-    adapter, _ = _get_graph_adapter()
+    adapter, project_id = _get_graph_adapter()
+
+    if tree:
+        # Get all todos with blocked_by info
+        items = adapter.list(project=project_id)
+        if not items:
+            console.print("[dim]No todos[/dim]")
+            return
+
+        from dodo.plugins.graph.tree import TreeFormatter
+
+        formatter = TreeFormatter()
+        output = formatter.format(items)
+        console.print(output)
+        return
 
     deps = adapter.list_all_dependencies()
 
