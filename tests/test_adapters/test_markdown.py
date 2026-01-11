@@ -10,7 +10,7 @@ from dodo.models import Status
 
 class TestMarkdownAdapterAdd:
     def test_add_creates_file(self, tmp_path: Path):
-        todo_file = tmp_path / "todo.md"
+        todo_file = tmp_path / "dodo.md"
         adapter = MarkdownAdapter(todo_file)
 
         item = adapter.add("Test todo")
@@ -21,7 +21,7 @@ class TestMarkdownAdapterAdd:
         assert len(item.id) == 8
 
     def test_add_appends_to_file(self, tmp_path: Path):
-        todo_file = tmp_path / "todo.md"
+        todo_file = tmp_path / "dodo.md"
         adapter = MarkdownAdapter(todo_file)
 
         adapter.add("First todo")
@@ -33,7 +33,7 @@ class TestMarkdownAdapterAdd:
 
 class TestMarkdownAdapterList:
     def test_list_empty_file(self, tmp_path: Path):
-        todo_file = tmp_path / "todo.md"
+        todo_file = tmp_path / "dodo.md"
         adapter = MarkdownAdapter(todo_file)
 
         items = adapter.list()
@@ -41,7 +41,7 @@ class TestMarkdownAdapterList:
         assert items == []
 
     def test_list_all(self, tmp_path: Path):
-        todo_file = tmp_path / "todo.md"
+        todo_file = tmp_path / "dodo.md"
         adapter = MarkdownAdapter(todo_file)
         adapter.add("First")
         adapter.add("Second")
@@ -51,7 +51,7 @@ class TestMarkdownAdapterList:
         assert len(items) == 2
 
     def test_list_filter_by_status(self, tmp_path: Path):
-        todo_file = tmp_path / "todo.md"
+        todo_file = tmp_path / "dodo.md"
         adapter = MarkdownAdapter(todo_file)
         item = adapter.add("First")
         adapter.add("Second")
@@ -66,7 +66,7 @@ class TestMarkdownAdapterList:
 
 class TestMarkdownAdapterUpdate:
     def test_update_status(self, tmp_path: Path):
-        todo_file = tmp_path / "todo.md"
+        todo_file = tmp_path / "dodo.md"
         adapter = MarkdownAdapter(todo_file)
         item = adapter.add("Test todo")
 
@@ -76,7 +76,7 @@ class TestMarkdownAdapterUpdate:
         assert "[x]" in todo_file.read_text()
 
     def test_update_nonexistent_raises(self, tmp_path: Path):
-        todo_file = tmp_path / "todo.md"
+        todo_file = tmp_path / "dodo.md"
         adapter = MarkdownAdapter(todo_file)
 
         with pytest.raises(KeyError):
@@ -85,7 +85,7 @@ class TestMarkdownAdapterUpdate:
 
 class TestMarkdownAdapterDelete:
     def test_delete_removes_line(self, tmp_path: Path):
-        todo_file = tmp_path / "todo.md"
+        todo_file = tmp_path / "dodo.md"
         adapter = MarkdownAdapter(todo_file)
         item1 = adapter.add("First")
         adapter.add("Second")
@@ -97,7 +97,7 @@ class TestMarkdownAdapterDelete:
         assert items[0].text == "Second"
 
     def test_delete_nonexistent_raises(self, tmp_path: Path):
-        todo_file = tmp_path / "todo.md"
+        todo_file = tmp_path / "dodo.md"
         adapter = MarkdownAdapter(todo_file)
 
         with pytest.raises(KeyError):
@@ -106,7 +106,7 @@ class TestMarkdownAdapterDelete:
 
 class TestMarkdownAdapterGet:
     def test_get_existing(self, tmp_path: Path):
-        todo_file = tmp_path / "todo.md"
+        todo_file = tmp_path / "dodo.md"
         adapter = MarkdownAdapter(todo_file)
         item = adapter.add("Test")
 
@@ -116,7 +116,7 @@ class TestMarkdownAdapterGet:
         assert result.id == item.id
 
     def test_get_nonexistent(self, tmp_path: Path):
-        todo_file = tmp_path / "todo.md"
+        todo_file = tmp_path / "dodo.md"
         adapter = MarkdownAdapter(todo_file)
 
         result = adapter.get("nonexistent")
@@ -126,7 +126,7 @@ class TestMarkdownAdapterGet:
 
 class TestMarkdownFormat:
     def test_custom_timestamp_format(self, tmp_path: Path):
-        todo_file = tmp_path / "todo.md"
+        todo_file = tmp_path / "dodo.md"
         fmt = MarkdownFormat(timestamp_fmt="%Y/%m/%d")
         adapter = MarkdownAdapter(todo_file, format=fmt)
 

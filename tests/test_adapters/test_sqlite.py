@@ -10,7 +10,7 @@ from dodo.plugins.sqlite.adapter import SqliteAdapter
 
 class TestSqliteAdapterAdd:
     def test_add_creates_db(self, tmp_path: Path):
-        db_file = tmp_path / "todos.db"
+        db_file = tmp_path / "dodo.db"
         adapter = SqliteAdapter(db_file)
 
         item = adapter.add("Test todo")
@@ -23,11 +23,11 @@ class TestSqliteAdapterAdd:
 
 class TestSqliteAdapterList:
     def test_list_empty(self, tmp_path: Path):
-        adapter = SqliteAdapter(tmp_path / "todos.db")
+        adapter = SqliteAdapter(tmp_path / "dodo.db")
         assert adapter.list() == []
 
     def test_list_filter_by_status(self, tmp_path: Path):
-        adapter = SqliteAdapter(tmp_path / "todos.db")
+        adapter = SqliteAdapter(tmp_path / "dodo.db")
         item = adapter.add("First")
         adapter.add("Second")
         adapter.update(item.id, Status.DONE)
@@ -36,7 +36,7 @@ class TestSqliteAdapterList:
         assert len(adapter.list(status=Status.DONE)) == 1
 
     def test_list_filter_by_project(self, tmp_path: Path):
-        adapter = SqliteAdapter(tmp_path / "todos.db")
+        adapter = SqliteAdapter(tmp_path / "dodo.db")
         adapter.add("Proj A todo", project="proj_a")
         adapter.add("Proj B todo", project="proj_b")
 
@@ -47,7 +47,7 @@ class TestSqliteAdapterList:
 
 class TestSqliteAdapterUpdate:
     def test_update_status(self, tmp_path: Path):
-        adapter = SqliteAdapter(tmp_path / "todos.db")
+        adapter = SqliteAdapter(tmp_path / "dodo.db")
         item = adapter.add("Test")
 
         updated = adapter.update(item.id, Status.DONE)
@@ -56,7 +56,7 @@ class TestSqliteAdapterUpdate:
         assert updated.completed_at is not None
 
     def test_update_nonexistent_raises(self, tmp_path: Path):
-        adapter = SqliteAdapter(tmp_path / "todos.db")
+        adapter = SqliteAdapter(tmp_path / "dodo.db")
 
         with pytest.raises(KeyError):
             adapter.update("nonexistent", Status.DONE)
@@ -64,7 +64,7 @@ class TestSqliteAdapterUpdate:
 
 class TestSqliteAdapterDelete:
     def test_delete(self, tmp_path: Path):
-        adapter = SqliteAdapter(tmp_path / "todos.db")
+        adapter = SqliteAdapter(tmp_path / "dodo.db")
         item = adapter.add("Test")
 
         adapter.delete(item.id)
@@ -72,7 +72,7 @@ class TestSqliteAdapterDelete:
         assert adapter.get(item.id) is None
 
     def test_delete_nonexistent_raises(self, tmp_path: Path):
-        adapter = SqliteAdapter(tmp_path / "todos.db")
+        adapter = SqliteAdapter(tmp_path / "dodo.db")
 
         with pytest.raises(KeyError):
             adapter.delete("nonexistent")
@@ -80,7 +80,7 @@ class TestSqliteAdapterDelete:
 
 class TestSqliteAdapterGet:
     def test_get_existing(self, tmp_path: Path):
-        adapter = SqliteAdapter(tmp_path / "todos.db")
+        adapter = SqliteAdapter(tmp_path / "dodo.db")
         item = adapter.add("Test")
 
         result = adapter.get(item.id)
@@ -89,5 +89,5 @@ class TestSqliteAdapterGet:
         assert result.id == item.id
 
     def test_get_nonexistent(self, tmp_path: Path):
-        adapter = SqliteAdapter(tmp_path / "todos.db")
+        adapter = SqliteAdapter(tmp_path / "dodo.db")
         assert adapter.get("nonexistent") is None

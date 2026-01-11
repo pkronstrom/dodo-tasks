@@ -312,18 +312,18 @@ def _get_project_storage_path(cfg: Config, project_id: str | None, worktree_shar
         root = detect_project_root(worktree_shared=worktree_shared)
         if root:
             if cfg.default_adapter == "sqlite":
-                return root / ".dodo" / "todos.db"
+                return root / ".dodo" / "dodo.db"
             return root / "dodo.md"
 
     if project_id:
         project_dir = cfg.config_dir / "projects" / project_id
         if cfg.default_adapter == "sqlite":
-            return project_dir / "todos.db"
-        return project_dir / "todo.md"
+            return project_dir / "dodo.db"
+        return project_dir / "dodo.md"
 
     if cfg.default_adapter == "sqlite":
-        return cfg.config_dir / "todos.db"
-    return cfg.config_dir / "todo.md"
+        return cfg.config_dir / "dodo.db"
+    return cfg.config_dir / "dodo.md"
 
 
 def _shorten_path(path: Path, max_len: int = 50) -> str:
@@ -513,13 +513,13 @@ def _get_storage_paths(cfg: Config, project_id: str | None) -> tuple[Path, Path]
     if cfg.local_storage and project_id:
         root = detect_project_root(worktree_shared=cfg.worktree_shared)
         if root:
-            return root / "dodo.md", root / ".dodo" / "todos.db"
+            return root / "dodo.md", root / ".dodo" / "dodo.db"
 
     if project_id:
         project_dir = config_dir / "projects" / project_id
-        return project_dir / "todo.md", project_dir / "todos.db"
+        return project_dir / "dodo.md", project_dir / "dodo.db"
 
-    return config_dir / "todo.md", config_dir / "todos.db"
+    return config_dir / "dodo.md", config_dir / "dodo.db"
 
 
 def _detect_other_adapter_files(

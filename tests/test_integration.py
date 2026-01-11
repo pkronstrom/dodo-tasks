@@ -78,11 +78,11 @@ class TestFullWorkflow:
         cfg = Config.load(config_dir)
         svc = TodoService(cfg, project_id=None)
         svc.add("Markdown todo")
-        assert (config_dir / "todo.md").exists()
+        assert (config_dir / "dodo.md").exists()
 
         # Switch to SQLite
         monkeypatch.setenv("DODO_DEFAULT_ADAPTER", "sqlite")
         cfg2 = Config.load(config_dir)
         svc2 = TodoService(cfg2, project_id=None)
         svc2.add("SQLite todo")
-        assert (config_dir / "todos.db").exists()
+        assert (config_dir / "dodo.db").exists()
