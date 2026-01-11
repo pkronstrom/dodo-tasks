@@ -390,24 +390,32 @@ def _build_settings_items(cfg: Config) -> tuple[list[SettingsItem], dict[str, ob
     registry = _load_registry()
     available_adapters = _get_available_adapters(cfg.enabled_plugins, registry)
 
-    # General settings
+    # General settings header
+    items.append(("_header", "── General ──", "divider", None, None, None))
+
     general: list[tuple[str, str, str, list[str] | None, str | None]] = [
         (
             "worktree_shared",
             "Worktree sharing",
             "toggle",
             None,
-            "Use same todos file across all git worktrees",
+            "Share todos across git worktrees",
         ),
         (
             "local_storage",
             "Local storage",
             "toggle",
             None,
-            "Store todos in project dir (vs ~/.config/dodo)",
+            "Store in .dodo/ instead of ~/.config/dodo",
         ),
-        ("timestamps_enabled", "Timestamps", "toggle", None, "Add created/updated timestamps"),
-        ("default_adapter", "Adapter", "cycle", available_adapters, "Only enabled adapters shown"),
+        (
+            "timestamps_enabled",
+            "Timestamps",
+            "toggle",
+            None,
+            "Show created/completed times",
+        ),
+        ("default_adapter", "Adapter", "cycle", available_adapters, None),
         ("editor", "Editor", "edit", None, "Leave empty for $EDITOR"),
     ]
 
@@ -415,7 +423,8 @@ def _build_settings_items(cfg: Config) -> tuple[list[SettingsItem], dict[str, ob
         items.append((key, label, kind, options, None, desc))
         pending[key] = getattr(cfg, key)
 
-    # Divider
+    # Empty line + Plugins header
+    items.append(("_spacer", "", "divider", None, None, None))
     items.append(("_divider", "── Plugins ──", "divider", None, None, None))
 
     # Plugins
