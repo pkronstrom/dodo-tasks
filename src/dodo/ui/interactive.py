@@ -63,8 +63,8 @@ def interactive_menu() -> None:
         options = [
             "Manage todos",
             "Add todo",
-            "Config",
             "Switch project",
+            "Config",
             "Exit",
         ]
 
@@ -78,6 +78,9 @@ def interactive_menu() -> None:
         elif choice == 1:
             _interactive_add(svc, ui, target)
         elif choice == 2:
+            project_id, target = _interactive_switch(ui, target, cfg)
+            svc = TodoService(cfg, project_id)
+        elif choice == 3:
             interactive_config(project_id)
             # Reload config and service in case settings changed
             from dodo.config import clear_config_cache
@@ -87,9 +90,6 @@ def interactive_menu() -> None:
             # Re-detect project in case worktree_shared changed
             project_id = detect_project(worktree_shared=cfg.worktree_shared)
             target = project_id or "global"
-            svc = TodoService(cfg, project_id)
-        elif choice == 3:
-            project_id, target = _interactive_switch(ui, target, cfg)
             svc = TodoService(cfg, project_id)
 
 
@@ -400,8 +400,8 @@ def _interactive_switch(
         return current
 
     def render() -> None:
-        sys.stdout.write("\033[H")  # Move to top
-        console.print("[bold]Switch Project[/bold]                              ")
+        sys.stdout.write("\033[H\033[J")  # Clear screen and move to top
+        console.print("[bold]Switch Project[/bold]")
         console.print()
 
         for i, (key, name, path, disabled) in enumerate(options):
@@ -415,7 +415,6 @@ def _interactive_switch(
                 line = f"{marker}[yellow]{name}[/yellow]{path_str}"
             else:
                 line = f"{marker}[bold]{name}[/bold]{path_str}"
-            sys.stdout.write("\033[K")  # Clear line
             console.print(line)
 
         console.print()
