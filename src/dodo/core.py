@@ -138,11 +138,11 @@ class TodoService:
                 return root / "dodo.md"
 
         if self._project_id:
-            return self._config.config_dir / "projects" / self._project_id / "todo.md"
+            return self._config.config_dir / "projects" / self._project_id / "dodo.md"
 
-        return self._config.config_dir / "todo.md"
+        return self._config.config_dir / "dodo.md"
 
     def _get_sqlite_path(self) -> Path:
         if self._project_id:
-            return self._config.config_dir / "projects" / self._project_id / "todos.db"
-        return self._config.config_dir / "todos.db"
+            return self._config.config_dir / "projects" / self._project_id / "dodo.db"
+        return self._config.config_dir / "dodo.db"

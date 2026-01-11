@@ -17,7 +17,7 @@ class TestTodoServiceAdd:
         item = svc.add("Test todo")
 
         assert item.text == "Test todo"
-        assert (tmp_path / "config" / "todo.md").exists()
+        assert (tmp_path / "config" / "dodo.md").exists()
 
     def test_add_to_project(self, tmp_path: Path):
         config = Config.load(tmp_path / "config")
@@ -25,7 +25,7 @@ class TestTodoServiceAdd:
 
         svc.add("Project todo")
 
-        assert (tmp_path / "config" / "projects" / "myapp_abc123" / "todo.md").exists()
+        assert (tmp_path / "config" / "projects" / "myapp_abc123" / "dodo.md").exists()
 
 
 class TestTodoServiceList:
@@ -82,4 +82,4 @@ class TestTodoServiceAdapterSelection:
         svc.add("Test")
 
         # SQLite creates .db file, not .md
-        assert (tmp_path / "config" / "todos.db").exists()
+        assert (tmp_path / "config" / "dodo.db").exists()

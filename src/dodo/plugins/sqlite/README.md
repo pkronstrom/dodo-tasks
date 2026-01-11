@@ -37,8 +37,8 @@ dodo done abc123
 ```
 
 Todos are stored in:
-- Global: `~/.config/dodo/todos.db`
-- Per-project: `~/.config/dodo/projects/<project-id>/todos.db`
+- Global: `~/.config/dodo/dodo.db`
+- Per-project: `~/.config/dodo/projects/<project-id>/dodo.db`
 
 ## Migration
 
