@@ -323,7 +323,7 @@ def _interactive_switch(
     # If in worktree and not sharing, offer parent's todos
     if is_worktree and parent_id and not cfg.worktree_shared:
         parent_name = parent_root.name if parent_root else parent_id
-        options.append(f"Use {parent_name}'s todos (enable sharing)")
+        options.append(f"Use {parent_name}'s todos (enable worktree sharing)")
 
     options.append("Enter project name")
 
@@ -343,7 +343,7 @@ def _interactive_switch(
         return None, "global"
     elif selected.startswith("Switch to ") and "(current dir)" in selected:
         return detected, detected_name
-    elif "enable sharing" in selected:
+    elif "enable worktree sharing" in selected:
         # Enable worktree sharing and switch to parent
         cfg.set("worktree_shared", True)
         return parent_id, parent_root.name if parent_root else parent_id
