@@ -82,7 +82,7 @@ def interactive_menu() -> None:
             cfg = Config.load()
             svc = TodoService(cfg, project_id)
         elif choice == 3:
-            project_id, target = _interactive_switch(ui)
+            project_id, target = _interactive_switch(ui, target)
             svc = TodoService(cfg, project_id)
 
 
@@ -301,16 +301,36 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
         break  # Normal exit
 
 
-def _interactive_switch(ui: RichTerminalMenu) -> tuple[str | None, str]:
-    options = ["Global", "Detect from current dir", "Enter project name"]
-    choice = ui.select(options, title="Switch project")
+def _interactive_switch(ui: RichTerminalMenu, current_target: str) -> tuple[str | None, str]:
+    # Detect what the current directory's project would be
+    detected = detect_project()
+    detected_name = detected or "global"
 
-    if choice == 0:
+    # Build options based on current context
+    options = []
+    if current_target != "global":
+        options.append("Switch to global")
+    if detected_name != current_target:
+        options.append(f"Switch to {detected_name} (current dir)")
+    options.append("Enter project name")
+
+    if not options:
+        # Already on the only option
+        return None if current_target == "global" else current_target, current_target
+
+    title = f"Current: {current_target}"
+    choice = ui.select(options, title=title)
+
+    if choice is None:
+        # Cancelled
+        return None if current_target == "global" else current_target, current_target
+
+    selected = options[choice]
+    if selected == "Switch to global":
         return None, "global"
-    elif choice == 1:
-        project_id = detect_project()
-        return project_id, project_id or "global"
-    elif choice == 2:
+    elif selected.startswith("Switch to ") and "(current dir)" in selected:
+        return detected, detected_name
+    elif selected == "Enter project name":
         name = ui.input("Project name:")
         return name, name or "global"
 
@@ -460,33 +480,32 @@ def _build_settings_items(
     # General settings header
     items.append(("_header", "── General ──", "divider", None, None, None))
 
-    general: list[tuple[str, str, str, list[str] | None, str | None]] = [
-        ("worktree_shared", "Worktree sharing", "toggle", None, "share across worktrees"),
+    # Settings before backend
+    pre_backend: list[tuple[str, str, str, list[str] | None, str | None]] = [
+        ("worktree_shared", "Worktree sharing", "toggle", None, "use parent's todo list"),
         ("local_storage", "Local storage", "toggle", None, "use .dodo/ in project"),
         ("timestamps_enabled", "Timestamps", "toggle", None, "show times in list"),
-        ("default_adapter", "Adapter", "cycle", available_adapters, "storage backend"),
-        ("editor", "Editor", "edit", None, "defaults to $EDITOR"),
     ]
-
-    for key, label, kind, options, desc in general:
+    for key, label, kind, options, desc in pre_backend:
         items.append((key, label, kind, options, None, desc))
         pending[key] = getattr(cfg, key)
 
-    # Check for migrate options (other adapters with data)
+    # Backend setting
+    items.append(("default_adapter", "Backend", "cycle", available_adapters, None, None))
+    pending["default_adapter"] = cfg.default_adapter
+
+    # Migrate options (right after backend)
     other_adapters = _detect_other_adapter_files(cfg, cfg.default_adapter, project_id)
     for adapter_name, count in other_adapters:
         migrate_key = f"_migrate_{adapter_name}"
         items.append(
-            (
-                migrate_key,
-                f"  Migrate from {adapter_name}",
-                "action",
-                None,
-                None,
-                f"{count} todos available",
-            )
+            (migrate_key, f"Migrate from {adapter_name}", "action", None, None, f"{count} todos")
         )
-        pending[migrate_key] = adapter_name  # Store source adapter name
+        pending[migrate_key] = adapter_name
+
+    # Editor (after migrate) - shows $EDITOR if not set
+    items.append(("editor", "Editor", "edit", None, None, None))
+    pending["editor"] = cfg.editor
 
     # Empty line + Plugins header
     items.append(("_spacer", "", "divider", None, None, None))
@@ -672,6 +691,62 @@ def _unified_settings_loop(
                 items[i] = (item[0], item[1], item[2], available, item[4], item[5])
                 break
 
+    def rebuild_migrate_options() -> None:
+        """Rebuild migrate options after adapter change."""
+        nonlocal navigable_indices
+
+        # Find adapter index and editor index
+        adapter_idx = None
+        editor_idx = None
+        for i, item in enumerate(items):
+            if item[0] == "default_adapter":
+                adapter_idx = i
+            elif item[0] == "editor":
+                editor_idx = i
+                break
+
+        if adapter_idx is None or editor_idx is None:
+            return
+
+        # Remove existing migrate items (between adapter and editor)
+        to_remove = []
+        for i in range(adapter_idx + 1, editor_idx):
+            if items[i][0].startswith("_migrate_"):
+                to_remove.append(i)
+        for i in reversed(to_remove):
+            key = items[i][0]
+            items.pop(i)
+            pending.pop(key, None)
+
+        # Recalculate editor_idx after removal
+        for i, item in enumerate(items):
+            if item[0] == "editor":
+                editor_idx = i
+                break
+
+        # Add new migrate options
+        current_adapter = str(pending["default_adapter"])
+        other_adapters = _detect_other_adapter_files(cfg, current_adapter, project_id)
+        insert_idx = editor_idx
+        for adapter_name, count in other_adapters:
+            migrate_key = f"_migrate_{adapter_name}"
+            items.insert(
+                insert_idx,
+                (
+                    migrate_key,
+                    f"Migrate from {adapter_name}",
+                    "action",
+                    None,
+                    None,
+                    f"{count} todos",
+                ),
+            )
+            pending[migrate_key] = adapter_name
+            insert_idx += 1
+
+        # Rebuild navigable indices
+        navigable_indices[:] = [i for i, (_, _, k, *_) in enumerate(items) if k != "divider"]
+
     while True:
         edit_triggered = False
 
@@ -706,6 +781,9 @@ def _unified_settings_loop(
                             idx = -1
                         pending[item_key] = options[(idx + 1) % len(options)]
                         save_item(item_key, pending[item_key])
+                        # If adapter changed, rebuild migrate options
+                        if item_key == "default_adapter":
+                            rebuild_migrate_options()
                     elif kind == "edit":
                         edit_triggered = True
                         break
