@@ -366,43 +366,54 @@ def _interactive_switch(
     )
     current_path = _get_project_storage_path(cfg, current_project_id, cfg.worktree_shared)
 
-    # Build options: (key, name, path_display)
-    options: list[tuple[str, str, str | Path | None]] = []
+    # Build options: (key, name, path_display, disabled)
+    options: list[tuple[str, str, str | Path | None, bool]] = []
 
-    if current_target != "global":
-        global_path = _get_project_storage_path(cfg, None, False)
-        options.append(("global", "global", global_path))
+    # Always show global
+    global_path = _get_project_storage_path(cfg, None, False)
+    options.append(("global", "global", global_path, current_target == "global"))
 
-    # Show worktree's own project if not current
-    if worktree_name != current_target and worktree_name != "global":
+    # Show worktree's own project if not global
+    if worktree_name != "global":
         wt_path = _get_project_storage_path(cfg, worktree_project, False)
-        options.append(("worktree", worktree_name, wt_path))
+        options.append(("worktree", worktree_name, wt_path, worktree_name == current_target))
 
-    # Show parent's project if in worktree and not current
-    if is_worktree and parent_id and parent_name != current_target:
+    # Show parent's project if in worktree
+    if is_worktree and parent_id:
         parent_path = _get_project_storage_path(cfg, parent_id, True)
-        options.append(("parent", parent_name, parent_path))
+        options.append(("parent", parent_name, parent_path, parent_name == current_target))
 
     # New project path template
     new_project_path = _shorten_path(cfg.config_dir / "projects" / "<name>" / "dodo.md")
-    options.append(("custom", "New", new_project_path))
+    options.append(("custom", "New", new_project_path, False))
 
-    cursor = 0
+    # Find first non-disabled option for initial cursor
+    cursor = next((i for i, (_, _, _, disabled) in enumerate(options) if not disabled), 0)
+
+    def find_next_enabled(current: int, direction: int) -> int:
+        """Find next non-disabled option."""
+        n = len(options)
+        for _ in range(n):
+            current = (current + direction) % n
+            if not options[current][3]:  # not disabled
+                return current
+        return current
 
     def render() -> None:
         sys.stdout.write("\033[H")  # Move to top
         console.print("[bold]Switch Project[/bold]                              ")
         console.print()
-        console.print(f"  [dim]current:[/dim] [cyan]{current_target}[/cyan]")
-        console.print(f"  [dim]storage:[/dim] [dim]{_shorten_path(current_path)}[/dim]")
-        console.print()
 
-        for i, (key, name, path) in enumerate(options):
+        for i, (key, name, path, disabled) in enumerate(options):
             marker = "[cyan]>[/cyan] " if i == cursor else "  "
-            if key == "custom":
-                line = f"{marker}[yellow]{name}[/yellow]  [dim]{path}[/dim]"
+            path_str = f"  [dim]{_shorten_path(path)}[/dim]" if path else ""
+
+            if disabled:
+                # Current item - show as greyed with (current) label
+                line = f"{marker}[dim]{name}{path_str} (current)[/dim]"
+            elif key == "custom":
+                line = f"{marker}[yellow]{name}[/yellow]{path_str}"
             else:
-                path_str = f"  [dim]{_shorten_path(path)}[/dim]" if path else ""
                 line = f"{marker}[bold]{name}[/bold]{path_str}"
             sys.stdout.write("\033[K")  # Clear line
             console.print(line)
@@ -423,9 +434,9 @@ def _interactive_switch(
                 return None if current_target == "global" else current_target, current_target
 
             if key in (readchar.key.UP, "k"):
-                cursor = (cursor - 1) % len(options)
+                cursor = find_next_enabled(cursor, -1)
             elif key in (readchar.key.DOWN, "j"):
-                cursor = (cursor + 1) % len(options)
+                cursor = find_next_enabled(cursor, 1)
             elif key == "q":
                 return None if current_target == "global" else current_target, current_target
             elif key in ("\r", "\n", " "):
@@ -435,7 +446,7 @@ def _interactive_switch(
         sys.stdout.write("\033[?25h")
         sys.stdout.flush()
 
-    selected_key, selected_name, _ = options[cursor]
+    selected_key, selected_name, _, _ = options[cursor]
 
     if selected_key == "global":
         cfg.set("worktree_shared", False)
