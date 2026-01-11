@@ -72,7 +72,7 @@ def _get_git_root(path: Path) -> Path | None:
             check=True,
         )
         return Path(result.stdout.strip())
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         return None
 
 
@@ -95,7 +95,7 @@ def _get_git_common_root(path: Path) -> Path | None:
             return git_dir.parent
         # For worktrees, it returns /path/to/main/.git
         return git_dir.parent
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         return None
 
 
