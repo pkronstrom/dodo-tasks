@@ -357,6 +357,7 @@ def export(
 ):
     """Export todos to jsonl format."""
     from dodo.formatters.jsonl import JsonlFormatter
+    from dodo.plugins import apply_hooks
 
     cfg = _get_config()
 
@@ -369,6 +370,7 @@ def export(
     items = svc.list()
 
     formatter = JsonlFormatter()
+    formatter = apply_hooks("extend_formatter", formatter, cfg)
     content = formatter.format(items)
 
     if output:
