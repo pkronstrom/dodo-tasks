@@ -112,12 +112,14 @@ def extend_formatter(formatter, config: Config):
     if str(tree_view).lower() in ("true", "1", "yes"):
         return TreeFormatter()
 
-    # Only wrap table formatter - other formats (jsonl, tsv) should pass through unchanged
+    # Wrap supported formatters (table, jsonl, tsv) to add blocked_by info
+    from dodo.formatters.jsonl import JsonlFormatter
     from dodo.formatters.table import TableFormatter
+    from dodo.formatters.tsv import TsvFormatter
 
-    if not isinstance(formatter, TableFormatter):
-        return formatter
+    if isinstance(formatter, (TableFormatter, JsonlFormatter, TsvFormatter)):
+        from dodo.plugins.graph.formatter import GraphFormatter
 
-    from dodo.plugins.graph.formatter import GraphFormatter
+        return GraphFormatter(formatter)
 
-    return GraphFormatter(formatter)
+    return formatter

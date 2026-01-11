@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Any
 
 from rich.table import Table
@@ -13,21 +14,25 @@ if TYPE_CHECKING:
 class GraphFormatter:
     """Wraps a formatter to add blocked_by info to output.
 
-    Only adds info if the adapter supports dependency tracking.
+    Extends table, jsonl, and tsv formatters with dependency data.
+    Only adds info if items have blocked_by attributes.
     """
 
     def __init__(self, formatter):
         self._formatter = formatter
 
-    def format(self, items: list[TodoItem]) -> Any:
-        """Format items, adding dependency info if available."""
-        # Check if any item has blocked_by
-        has_deps = any(getattr(item, "blocked_by", None) for item in items)
+    def _get_blocked_str(self, item) -> str:
+        """Format blocked_by list as string."""
+        blocked = getattr(item, "blocked_by", [])
+        if not blocked:
+            return ""
+        result = ", ".join(b[:8] for b in blocked[:3])
+        if len(blocked) > 3:
+            result += f" (+{len(blocked) - 3})"
+        return result
 
-        if not has_deps:
-            return self._formatter.format(items)
-
-        # Build table with blocked_by column
+    def _format_table(self, items: list[TodoItem]) -> Table:
+        """Format as Rich table with blocked_by column."""
         from dodo.models import Status
 
         table = Table(show_header=True, header_style="bold")
@@ -38,10 +43,63 @@ class GraphFormatter:
 
         for item in items:
             status_icon = "[green]✓[/green]" if item.status == Status.DONE else "[ ]"
-            blocked = getattr(item, "blocked_by", [])
-            blocked_str = ", ".join(b[:8] for b in blocked[:3])
-            if len(blocked) > 3:
-                blocked_str += f" (+{len(blocked) - 3})"
-            table.add_row(item.id[:8], status_icon, item.text, blocked_str)
+            table.add_row(
+                item.id[:8],
+                status_icon,
+                item.text,
+                self._get_blocked_str(item),
+            )
 
         return table
+
+    def _format_jsonl(self, items: list[TodoItem]) -> str:
+        """Format as JSON lines with blocked_by field."""
+        if not items:
+            return ""
+
+        lines = []
+        for item in items:
+            blocked = getattr(item, "blocked_by", [])
+            obj = {
+                "id": item.id,
+                "text": item.text,
+                "status": item.status.value,
+                "created_at": item.created_at.isoformat(),
+                "completed_at": item.completed_at.isoformat() if item.completed_at else None,
+                "project": item.project,
+                "blocked_by": blocked if blocked else None,
+            }
+            lines.append(json.dumps(obj))
+
+        return "\n".join(lines)
+
+    def _format_tsv(self, items: list[TodoItem]) -> str:
+        """Format as TSV with blocked_by column."""
+        if not items:
+            return ""
+
+        lines = []
+        for item in items:
+            blocked_str = self._get_blocked_str(item)
+            lines.append(f"{item.id}\t{item.status.value}\t{item.text}\t{blocked_str}")
+
+        return "\n".join(lines)
+
+    def format(self, items: list[TodoItem]) -> Any:
+        """Format items, adding dependency info if available."""
+        # Check if any item has blocked_by
+        has_deps = any(getattr(item, "blocked_by", None) for item in items)
+
+        if not has_deps:
+            return self._formatter.format(items)
+
+        # Dispatch based on wrapped formatter type
+        formatter_name = getattr(self._formatter, "NAME", None)
+
+        if formatter_name == "jsonl":
+            return self._format_jsonl(items)
+        elif formatter_name == "tsv":
+            return self._format_tsv(items)
+        else:
+            # Default: table format
+            return self._format_table(items)
