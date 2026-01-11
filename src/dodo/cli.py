@@ -253,6 +253,8 @@ def export(
     global_: Annotated[bool, typer.Option("-g", "--global", help="Global todos")] = False,
 ):
     """Export todos to jsonl format."""
+    from dodo.formatters.jsonl import JsonlFormatter
+
     cfg = _get_config()
 
     if global_:
@@ -263,19 +265,8 @@ def export(
     svc = _get_service(cfg, project_id)
     items = svc.list()
 
-    lines = []
-    for item in items:
-        data = {
-            "id": item.id,
-            "text": item.text,
-            "status": item.status.value,
-            "created_at": item.created_at.isoformat(),
-            "completed_at": item.completed_at.isoformat() if item.completed_at else None,
-            "project": item.project,
-        }
-        lines.append(json.dumps(data))
-
-    content = "\n".join(lines)
+    formatter = JsonlFormatter()
+    content = formatter.format(items)
 
     if output:
         from pathlib import Path
