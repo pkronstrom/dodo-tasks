@@ -400,31 +400,33 @@ def _interactive_switch(
         return current
 
     def render() -> None:
-        sys.stdout.write("\033[H\033[J")  # Clear screen and move to top
-        console.print("[bold]Switch Project[/bold]")
-        console.print()
-
+        sys.stdout.write("\033[H")  # Move to top
+        lines = []
         for i, (key, name, path, disabled) in enumerate(options):
             marker = "[cyan]>[/cyan] " if i == cursor else "  "
             path_str = f"  [dim]{_shorten_path(path)}[/dim]" if path else ""
 
             if disabled:
                 # Current item - show as greyed with (current) label
-                line = f"{marker}[dim]{name}{path_str} (current)[/dim]"
+                lines.append(f"{marker}[dim]{name}{path_str} (current)[/dim]")
             elif key == "custom":
-                line = f"{marker}[yellow]{name}[/yellow]{path_str}"
+                lines.append(f"{marker}[yellow]{name}[/yellow]{path_str}")
             else:
-                line = f"{marker}[bold]{name}[/bold]{path_str}"
-            console.print(line)
+                lines.append(f"{marker}[bold]{name}[/bold]{path_str}")
 
-        console.print()
-        console.print("[dim]↑↓ navigate · enter select · q cancel[/dim]")
+        content = "\n".join(lines)
+        content += "\n\n[dim]↑↓ navigate · enter select · q cancel[/dim]"
 
-    # Hide cursor during selection
-    sys.stdout.write("\033[?25l")
-    sys.stdout.flush()
+        console.print(
+            Panel(
+                content,
+                title="Switch Project",
+                border_style="blue",
+                width=min(80, console.width or 80),
+            )
+        )
 
-    try:
+    with console.screen():
         while True:
             render()
             try:
@@ -440,10 +442,6 @@ def _interactive_switch(
                 return None if current_target == "global" else current_target, current_target
             elif key in ("\r", "\n", " "):
                 break
-    finally:
-        # Restore cursor
-        sys.stdout.write("\033[?25h")
-        sys.stdout.flush()
 
     selected_key, selected_name, _, _ = options[cursor]
 
