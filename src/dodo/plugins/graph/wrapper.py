@@ -122,8 +122,9 @@ class GraphWrapper:
                 SELECT d.blocked_id
                 FROM dependencies d
                 JOIN todos t ON d.blocker_id = t.id
-                WHERE t.status = 'pending'
+                WHERE t.status = ?
                 """,
+                (Status.PENDING.value,),
             ).fetchall()
         blocked_ids = {row[0] for row in rows}
 
@@ -141,8 +142,9 @@ class GraphWrapper:
                 SELECT DISTINCT d.blocked_id
                 FROM dependencies d
                 JOIN todos t ON d.blocker_id = t.id
-                WHERE t.status = 'pending'
+                WHERE t.status = ?
                 """,
+                (Status.PENDING.value,),
             ).fetchall()
         blocked_ids = {row[0] for row in rows}
 
