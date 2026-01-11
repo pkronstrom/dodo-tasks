@@ -369,21 +369,39 @@ def _interactive_switch(
     # Build options: (key, name, path_display, disabled)
     options: list[tuple[str, str, str | Path | None, bool]] = []
 
+    # Track which project names we've already added
+    added_projects: set[str] = set()
+
     # Always show global
     global_path = _get_project_storage_path(cfg, None, False)
     options.append(("global", "global", global_path, current_target == "global"))
+    added_projects.add("global")
 
     # Show worktree's own project if not global
     if worktree_name != "global":
         wt_path = _get_project_storage_path(cfg, worktree_project, False)
         options.append(("worktree", worktree_name, wt_path, worktree_name == current_target))
+        added_projects.add(worktree_name)
 
     # Show parent's project if in worktree
     if is_worktree and parent_id:
         parent_path = _get_project_storage_path(cfg, parent_id, True)
         options.append(("parent", parent_name, parent_path, parent_name == current_target))
+        added_projects.add(parent_name)
 
-    # New project path template
+    # Scan for existing projects in config dir
+    projects_dir = cfg.config_dir / "projects"
+    if projects_dir.exists():
+        for proj_dir in sorted(projects_dir.iterdir()):
+            if proj_dir.is_dir():
+                proj_name = proj_dir.name
+                if proj_name not in added_projects:
+                    proj_path = _get_project_storage_path(cfg, proj_name, False)
+                    is_current = proj_name == current_target
+                    options.append(("existing", proj_name, proj_path, is_current))
+                    added_projects.add(proj_name)
+
+    # New project option
     new_project_path = _shorten_path(cfg.config_dir / "projects" / "<name>" / "dodo.md")
     options.append(("custom", "New", new_project_path, False))
 
@@ -401,7 +419,7 @@ def _interactive_switch(
 
     def render() -> None:
         sys.stdout.write("\033[H")  # Move to top
-        lines = []
+        lines = ["[dim]Select a project to switch to:[/dim]", ""]
         for i, (key, name, path, disabled) in enumerate(options):
             marker = "[cyan]>[/cyan] " if i == cursor else "  "
             path_str = f"  [dim]{_shorten_path(path)}[/dim]" if path else ""
@@ -454,6 +472,9 @@ def _interactive_switch(
     elif selected_key == "parent":
         cfg.set("worktree_shared", True)
         return parent_id, parent_name
+    elif selected_key == "existing":
+        cfg.set("worktree_shared", False)
+        return selected_name, selected_name
     elif selected_key == "custom":
         console.print()
         name = ui.input("Project name:")
