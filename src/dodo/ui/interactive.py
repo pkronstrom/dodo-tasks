@@ -977,6 +977,12 @@ def _run_migration(
     if not items:
         return "[yellow]No todos to migrate[/yellow]"
 
+    # Set project field on imported items (source may not have it)
+    if project_id:
+        for item in items:
+            if not item.project:
+                item.project = project_id
+
     # Import to target
     try:
         imported, skipped = target.import_all(items)
