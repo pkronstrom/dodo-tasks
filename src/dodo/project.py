@@ -89,3 +89,23 @@ def _get_git_common_root(path: Path) -> Path | None:
         return git_dir.parent
     except subprocess.CalledProcessError:
         return None
+
+
+def detect_worktree_parent(path: Path | None = None) -> tuple[bool, Path | None, str | None]:
+    """Detect if in a worktree and get parent repo info.
+
+    Returns: (is_worktree, parent_root, parent_project_id)
+    """
+    path = path or Path.cwd()
+    worktree_root = _get_git_root(path)
+    common_root = _get_git_common_root(path)
+
+    if not worktree_root or not common_root:
+        return False, None, None
+
+    # If roots differ, we're in a worktree
+    if worktree_root.resolve() != common_root.resolve():
+        parent_id = _make_project_id(common_root)
+        return True, common_root, parent_id
+
+    return False, None, None
