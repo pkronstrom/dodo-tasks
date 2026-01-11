@@ -953,10 +953,21 @@ def _run_migration(
         return "[yellow]No todos to migrate[/yellow]"
 
     # Set project field on imported items (source may not have it)
+    # TodoItem is frozen, so we need to create new instances
     if project_id:
-        for item in items:
-            if not item.project:
-                item.project = project_id
+        from dodo.models import TodoItem
+
+        items = [
+            TodoItem(
+                id=item.id,
+                text=item.text,
+                status=item.status,
+                created_at=item.created_at,
+                completed_at=item.completed_at,
+                project=item.project or project_id,
+            )
+            for item in items
+        ]
 
     # Import to target
     try:
