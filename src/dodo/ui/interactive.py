@@ -42,7 +42,7 @@ def interactive_menu() -> None:
 
         # Get storage path for display
         storage_path = _get_project_storage_path(cfg, project_id, cfg.worktree_shared)
-        storage_display = _shorten_path(storage_path)
+        storage_display = _shorten_path(storage_path, cfg.config_dir)
 
         # Adaptive panel width
         term_width = console.width or DEFAULT_PANEL_WIDTH
@@ -61,26 +61,23 @@ def interactive_menu() -> None:
         )
 
         options = [
-            "Manage todos",
-            "Add todo",
-            "Switch project",
+            "Todos",
+            "Projects",
             "Config",
             "Exit",
         ]
 
         choice = ui.select(options)
 
-        if choice is None or choice == 4:
+        if choice is None or choice == 3:
             console.clear()
             break
         elif choice == 0:
             _todos_loop(svc, target, cfg)
         elif choice == 1:
-            _interactive_add(svc, ui, target)
-        elif choice == 2:
             project_id, target = _interactive_switch(ui, target, cfg)
             svc = TodoService(cfg, project_id)
-        elif choice == 3:
+        elif choice == 2:
             interactive_config(project_id)
             # Reload config and service in case settings changed
             from dodo.config import clear_config_cache
@@ -93,15 +90,6 @@ def interactive_menu() -> None:
             svc = TodoService(cfg, project_id)
 
 
-def _interactive_add(svc: TodoService, ui: RichTerminalMenu, target: str) -> None:
-    console.print("[dim]Ctrl+C to cancel[/dim]")
-    text = ui.input("Todo:")
-    if text:
-        item = svc.add(text)
-        console.print(f"[green]✓[/green] Added to {target}: {item.text}")
-        ui.input("Press Enter to continue...")
-
-
 def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
     """Unified todo management with keyboard shortcuts."""
     cursor = 0
@@ -109,6 +97,8 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
     undo_stack: list[UndoAction] = []
     status_msg: str | None = None
     last_size: tuple[int, int] = (0, 0)  # Track terminal size for resize detection
+    input_mode: bool = False
+    input_buffer: str = ""
 
     def build_display() -> tuple[Panel, bool]:
         """Build the display as a Panel. Returns (panel, size_changed)."""
@@ -131,7 +121,7 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
         lines: list[str] = []
         lines.append("")  # blank line before items
 
-        if not items:
+        if not items and not input_mode:
             lines.append("[dim]No todos - press 'a' to add one[/dim]")
         else:
             # Calculate visible range
@@ -153,10 +143,10 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
 
             for i in range(visible_start, visible_end):
                 item = items[i]
-                selected = i == cursor
+                selected = i == cursor and not input_mode  # Hide selection in input mode
                 done = item.status == Status.DONE
 
-                # Marker: cyan > for active, dim > for done
+                # Marker: cyan > for active, dim > for done (hidden in input mode)
                 if selected:
                     marker = "[dim]>[/dim]" if done else "[cyan]>[/cyan]"
                 else:
@@ -178,14 +168,29 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
             if below_indicator:
                 lines.append(below_indicator)
 
+        # Show input line as new bullet item when in input mode
+        if input_mode:
+            input_display = escape(input_buffer) if input_buffer else ""
+            # Truncate if too long
+            max_input_len = width - 10
+            if len(input_display) > max_input_len:
+                input_display = input_display[-max_input_len:]
+            lines.append(f"[cyan]>[/cyan] [dim]○[/dim] {input_display}[blink]_[/blink]")
+
         # Status line (with left margin)
-        if status_msg:
+        if input_mode:
+            status_line = "[dim]  Type todo text...[/dim]"
+        elif status_msg:
             status_line = f"  {status_msg}"
         else:
             done_count = sum(1 for i in items if i.status == Status.DONE)
             status_line = f"[dim]  {len(items)} todos · {done_count} done[/dim]"
 
-        footer = "[dim]  ↑↓/jk · space toggle · e edit · d del · u undo · a add · q quit[/dim]"
+        # Footer changes during input mode
+        if input_mode:
+            footer = "[dim]  enter save · esc cancel[/dim]"
+        else:
+            footer = "[dim]  ↑↓/jk · space toggle · e edit · d del · u undo · a add · A editor · q quit[/dim]"
 
         # Calculate panel height: content + blank + status + footer + borders
         # +1 blank before items (already added), +1 blank after, +1 status, +1 footer, +2 borders
@@ -229,8 +234,43 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
                 try:
                     key = readchar.readkey()
                 except KeyboardInterrupt:
-                    return
+                    if input_mode:
+                        input_mode = False
+                        input_buffer = ""
+                        status_msg = "[dim]Cancelled[/dim]"
+                    else:
+                        return
 
+                # Handle input mode keystrokes
+                if input_mode:
+                    if key == "\x1b":  # Escape
+                        input_mode = False
+                        input_buffer = ""
+                        status_msg = "[dim]Cancelled[/dim]"
+                    elif key in ("\r", "\n"):  # Enter - save
+                        if input_buffer.strip():
+                            svc.add(input_buffer.strip())
+                            status_msg = (
+                                f"[dim]✓ Added: {input_buffer.strip()[:STATUS_MSG_MAX_LEN]}[/dim]"
+                            )
+                            # Cursor will be clamped to valid range in next loop iteration
+                            cursor = len(items)  # Set past end, will clamp to last item
+                        else:
+                            status_msg = "[dim]Cancelled (empty)[/dim]"
+                        input_mode = False
+                        input_buffer = ""
+                    elif key in ("\x7f", "\x08", readchar.key.BACKSPACE):  # Backspace
+                        input_buffer = input_buffer[:-1]
+                    elif len(key) == 1 and key.isprintable():  # Regular character
+                        input_buffer += key
+                    # Update display
+                    panel, size_changed = build_display()
+                    if size_changed:
+                        console.clear()
+                    live.update(panel)
+                    continue
+
+                # Normal mode keystrokes
                 if key in (readchar.key.UP, "k"):  # Up (wrap around)
                     cursor = max_cursor if cursor == 0 else cursor - 1
                 elif key in (readchar.key.DOWN, "j", "\t"):  # Down/Tab (wrap around)
@@ -267,7 +307,10 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
                         status_msg = (
                             f"[dim]↩ Restored text: {action.item.text[:STATUS_MSG_MAX_LEN]}[/dim]"
                         )
-                elif key == "a":  # Add
+                elif key == "a":  # Quick add (inline input)
+                    input_mode = True
+                    input_buffer = ""
+                elif key == "A":  # Add via editor
                     add_mode = True
                     break
                 elif key == "u" and not undo_stack:
@@ -282,7 +325,7 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
         cfg = Config.load()
         editor_cmd = cfg.editor if cfg.editor else None
 
-        # Add mode - runs outside Live context
+        # Add mode (editor) - runs outside Live context
         if add_mode:
             new_text = _edit_in_editor(
                 "", ["New todo", "Save and exit to add, leave empty to cancel"], editor_cmd
@@ -330,10 +373,30 @@ def _get_project_storage_path(cfg: Config, project_id: str | None, worktree_shar
     return cfg.config_dir / "dodo.md"
 
 
-def _shorten_path(path: Path, max_len: int = 50) -> str:
-    """Shorten path for display, keeping important parts."""
+def _shorten_path(path: Path, config_dir: Path | None = None, max_len: int = 50) -> str:
+    """Shorten path for display, keeping important parts.
+
+    Args:
+        path: Path to shorten
+        config_dir: Config directory for relative path calculation (optional)
+        max_len: Maximum length before truncating
+    """
     s = str(path)
     home = str(Path.home())
+
+    # Remove common config dir prefix for cleaner display
+    # ~/.config/dodo/projects/xxx/dodo.db -> xxx/dodo.db
+    # ~/.config/dodo/dodo.db -> dodo.db
+    if config_dir:
+        config_dir_str = str(config_dir)
+        if s.startswith(config_dir_str):
+            rel = s[len(config_dir_str) :].lstrip("/")
+            # Remove "projects/" prefix for project paths
+            if rel.startswith("projects/"):
+                rel = rel[9:]  # len("projects/")
+            return rel if rel else s
+
+    # Fall back to home shortening
     if s.startswith(home):
         s = "~" + s[len(home) :]
     if len(s) <= max_len:
@@ -366,30 +429,29 @@ def _interactive_switch(
     )
     current_path = _get_project_storage_path(cfg, current_project_id, cfg.worktree_shared)
 
-    # Build options: (key, name, path_display, disabled)
-    options: list[tuple[str, str, str | Path | None, bool]] = []
-
-    # Track which project names we've already added
+    # Build local options: (key, name, path_display, disabled) - relevant to current working dir
+    local_options: list[tuple[str, str, str | Path | None, bool]] = []
     added_projects: set[str] = set()
 
     # Always show global
     global_path = _get_project_storage_path(cfg, None, False)
-    options.append(("global", "global", global_path, current_target == "global"))
+    local_options.append(("global", "global", global_path, current_target == "global"))
     added_projects.add("global")
 
     # Show worktree's own project if not global
     if worktree_name != "global":
         wt_path = _get_project_storage_path(cfg, worktree_project, False)
-        options.append(("worktree", worktree_name, wt_path, worktree_name == current_target))
+        local_options.append(("worktree", worktree_name, wt_path, worktree_name == current_target))
         added_projects.add(worktree_name)
 
     # Show parent's project if in worktree
     if is_worktree and parent_id:
         parent_path = _get_project_storage_path(cfg, parent_id, True)
-        options.append(("parent", parent_name, parent_path, parent_name == current_target))
+        local_options.append(("parent", parent_name, parent_path, parent_name == current_target))
         added_projects.add(parent_name)
 
-    # Scan for existing projects in config dir
+    # Build all-projects list (other projects from config, not already shown)
+    all_projects: list[tuple[str, str, str | Path | None, bool]] = []
     projects_dir = cfg.config_dir / "projects"
     if projects_dir.exists():
         for proj_dir in sorted(projects_dir.iterdir()):
@@ -398,33 +460,73 @@ def _interactive_switch(
                 if proj_name not in added_projects:
                     proj_path = _get_project_storage_path(cfg, proj_name, False)
                     is_current = proj_name == current_target
-                    options.append(("existing", proj_name, proj_path, is_current))
+                    all_projects.append(("existing", proj_name, proj_path, is_current))
                     added_projects.add(proj_name)
 
-    # New project option
-    new_project_path = _shorten_path(cfg.config_dir / "projects" / "<name>" / "dodo.md")
-    options.append(("custom", "New", new_project_path, False))
+    # State: whether to show all projects
+    show_all = False
+
+    def build_options() -> list[tuple[str, str, str | Path | None, bool]]:
+        """Build current options list based on show_all state."""
+        opts = list(local_options)
+
+        # New project option (before show all)
+        opts.append(("custom", "New", None, False))
+
+        # Toggle option for showing all projects (only if there are other projects)
+        if all_projects:
+            # Space before toggle
+            opts.append(("_spacer", "", None, True))
+            toggle_label = "▼ Hide other projects" if show_all else "▶ Show all projects"
+            opts.append(("_toggle", toggle_label, None, False))
+
+            if show_all:
+                # Separator
+                opts.append(("_sep", "─" * 30, None, True))
+                # All other projects
+                opts.extend(all_projects)
+
+        return opts
+
+    options = build_options()
 
     # Find first non-disabled option for initial cursor
-    cursor = next((i for i, (_, _, _, disabled) in enumerate(options) if not disabled), 0)
+    cursor = next(
+        (
+            i
+            for i, (k, _, _, disabled) in enumerate(options)
+            if not disabled and k not in ("_sep", "_spacer")
+        ),
+        0,
+    )
 
     def find_next_enabled(current: int, direction: int) -> int:
-        """Find next non-disabled option."""
+        """Find next non-disabled, non-separator option."""
         n = len(options)
         for _ in range(n):
             current = (current + direction) % n
-            if not options[current][3]:  # not disabled
+            key, _, _, disabled = options[current]
+            if not disabled and key not in ("_sep", "_spacer"):
                 return current
         return current
 
     def render() -> None:
-        sys.stdout.write("\033[H")  # Move to top
+        sys.stdout.write("\033[H\033[J")  # Move to top and clear screen
         lines = ["[dim]Select a project to switch to:[/dim]", ""]
         for i, (key, name, path, disabled) in enumerate(options):
-            marker = "[cyan]>[/cyan] " if i == cursor else "  "
-            path_str = f"  [dim]{_shorten_path(path)}[/dim]" if path else ""
+            if key == "_sep":
+                lines.append(f"  [dim]{name}[/dim]")
+                continue
+            if key == "_spacer":
+                lines.append("")
+                continue
 
-            if disabled:
+            marker = "[cyan]>[/cyan] " if i == cursor else "  "
+            path_str = f"  [dim]{_shorten_path(path, cfg.config_dir)}[/dim]" if path else ""
+
+            if key == "_toggle":
+                lines.append(f"{marker}[cyan]{name}[/cyan]")
+            elif disabled:
                 # Current item - show as greyed with (current) label
                 lines.append(f"{marker}[dim]{name}{path_str} (current)[/dim]")
             elif key == "custom":
@@ -433,16 +535,133 @@ def _interactive_switch(
                 lines.append(f"{marker}[bold]{name}[/bold]{path_str}")
 
         content = "\n".join(lines)
-        content += "\n\n[dim]↑↓ navigate · enter select · q cancel[/dim]"
+        content += (
+            "\n\n[dim]↑↓ navigate · enter switch · o manage · l open · d delete · q cancel[/dim]"
+        )
 
         console.print(
             Panel(
                 content,
-                title="Switch Project",
+                title="Projects",
                 border_style="blue",
                 width=min(80, console.width or 80),
             )
         )
+
+    def get_project_id_for_option(opt_key: str, opt_name: str) -> str | None:
+        """Get project_id for a menu option."""
+        if opt_key == "global":
+            return None
+        elif opt_key == "worktree":
+            return worktree_project
+        elif opt_key == "parent":
+            return parent_id
+        elif opt_key == "existing":
+            return opt_name
+        return None
+
+    def get_storage_path_for_option(opt_key: str, opt_name: str) -> Path | None:
+        """Get storage path for a menu option."""
+        proj_id = get_project_id_for_option(opt_key, opt_name)
+        ws = opt_key == "parent"  # worktree_shared only for parent
+        return _get_project_storage_path(cfg, proj_id, ws)
+
+    def handle_manage_todos(opt_key: str, opt_name: str) -> None:
+        """Open todo list for selected project (temporary view)."""
+        if opt_key in ("custom", "_toggle", "_sep", "_spacer"):
+            return
+        proj_id = get_project_id_for_option(opt_key, opt_name)
+        temp_svc = TodoService(cfg, proj_id)
+        display_name = opt_name if opt_name else "global"
+        _todos_loop(temp_svc, display_name, cfg)
+
+    def handle_open_location(opt_key: str, opt_name: str) -> None:
+        """Open storage folder in file manager."""
+        if opt_key in ("custom", "_toggle", "_sep", "_spacer"):
+            return
+        import subprocess
+        import sys as sys_module
+
+        path = get_storage_path_for_option(opt_key, opt_name)
+        if path:
+            folder = path.parent
+            folder.mkdir(parents=True, exist_ok=True)
+            if sys_module.platform == "darwin":
+                subprocess.Popen(["open", folder])
+            else:
+                subprocess.Popen(["xdg-open", folder])
+
+    def handle_delete_project(opt_key: str, opt_name: str) -> bool:
+        """Delete project with confirmation. Returns True if deleted."""
+        if opt_key in ("custom", "_toggle", "_sep", "_spacer"):
+            return False
+
+        path = get_storage_path_for_option(opt_key, opt_name)
+        if not path:
+            return False
+
+        # Check for both .db and .md (backend might have changed)
+        if not path.exists():
+            # Try the other file type
+            if str(path).endswith(".db"):
+                alt_path = path.with_suffix(".md")
+            else:
+                alt_path = path.with_suffix(".db")
+            if alt_path.exists():
+                path = alt_path
+            else:
+                display_name = opt_name if opt_name else "global"
+                sys.stdout.write(f"\n  No storage file for {display_name}\n")
+                sys.stdout.flush()
+                readchar.readkey()
+                return False
+
+        # Count todos for warning
+        try:
+            if str(path).endswith(".db"):
+                from dodo.plugins.sqlite.adapter import SqliteAdapter
+
+                adapter = SqliteAdapter(path)
+            else:
+                from dodo.adapters.markdown import MarkdownAdapter
+
+                adapter = MarkdownAdapter(path)
+            count = len(adapter.list())
+        except (OSError, KeyError, ValueError):
+            count = 0  # File read/parse error - treat as empty
+
+        # Show confirmation
+        display_name = opt_name if opt_name else "global"
+        count_str = f"{count} todos" if count > 0 else "empty"
+        sys.stdout.write(f'\n  Delete "{display_name}" ({count_str})? (y/n) ')
+        sys.stdout.flush()
+
+        try:
+            confirm = readchar.readkey()
+        except KeyboardInterrupt:
+            return False
+
+        if confirm.lower() != "y":
+            return False
+
+        # Delete the file
+        try:
+            path.unlink()
+        except OSError as e:
+            sys.stdout.write(f"\n  Error: {e}\n")
+            sys.stdout.flush()
+            readchar.readkey()
+            return False
+
+        # Delete folder if empty
+        folder = path.parent
+        try:
+            if folder.exists() and not any(folder.iterdir()):
+                folder.rmdir()
+        except OSError:
+            pass  # Ignore errors cleaning up folder
+
+        return True
 
     with console.screen():
         while True:
@@ -458,8 +677,46 @@ def _interactive_switch(
                 cursor = find_next_enabled(cursor, 1)
             elif key == "q":
                 return None if current_target == "global" else current_target, current_target
+            elif key == "o":
+                # Manage todos for selected project
+                opt_key, opt_name, _, _ = options[cursor]
+                handle_manage_todos(opt_key, opt_name)
+            elif key == "l":
+                # Open storage location
+                opt_key, opt_name, _, _ = options[cursor]
+                handle_open_location(opt_key, opt_name)
+            elif key == "d":
+                # Delete project
+                opt_key, opt_name, _, _ = options[cursor]
+                if handle_delete_project(opt_key, opt_name):
+                    # Rebuild all_projects by rescanning (excluding local_options)
+                    local_names = {n for _, n, _, _ in local_options}
+                    all_projects.clear()
+                    if projects_dir.exists():
+                        for proj_dir in sorted(projects_dir.iterdir()):
+                            if proj_dir.is_dir():
+                                proj_name = proj_dir.name
+                                if proj_name not in local_names:
+                                    proj_path = _get_project_storage_path(cfg, proj_name, False)
+                                    is_curr = proj_name == current_target
+                                    all_projects.append(("existing", proj_name, proj_path, is_curr))
+                    # Rebuild options (preserves show_all state)
+                    options = build_options()
+                    if cursor >= len(options):
+                        cursor = max(0, len(options) - 1)
+                    cursor = find_next_enabled(cursor, 0) if options else 0
             elif key in ("\r", "\n", " "):
-                break
+                selected_key = options[cursor][0]
+                if selected_key == "_toggle":
+                    # Toggle show_all and rebuild options
+                    show_all = not show_all
+                    options = build_options()
+                    # Keep cursor at toggle position
+                    cursor = next(
+                        (i for i, (k, _, _, _) in enumerate(options) if k == "_toggle"), cursor
+                    )
+                else:
+                    break
 
     selected_key, selected_name, _, _ = options[cursor]
 
@@ -589,8 +846,8 @@ def _detect_other_adapter_files(
                 count = len(adapter.list())
                 if count > 0:
                     results.append(("markdown", count))
-            except Exception:
-                pass
+            except (OSError, KeyError, ValueError):
+                pass  # File read/parse error - skip
 
     # Check sqlite
     if current_adapter != "sqlite":
@@ -602,8 +859,8 @@ def _detect_other_adapter_files(
                 count = len(adapter.list())
                 if count > 0:
                     results.append(("sqlite", count))
-            except Exception:
-                pass
+            except (OSError, KeyError, ValueError):
+                pass  # Database read error - skip
 
     return results
 
@@ -683,6 +940,10 @@ def _run_migration(
     """Run migration from source to target adapter. Returns status message."""
     md_path, db_path = _get_storage_paths(cfg, project_id)
 
+    # Debug: show paths
+    source_path = md_path if source_adapter == "markdown" else db_path
+    target_path = db_path if target_adapter == "sqlite" else md_path
+
     # Get source adapter instance
     if source_adapter == "markdown":
         from dodo.adapters.markdown import MarkdownAdapter
@@ -722,7 +983,10 @@ def _run_migration(
     except Exception as e:
         return f"[red]Import failed: {e}[/red]"
 
-    return f"[green]Migrated {imported} todos[/green] ({skipped} already existed)"
+    if skipped > 0 and imported == 0:
+        # All items skipped - show debug info
+        return f"[yellow]Skipped {skipped} (already exist)[/yellow]\n[dim]From: {source_path}\nTo: {target_path}[/dim]"
+    return f"[green]Migrated {imported} todos[/green] ({skipped} skipped)"
 
 
 def _unified_settings_loop(

@@ -143,6 +143,11 @@ class TodoService:
         return self._config.config_dir / "dodo.md"
 
     def _get_sqlite_path(self) -> Path:
+        if self._config.local_storage and self._project_id:
+            root = detect_project_root(worktree_shared=self._config.worktree_shared)
+            if root:
+                return root / ".dodo" / "dodo.db"
+
         if self._project_id:
             return self._config.config_dir / "projects" / self._project_id / "dodo.db"
         return self._config.config_dir / "dodo.db"

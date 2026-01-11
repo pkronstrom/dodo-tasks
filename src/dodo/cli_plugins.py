@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -42,11 +41,10 @@ def _get_config_dir() -> Path:
 
 
 def _load_registry() -> dict:
-    """Load plugin registry from JSON file."""
-    registry_path = _get_config_dir() / "plugin_registry.json"
-    if registry_path.exists():
-        return json.loads(registry_path.read_text())
-    return {}
+    """Load plugin registry from JSON file (uses cached version from plugins module)."""
+    from dodo.plugins import _load_registry as load_registry_cached
+
+    return load_registry_cached(_get_config_dir())
 
 
 def _save_registry(registry: dict) -> None:
@@ -312,37 +310,3 @@ def show(
     if info.get("path"):
         console.print(f"  Path: {info['path']}")
     console.print(f"  Hooks: {', '.join(info.get('hooks', []))}")
-
-
-# Keep dispatch for backwards compatibility with old CLI structure
-def dispatch(action: str, name: str | None = None) -> None:
-    """Dispatch plugin commands (legacy)."""
-    if action == "list":
-        list_plugins()
-    elif action == "show":
-        if not name:
-            console.print("[red]Error:[/red] Plugin name required for 'show'")
-            console.print("Usage: dodo plugins show <name>")
-            sys.exit(1)
-        show(name)
-    elif action == "scan":
-        scan()
-    elif action == "enable":
-        if not name:
-            console.print("[red]Error:[/red] Plugin name required for 'enable'")
-            sys.exit(1)
-        enable(name)
-    elif action == "disable":
-        if not name:
-            console.print("[red]Error:[/red] Plugin name required for 'disable'")
-            sys.exit(1)
-        disable(name)
-    elif action == "register":
-        if not name:
-            console.print("[red]Error:[/red] Path required for 'register'")
-            sys.exit(1)
-        register(name)
-    else:
-        console.print(f"[red]Error:[/red] Unknown action '{action}'")
-        console.print("Available actions: list, show, scan, enable, disable, register")
-        sys.exit(1)
