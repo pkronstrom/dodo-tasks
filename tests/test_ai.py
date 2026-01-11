@@ -10,15 +10,19 @@ class TestBuildCommand:
         template = "llm '{{prompt}}' -s '{{system}}'"
         cmd = build_command(template, prompt="test prompt", system="sys", schema="{}")
 
-        assert "test prompt" in cmd
-        assert "sys" in cmd
+        # cmd is now a list of arguments
+        cmd_str = " ".join(cmd)
+        assert "test prompt" in cmd_str
+        assert "sys" in cmd_str
 
     def test_substitutes_schema(self):
         template = "claude --json-schema '{{schema}}'"
         schema = '{"type": "array"}'
         cmd = build_command(template, prompt="test", system="sys", schema=schema)
 
-        assert schema in cmd
+        # cmd is now a list of arguments
+        cmd_str = " ".join(cmd)
+        assert schema in cmd_str
 
 
 class TestRunAi:
@@ -55,7 +59,9 @@ class TestRunAi:
 
         call_args = mock_run.call_args
         cmd = call_args[0][0]
-        assert "piped" in cmd.lower() or "some piped content" in cmd
+        # cmd is now a list of arguments
+        cmd_str = " ".join(cmd)
+        assert "piped" in cmd_str.lower() or "some piped content" in cmd_str
 
     @patch("dodo.ai.subprocess.run")
     def test_handles_single_item(self, mock_run: MagicMock):
