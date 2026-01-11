@@ -1,6 +1,7 @@
 """AI-assisted todo formatting."""
 
 import json
+import shlex
 import subprocess
 
 DEFAULT_SCHEMA = json.dumps(
@@ -17,13 +18,19 @@ def build_command(
     prompt: str,
     system: str,
     schema: str,
-) -> str:
-    """Build command string from template."""
-    return (
+) -> list[str]:
+    """Build command arguments from template.
+
+    Returns a list of arguments suitable for subprocess.run without shell=True.
+    """
+    # Substitute placeholders
+    cmd_str = (
         template.replace("{{prompt}}", prompt)
         .replace("{{system}}", system)
         .replace("{{schema}}", schema)
     )
+    # Parse into argument list (handles quoting properly)
+    return shlex.split(cmd_str)
 
 
 def run_ai(
@@ -54,21 +61,16 @@ def run_ai(
     prompt_parts.append(user_input)
     full_prompt = "\n".join(prompt_parts)
 
-    # Escape for shell
-    escaped_prompt = full_prompt.replace("'", "'\"'\"'")
-    escaped_system = system_prompt.replace("'", "'\"'\"'")
-
-    cmd = build_command(
+    cmd_args = build_command(
         template=command,
-        prompt=escaped_prompt,
-        system=escaped_system,
+        prompt=full_prompt,
+        system=system_prompt,
         schema=schema or DEFAULT_SCHEMA,
     )
 
     try:
         result = subprocess.run(
-            cmd,
-            shell=True,
+            cmd_args,
             capture_output=True,
             text=True,
             timeout=60,
