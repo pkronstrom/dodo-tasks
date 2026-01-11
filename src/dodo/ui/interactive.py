@@ -82,7 +82,7 @@ def interactive_menu() -> None:
             cfg = Config.load()
             svc = TodoService(cfg, project_id)
         elif choice == 3:
-            project_id, target = _interactive_switch(ui, target)
+            project_id, target = _interactive_switch(ui, target, cfg)
             svc = TodoService(cfg, project_id)
 
 
@@ -301,10 +301,17 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
         break  # Normal exit
 
 
-def _interactive_switch(ui: RichTerminalMenu, current_target: str) -> tuple[str | None, str]:
+def _interactive_switch(
+    ui: RichTerminalMenu, current_target: str, cfg: Config
+) -> tuple[str | None, str]:
+    from dodo.project import detect_worktree_parent
+
     # Detect what the current directory's project would be
     detected = detect_project()
     detected_name = detected or "global"
+
+    # Detect if in a worktree with a parent repo
+    is_worktree, parent_root, parent_id = detect_worktree_parent()
 
     # Build options based on current context
     options = []
@@ -312,6 +319,12 @@ def _interactive_switch(ui: RichTerminalMenu, current_target: str) -> tuple[str 
         options.append("Switch to global")
     if detected_name != current_target:
         options.append(f"Switch to {detected_name} (current dir)")
+
+    # If in worktree and not sharing, offer parent's todos
+    if is_worktree and parent_id and not cfg.worktree_shared:
+        parent_name = parent_root.name if parent_root else parent_id
+        options.append(f"Use {parent_name}'s todos (enable sharing)")
+
     options.append("Enter project name")
 
     if not options:
@@ -330,6 +343,10 @@ def _interactive_switch(ui: RichTerminalMenu, current_target: str) -> tuple[str 
         return None, "global"
     elif selected.startswith("Switch to ") and "(current dir)" in selected:
         return detected, detected_name
+    elif "enable sharing" in selected:
+        # Enable worktree sharing and switch to parent
+        cfg.set("worktree_shared", True)
+        return parent_id, parent_root.name if parent_root else parent_id
     elif selected == "Enter project name":
         name = ui.input("Project name:")
         return name, name or "global"
