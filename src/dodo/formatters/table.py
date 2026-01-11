@@ -55,9 +55,7 @@ class TableFormatter:
         for item in items:
             # Colorblind-safe: blue checkmark for done
             status = (
-                "[dodger_blue2]✓[/dodger_blue2]"
-                if item.status == Status.DONE
-                else "[dark_orange]•[/dark_orange]"
+                "[dodger_blue2]✓[/dodger_blue2]" if item.status == Status.DONE else "[dim]•[/dim]"
             )
             created = self._format_datetime(item.created_at)
 

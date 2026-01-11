@@ -153,7 +153,7 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
                     marker = " "
 
                 # Checkbox: blue checkmark for done, orange dot for pending (colorblind-safe)
-                check = "[dodger_blue2]✓[/dodger_blue2]" if done else "[dark_orange]•[/dark_orange]"
+                check = "[dodger_blue2]✓[/dodger_blue2]" if done else "[dim]•[/dim]"
 
                 # Text (no wrapping - keep it simple)
                 text = escape(item.text)
@@ -176,7 +176,7 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
             if len(input_display) > max_input_len:
                 input_display = input_display[-max_input_len:]
             lines.append(
-                f"[dodger_blue2]>[/dodger_blue2] [dark_orange]•[/dark_orange] {input_display}[blink]_[/blink]"
+                f"[dodger_blue2]>[/dodger_blue2] [dim]•[/dim] {input_display}[blink]_[/blink]"
             )
 
         # Status line (with left margin)
@@ -1026,7 +1026,7 @@ def _unified_settings_loop(
             value = pending[key]
 
             if kind == "toggle":
-                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dark_orange]•[/dark_orange]"
+                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dim]•[/dim]"
                 base = f"{marker}{icon} {label}"
                 # Pad to align descriptions
                 padding = max(0, desc_col - len(label) - 6)
@@ -1313,7 +1313,7 @@ def _plugins_config_loop(
             value = pending[key]
 
             if kind == "toggle":
-                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dark_orange]•[/dark_orange]"
+                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dim]•[/dim]"
                 line = f"{marker}{icon} {label}"
             else:
                 display = str(value).replace("\n", "↵")[:CONFIG_DISPLAY_MAX_LEN] + (
@@ -1405,7 +1405,7 @@ def _config_loop(
             value = pending[key]
 
             if kind == "toggle":
-                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dark_orange]•[/dark_orange]"
+                icon = "[dodger_blue2]✓[/dodger_blue2]" if value else "[dim]•[/dim]"
                 line = f"{marker}{icon} {label}"
             elif kind == "cycle":
                 line = f"{marker}  {label}: [dark_orange]{value}[/dark_orange]"
