@@ -399,24 +399,30 @@ def _build_settings_items(cfg: Config) -> tuple[list[SettingsItem], dict[str, ob
             "Worktree sharing",
             "toggle",
             None,
-            "Share todos across git worktrees",
+            "Use same todos for all worktrees of a repo",
         ),
         (
             "local_storage",
             "Local storage",
             "toggle",
             None,
-            "Store in .dodo/ instead of ~/.config/dodo",
+            "Store todos in .dodo/ within project",
         ),
         (
             "timestamps_enabled",
             "Timestamps",
             "toggle",
             None,
-            "Show created/completed times",
+            "Show created/completed times in list",
         ),
-        ("default_adapter", "Adapter", "cycle", available_adapters, None),
-        ("editor", "Editor", "edit", None, "Leave empty for $EDITOR"),
+        (
+            "default_adapter",
+            "Adapter",
+            "cycle",
+            available_adapters,
+            "Storage backend (enable plugins for more)",
+        ),
+        ("editor", "Editor", "edit", None, "Command to open for editing ($EDITOR if empty)"),
     ]
 
     for key, label, kind, options, desc in general:
