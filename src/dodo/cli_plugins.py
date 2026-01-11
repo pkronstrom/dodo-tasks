@@ -72,6 +72,38 @@ def _detect_hooks(plugin_path: Path) -> list[str]:
     return hooks
 
 
+def _detect_commands(plugin_path: Path) -> list[str]:
+    """Detect COMMANDS declaration in plugin __init__.py."""
+    import re
+
+    init_file = plugin_path / "__init__.py"
+    if not init_file.exists():
+        return []
+
+    content = init_file.read_text()
+    match = re.search(r"COMMANDS\s*=\s*\[([^\]]*)\]", content)
+    if match:
+        items = match.group(1)
+        return [s.strip().strip("\"'") for s in items.split(",") if s.strip().strip("\"'")]
+    return []
+
+
+def _detect_formatters(plugin_path: Path) -> list[str]:
+    """Detect FORMATTERS declaration in plugin __init__.py."""
+    import re
+
+    init_file = plugin_path / "__init__.py"
+    if not init_file.exists():
+        return []
+
+    content = init_file.read_text()
+    match = re.search(r"FORMATTERS\s*=\s*\[([^\]]*)\]", content)
+    if match:
+        items = match.group(1)
+        return [s.strip().strip("\"'") for s in items.split(",") if s.strip().strip("\"'")]
+    return []
+
+
 def _scan_plugin_dir(plugins_dir: Path, builtin: bool) -> dict[str, dict]:
     """Scan a directory for Python module plugins."""
     plugins = {}
@@ -113,12 +145,17 @@ def _scan_plugin_dir(plugins_dir: Path, builtin: bool) -> dict[str, dict]:
                     break
 
         hooks = _detect_hooks(entry)
-        if not hooks:
-            continue  # Skip plugins with no hooks
+        commands = _detect_commands(entry)
+        formatters = _detect_formatters(entry)
+
+        if not hooks and not commands and not formatters:
+            continue  # Skip plugins with nothing to offer
 
         plugin_info: dict = {
             "builtin": builtin,
             "hooks": hooks,
+            "commands": commands,
+            "formatters": formatters,
             "version": version,
             "description": description,
         }
