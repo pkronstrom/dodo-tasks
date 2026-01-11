@@ -393,7 +393,13 @@ def _load_last_action() -> dict | None:
     state_file = cfg.config_dir / ".last_action"
     if not state_file.exists():
         return None
-    return json.loads(state_file.read_text())
+    try:
+        content = state_file.read_text()
+        if content.strip():
+            return json.loads(content)
+        return None
+    except json.JSONDecodeError:
+        return None
 
 
 def _clear_last_action() -> None:
