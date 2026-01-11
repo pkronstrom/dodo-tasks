@@ -36,6 +36,16 @@ class ObsidianAdapter:
             timeout=10.0,
         )
 
+    def close(self) -> None:
+        """Close the HTTP client."""
+        self._client.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
     def add(self, text: str, project: str | None = None) -> TodoItem:
         timestamp = datetime.now()
         item = TodoItem(
