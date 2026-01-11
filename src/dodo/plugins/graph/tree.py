@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -9,10 +10,16 @@ if TYPE_CHECKING:
 
 
 class TreeFormatter:
-    """Format todos as dependency tree."""
+    """Format todos as dependency tree with proper text wrapping."""
 
-    def __init__(self, max_width: int = 70):
-        self.max_width = max_width
+    MAX_WIDTH = 120  # Maximum width even on wide terminals
+    MAX_LINES = 5  # Maximum lines per item before truncation
+    ID_WIDTH = 10  # "• abc12345 " prefix width
+
+    def __init__(self, max_width: int | None = None):
+        # Get terminal width, cap at MAX_WIDTH
+        term_width = shutil.get_terminal_size().columns
+        self.max_width = min(max_width or term_width, self.MAX_WIDTH)
 
     def _get_id(self, item) -> str:
         """Get ID from item or wrapped item."""
@@ -31,6 +38,47 @@ class TreeFormatter:
         if hasattr(item, "item"):
             return item.item.status
         return item.status
+
+    def _wrap_text(self, text: str, width: int, indent: int = 0) -> list[str]:
+        """Wrap text to width, returning list of lines.
+
+        First line uses full width, subsequent lines are indented.
+        """
+        if width <= 0:
+            return [text]
+
+        lines = []
+        remaining = text
+
+        # First line
+        if len(remaining) <= width:
+            return [remaining]
+
+        # Find wrap point (prefer space)
+        wrap_at = width
+        space_pos = remaining.rfind(" ", 0, width)
+        if space_pos > width // 2:  # Only use space if not too early
+            wrap_at = space_pos
+
+        lines.append(remaining[:wrap_at].rstrip())
+        remaining = remaining[wrap_at:].lstrip()
+
+        # Subsequent lines with indent
+        subsequent_width = width - indent
+        while remaining:
+            if len(remaining) <= subsequent_width:
+                lines.append(remaining)
+                break
+
+            wrap_at = subsequent_width
+            space_pos = remaining.rfind(" ", 0, subsequent_width)
+            if space_pos > subsequent_width // 2:
+                wrap_at = space_pos
+
+            lines.append(remaining[:wrap_at].rstrip())
+            remaining = remaining[wrap_at:].lstrip()
+
+        return lines
 
     def format(self, items: list[TodoItemView]) -> str:
         """Format items as a dependency tree.
@@ -62,33 +110,61 @@ class TreeFormatter:
         # Render using rich Tree
         rendered: set[str] = set()
 
-        def truncate(text: str, max_len: int) -> str:
-            if len(text) <= max_len:
-                return text
-            return text[: max_len - 1] + "…"
-
-        def format_item(item) -> str:
+        def format_item(item, depth: int = 0) -> str:
             item_id = self._get_id(item)
             is_done = self._get_status(item) == Status.DONE
+            text = self._get_text(item)
+
             # Colorblind-safe: blue for done, orange for pending
             icon = "[dodger_blue2]✓[/dodger_blue2]" if is_done else "[dark_orange]•[/dark_orange]"
-            text = truncate(self._get_text(item), self.max_width)
+            id_str = f"[dim]{item_id[:8]}[/dim]"
 
-            if is_done:
-                return f"{icon} [dim]{item_id[:8]}[/dim] [dim strike]{text}[/dim strike]"
+            # Calculate available width for text
+            # Tree indent is roughly 4 chars per level
+            tree_indent = depth * 4
+            prefix_width = self.ID_WIDTH  # "• abc12345 "
+            available = self.max_width - tree_indent - prefix_width
 
+            # Child count indicator
             kids = children.get(item_id, [])
-            arrow = f" [orange1]→{len(kids)}[/orange1]" if kids else ""
-            return f"{icon} [dim]{item_id[:8]}[/dim] {text}{arrow}"
+            suffix = f" [orange1]→{len(kids)}[/orange1]" if kids and not is_done else ""
+            suffix_len = len(f" →{len(kids)}") if kids and not is_done else 0
 
-        def add_children(tree_node, parent_id: str) -> None:
+            # Wrap text
+            text_width = max(20, available - suffix_len)
+            lines = self._wrap_text(text, text_width, indent=2)
+
+            # Truncate to max lines
+            if len(lines) > self.MAX_LINES:
+                lines = lines[: self.MAX_LINES - 1]
+                lines.append("…")
+
+            # Format output
+            if is_done:
+                # Done items: dimmed and strikethrough
+                first_line = f"{icon} {id_str} [dim strike]{lines[0]}[/dim strike]"
+                if len(lines) > 1:
+                    continuation = "\n".join(
+                        f"             [dim strike]{line}[/dim strike]" for line in lines[1:]
+                    )
+                    return f"{first_line}\n{continuation}"
+                return first_line
+            else:
+                # Pending items
+                first_line = f"{icon} {id_str} {lines[0]}{suffix}"
+                if len(lines) > 1:
+                    continuation = "\n".join(f"             {line}" for line in lines[1:])
+                    return f"{first_line}\n{continuation}"
+                return first_line
+
+        def add_children(tree_node, parent_id: str, depth: int) -> None:
             for child in children.get(parent_id, []):
                 child_id = self._get_id(child)
                 if child_id in rendered:
                     continue
                 rendered.add(child_id)
-                child_node = tree_node.add(format_item(child))
-                add_children(child_node, child_id)
+                child_node = tree_node.add(format_item(child, depth))
+                add_children(child_node, child_id, depth + 1)
 
         # Build forest of trees
         trees = []
@@ -98,8 +174,8 @@ class TreeFormatter:
                 continue
             rendered.add(item_id)
 
-            tree = Tree(format_item(root), guide_style="dim")
-            add_children(tree, item_id)
+            tree = Tree(format_item(root, depth=0), guide_style="dim")
+            add_children(tree, item_id, depth=1)
             trees.append(tree)
 
         # Return a Group of trees - Rich will render this properly
