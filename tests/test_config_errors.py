@@ -45,11 +45,11 @@ def test_corrupted_registry_triggers_rescan(tmp_path: Path, monkeypatch):
     registry_file = config_dir / "plugin_registry.json"
     registry_file.write_text("not valid json {{{")
 
-    # Mock _scan_and_save_to to avoid actual scanning
+    # Mock _scan_and_save to avoid actual scanning
     def mock_scan(path):
         return {"test-plugin": {"hooks": [], "builtin": True}}
 
-    monkeypatch.setattr("dodo.cli_plugins._scan_and_save_to", mock_scan)
+    monkeypatch.setattr("dodo.plugins._scan_and_save", mock_scan)
 
     result = _load_registry(config_dir)
 

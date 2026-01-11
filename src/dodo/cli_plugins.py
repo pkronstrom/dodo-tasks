@@ -154,17 +154,11 @@ def _scan_and_save_to(config_dir: Path) -> dict:
 @plugins_app.command()
 def scan() -> None:
     """Scan plugin directories and update the registry."""
-    registry: dict = {}
+    from dodo.plugins import _scan_and_save, clear_plugin_cache
 
-    # Scan built-in plugins
-    builtin_plugins = _scan_plugin_dir(BUILTIN_PLUGINS_DIR, builtin=True)
-    registry.update(builtin_plugins)
-
-    # Scan user plugins (override built-ins if same name)
-    user_plugins = _scan_plugin_dir(USER_PLUGINS_DIR, builtin=False)
-    registry.update(user_plugins)
-
-    _save_registry(registry)
+    # Clear cache and rescan
+    clear_plugin_cache()
+    registry = _scan_and_save(_get_config_dir())
 
     console.print(f"[green]Scanned[/green] {len(registry)} plugin(s)")
     for name, info in sorted(registry.items()):
