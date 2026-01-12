@@ -929,6 +929,9 @@ def _run_migration(
     cfg: Config, source_backend: str, target_backend: str, project_id: str | None
 ) -> str:
     """Run migration from source to target backend. Returns status message."""
+    from dodo.backends.markdown import MarkdownBackend
+    from dodo.backends.sqlite import SqliteBackend
+
     md_path, db_path = _get_storage_paths(cfg, project_id)
 
     # Debug: show paths
