@@ -1,4 +1,4 @@
-"""Shared utilities for todo adapters."""
+"""Shared utilities for todo backends."""
 
 import re
 from datetime import datetime

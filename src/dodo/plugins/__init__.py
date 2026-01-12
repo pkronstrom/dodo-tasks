@@ -1,7 +1,7 @@
 """Plugin system with lazy loading and hook-based extension.
 
 This module provides the hook-based plugin system for extending dodo
-with adapters, commands, and formatters.
+with backends, commands, and formatters.
 """
 
 from __future__ import annotations
