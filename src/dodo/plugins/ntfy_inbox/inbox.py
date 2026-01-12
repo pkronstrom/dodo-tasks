@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import time
 import urllib.request
 
@@ -75,6 +74,9 @@ def _subscribe_once(topic: str, server: str) -> bool:
 
 def _process_message(msg: dict) -> None:
     """Process a single ntfy message and add to dodo."""
+    from dodo.config import Config
+    from dodo.core import TodoService
+
     # Skip non-message events (open, keepalive, etc.)
     if msg.get("event") != "message":
         return
@@ -95,22 +97,26 @@ def _process_message(msg: dict) -> None:
     if not text:
         return
 
-    # Build command
-    if use_ai:
-        cmd = ["dodo", "ai", text]
-    else:
-        cmd = ["dodo", "add", text]
-
-    if project:
-        cmd.extend(["-p", project])
-
-    # Execute
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            proj_info = f" [cyan][{project}][/cyan]" if project else ""
-            console.print(f"[green]Added:[/green] {text}{proj_info}")
+        cfg = Config.load()
+        svc = TodoService(cfg, project)
+        proj_info = f" [cyan][{project}][/cyan]" if project else ""
+
+        if use_ai:
+            # Use AI module directly
+            from dodo.ai import run_ai
+
+            todo_texts = run_ai(
+                user_input=text,
+                piped_content=None,
+                command=cfg.ai_command,
+                system_prompt=cfg.ai_sys_prompt,
+            )
+            for todo_text in todo_texts:
+                item = svc.add(todo_text)
+                console.print(f"[green]Added:[/green] {item.text}{proj_info}")
         else:
-            console.print(f"[red]Error adding todo:[/red] {result.stderr}")
+            item = svc.add(text)
+            console.print(f"[green]Added:[/green] {item.text}{proj_info}")
     except Exception as e:
-        console.print(f"[red]Error running dodo:[/red] {e}")
+        console.print(f"[red]Error adding todo:[/red] {e}")

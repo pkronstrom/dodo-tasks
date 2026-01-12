@@ -55,7 +55,7 @@ src/dodo/
 
 **Frozen dataclasses**: `TodoItem` is immutable. Create new instances for modifications. Use `TodoItemView` wrapper to add fields.
 
-**Centralized storage**: Use `storage.get_storage_path()` for adapter path calculations.
+**Centralized storage**: Use `storage.get_storage_path()` for backend path calculations.
 
 **Module-level caching**: `Config.load()`, `detect_project()`, plugin registry. Clear with `clear_*_cache()` in tests.
 

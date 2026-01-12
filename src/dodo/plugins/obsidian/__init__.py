@@ -1,4 +1,4 @@
-"""Obsidian Local REST API adapter plugin for dodo.
+"""Obsidian Local REST API backend plugin for dodo.
 
 This plugin provides integration with Obsidian through its Local REST API,
 allowing you to sync todos with an Obsidian vault.
@@ -22,11 +22,11 @@ class ConfigVar:
     description: str | None = None
 
 
-def register_adapter(registry: dict, config) -> None:
-    """Register the Obsidian adapter with the adapter registry."""
-    from dodo.plugins.obsidian.adapter import ObsidianAdapter
+def register_backend(registry: dict, config) -> None:
+    """Register the Obsidian backend with the backend registry."""
+    from dodo.plugins.obsidian.backend import ObsidianBackend
 
-    registry["obsidian"] = ObsidianAdapter
+    registry["obsidian"] = ObsidianBackend
 
 
 def register_config() -> list[ConfigVar]:

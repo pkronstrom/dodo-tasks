@@ -1,4 +1,4 @@
-"""Graph wrapper for dependency tracking on SQLite adapters."""
+"""Graph wrapper for dependency tracking on SQLite backend."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class GraphWrapper:
-    """Wraps a SQLite adapter to add dependency tracking.
+    """Wraps a SQLite backend to add dependency tracking.
 
     Stores dependencies in a separate table in the same database.
     """
@@ -29,15 +29,15 @@ class GraphWrapper:
         CREATE INDEX IF NOT EXISTS idx_blocker ON dependencies(blocker_id);
     """
 
-    def __init__(self, adapter):
-        self._adapter = adapter
-        self._path: Path = adapter._path
+    def __init__(self, backend):
+        self._backend = backend
+        self._path: Path = backend._path
         self._ensure_deps_schema()
 
-    # Delegate standard adapter methods
+    # Delegate standard backend methods
 
     def add(self, text: str, project: str | None = None) -> TodoItem:
-        return self._adapter.add(text, project)
+        return self._backend.add(text, project)
 
     def list(
         self,
@@ -46,7 +46,7 @@ class GraphWrapper:
     ) -> list[TodoItem]:
         from dodo.models import TodoItemView
 
-        items = self._adapter.list(project, status)
+        items = self._backend.list(project, status)
         # Wrap items with dependency info using TodoItemView
         views = []
         for item in items:
@@ -55,13 +55,13 @@ class GraphWrapper:
         return views
 
     def get(self, id: str) -> TodoItem | None:
-        return self._adapter.get(id)
+        return self._backend.get(id)
 
     def update(self, id: str, status: Status) -> TodoItem:
-        return self._adapter.update(id, status)
+        return self._backend.update(id, status)
 
     def update_text(self, id: str, text: str) -> TodoItem:
-        return self._adapter.update_text(id, text)
+        return self._backend.update_text(id, text)
 
     def delete(self, id: str) -> None:
         # Also clean up dependencies
@@ -69,7 +69,7 @@ class GraphWrapper:
             conn.execute(
                 "DELETE FROM dependencies WHERE blocker_id = ? OR blocked_id = ?", (id, id)
             )
-        self._adapter.delete(id)
+        self._backend.delete(id)
 
     # Dependency management methods
 

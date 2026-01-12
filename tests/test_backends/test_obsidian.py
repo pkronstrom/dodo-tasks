@@ -1,64 +1,65 @@
-"""Tests for Obsidian adapter."""
+"""Tests for Obsidian backend."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from dodo.models import Status
-from dodo.plugins.obsidian.adapter import ObsidianAdapter
+from dodo.plugins.obsidian.backend import ObsidianBackend
 
 
 @pytest.fixture
 def mock_client():
     """Mock httpx client."""
-    with patch("dodo.plugins.obsidian.adapter.httpx.Client") as mock:
+    with patch("dodo.plugins.obsidian.backend.httpx.Client") as mock:
         client = MagicMock()
         mock.return_value = client
         yield client
 
 
-class TestObsidianAdapterAdd:
+class TestObsidianBackendAdd:
     def test_add_posts_to_api(self, mock_client):
         mock_client.get.return_value = MagicMock(status_code=404)  # File doesn't exist
         mock_client.post.return_value = MagicMock(status_code=200)
 
-        adapter = ObsidianAdapter(api_key="test-key")
-        item = adapter.add("Test todo")
+        backend = ObsidianBackend(api_key="test-key")
+        item = backend.add("Test todo")
 
         assert item.text == "Test todo"
         assert mock_client.post.called
 
 
-class TestObsidianAdapterList:
+class TestObsidianBackendList:
     def test_list_parses_content(self, mock_client):
-        content = "- [ ] 2024-01-09 10:30 - First todo\n- [x] 2024-01-09 11:00 - Done todo\n"
+        content = "- [ ] 2024-01-09 10:30 [abc12345] - First todo\n- [x] 2024-01-09 11:00 [def67890] - Done todo\n"
         mock_client.get.return_value = MagicMock(status_code=200, text=content)
 
-        adapter = ObsidianAdapter(api_key="test-key")
-        items = adapter.list()
+        backend = ObsidianBackend(api_key="test-key")
+        items = backend.list()
 
         assert len(items) == 2
         assert items[0].text == "First todo"
+        assert items[0].id == "abc12345"
         assert items[1].status == Status.DONE
 
     def test_list_empty_file(self, mock_client):
         mock_client.get.return_value = MagicMock(status_code=404)
 
-        adapter = ObsidianAdapter(api_key="test-key")
-        items = adapter.list()
+        backend = ObsidianBackend(api_key="test-key")
+        items = backend.list()
 
         assert items == []
 
 
-class TestObsidianAdapterUpdate:
+class TestObsidianBackendUpdate:
     def test_update_puts_modified_content(self, mock_client):
-        content = "- [ ] 2024-01-09 10:30 - Test todo\n"
+        content = "- [ ] 2024-01-09 10:30 [abc12345] - Test todo\n"
         mock_client.get.return_value = MagicMock(status_code=200, text=content)
         mock_client.put.return_value = MagicMock(status_code=200)
 
-        adapter = ObsidianAdapter(api_key="test-key")
-        items = adapter.list()
-        updated = adapter.update(items[0].id, Status.DONE)
+        backend = ObsidianBackend(api_key="test-key")
+        items = backend.list()
+        updated = backend.update(items[0].id, Status.DONE)
 
         assert updated.status == Status.DONE
         assert mock_client.put.called
@@ -68,15 +69,15 @@ class TestObsidianAdapterUpdate:
         assert "[x]" in put_content
 
 
-class TestObsidianAdapterDelete:
+class TestObsidianBackendDelete:
     def test_delete_removes_line(self, mock_client):
-        content = "- [ ] 2024-01-09 10:30 - Todo 1\n- [ ] 2024-01-09 11:00 - Todo 2\n"
+        content = "- [ ] 2024-01-09 10:30 [abc12345] - Todo 1\n- [ ] 2024-01-09 11:00 [def67890] - Todo 2\n"
         mock_client.get.return_value = MagicMock(status_code=200, text=content)
         mock_client.put.return_value = MagicMock(status_code=200)
 
-        adapter = ObsidianAdapter(api_key="test-key")
-        items = adapter.list()
-        adapter.delete(items[0].id)
+        backend = ObsidianBackend(api_key="test-key")
+        items = backend.list()
+        backend.delete(items[0].id)
 
         assert mock_client.put.called
         call_kwargs = mock_client.put.call_args
