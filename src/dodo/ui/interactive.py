@@ -1126,7 +1126,7 @@ def _unified_settings_loop(
             if cfg.default_adapter == plugin_name:
                 cfg.set("default_adapter", "markdown")
                 nonlocal status_msg
-                status_msg = "[yellow]Adapter switched to markdown[/yellow]"
+                status_msg = "[yellow]Backend switched to markdown[/yellow]"
         cfg.set("enabled_plugins", ",".join(sorted(current)))
 
     def save_item(key: str, val: object) -> None:
@@ -1301,7 +1301,7 @@ def _general_config(cfg: Config) -> None:
     items: list[tuple[str, str, str, list[str] | None]] = [
         ("local_storage", "Store todos in project dir", "toggle", None),
         ("timestamps_enabled", "Add timestamps to todo entries", "toggle", None),
-        ("default_adapter", "Adapter", "cycle", ["markdown", "sqlite", "obsidian"]),
+        ("default_adapter", "Backend", "cycle", ["markdown", "sqlite", "obsidian"]),
         ("editor", "Editor (empty = $EDITOR)", "edit", None),
         ("ai_command", "AI command", "edit", None),
     ]

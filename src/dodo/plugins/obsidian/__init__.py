@@ -1,4 +1,4 @@
-"""Obsidian Local REST API adapter plugin for dodo.
+"""Obsidian Local REST API backend plugin for dodo.
 
 This plugin provides integration with Obsidian through its Local REST API,
 allowing you to sync todos with an Obsidian vault.
