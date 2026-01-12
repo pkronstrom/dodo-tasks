@@ -187,3 +187,48 @@ class TestCliNew:
         assert result.exit_code == 0
         assert "already exists" in result.stdout.lower()
         assert "dodo new <name>" in result.stdout
+
+
+class TestCliDestroy:
+    def test_destroy_removes_named_dodo(self, cli_env):
+        """dodo destroy <name> removes the dodo"""
+        # Create first
+        runner.invoke(app, ["new", "temp-session"])
+        config_dir = cli_env
+        assert (config_dir / "temp-session").exists()
+
+        # Destroy
+        result = runner.invoke(app, ["destroy", "temp-session"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Removed" in result.stdout or "Destroyed" in result.stdout
+        assert not (config_dir / "temp-session").exists()
+
+    def test_destroy_local_removes_local_dodo(self, cli_env, tmp_path, monkeypatch):
+        """dodo destroy <name> --local removes .dodo/<name>/"""
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(app, ["new", "agent-456", "--local"])
+        assert (tmp_path / ".dodo" / "agent-456").exists()
+
+        result = runner.invoke(app, ["destroy", "agent-456", "--local"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert not (tmp_path / ".dodo" / "agent-456").exists()
+
+    def test_destroy_nonexistent_errors(self, cli_env):
+        """dodo destroy <name> errors if dodo doesn't exist"""
+        result = runner.invoke(app, ["destroy", "nonexistent"])
+
+        assert result.exit_code == 1
+        assert "not found" in result.stdout.lower()
+
+    def test_destroy_default_local(self, cli_env, tmp_path, monkeypatch):
+        """dodo destroy --local removes default .dodo/"""
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(app, ["new", "--local"])
+        assert (tmp_path / ".dodo").exists()
+
+        result = runner.invoke(app, ["destroy", "--local"])
+
+        assert result.exit_code == 0
+        assert not (tmp_path / ".dodo").exists()
