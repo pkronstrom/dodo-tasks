@@ -1,4 +1,4 @@
-"""Obsidian Local REST API adapter."""
+"""Obsidian Local REST API backend."""
 
 from datetime import datetime
 
@@ -12,7 +12,7 @@ from dodo.adapters.utils import (
 from dodo.models import Status, TodoItem
 
 
-class ObsidianAdapter:
+class ObsidianBackend:
     """Obsidian Local REST API backend.
 
     Requires: obsidian-local-rest-api plugin running.
