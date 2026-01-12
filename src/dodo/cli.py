@@ -42,6 +42,33 @@ def _detect_project(worktree_shared: bool = False) -> str | None:
     return detect_project(worktree_shared=worktree_shared)
 
 
+def _resolve_project_from_ctx(
+    ctx: typer.Context,
+    cmd_project: str | None,
+    cmd_global: bool,
+    cfg: Config,
+) -> str | None:
+    """Resolve project from global or command-level options.
+
+    Priority: command-level > global-level > auto-detect
+    """
+    # Command-level flags take priority
+    if cmd_global:
+        return None
+    if cmd_project:
+        return _resolve_project(cmd_project)
+
+    # Then global flags
+    global_opts = ctx.obj or {}
+    if global_opts.get("global"):
+        return None
+    if global_opts.get("project"):
+        return _resolve_project(global_opts["project"])
+
+    # Finally, auto-detect
+    return _detect_project(worktree_shared=cfg.worktree_shared)
+
+
 # --- Plugin command routing ---
 
 
@@ -146,8 +173,16 @@ else:
 
 
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context):
+def main(
+    ctx: typer.Context,
+    project: Annotated[str | None, typer.Option("-p", "--project", help="Target project")] = None,
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
+):
     """Launch interactive menu if no command given."""
+    ctx.ensure_object(dict)
+    ctx.obj["project"] = project
+    ctx.obj["global"] = global_
+
     if ctx.invoked_subcommand is None:
         from dodo.ui.interactive import interactive_menu
 
@@ -156,22 +191,15 @@ def main(ctx: typer.Context):
 
 @app.command()
 def add(
+    ctx: typer.Context,
     text: Annotated[list[str], typer.Argument(help="Todo text")],
     project: Annotated[str | None, typer.Option("-p", "--project", help="Target project")] = None,
     global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
 ):
     """Add a todo item."""
     cfg = _get_config()
-
-    if global_:
-        target = "global"
-        project_id = None
-    elif project:
-        project_id = _resolve_project(project)
-        target = project_id or "global"
-    else:
-        project_id = _detect_project(worktree_shared=cfg.worktree_shared)
-        target = project_id or "global"
+    project_id = _resolve_project_from_ctx(ctx, project, global_, cfg)
+    target = project_id or "global"
 
     svc = _get_service(cfg, project_id)
     item = svc.add(" ".join(text))
@@ -185,6 +213,7 @@ def add(
 @app.command(name="ls")
 @app.command(name="list")
 def list_todos(
+    ctx: typer.Context,
     project: Annotated[str | None, typer.Option("-p", "--project")] = None,
     global_: Annotated[bool, typer.Option("-g", "--global")] = False,
     done: Annotated[bool, typer.Option("--done", help="Show completed")] = False,
@@ -196,13 +225,7 @@ def list_todos(
     from dodo.models import Status
 
     cfg = _get_config()
-
-    if global_:
-        project_id = None
-    else:
-        project_id = _resolve_project(project) or _detect_project(
-            worktree_shared=cfg.worktree_shared
-        )
+    project_id = _resolve_project_from_ctx(ctx, project, global_, cfg)
 
     svc = _get_service(cfg, project_id)
     status = None if all_ else (Status.DONE if done else Status.PENDING)
@@ -222,18 +245,14 @@ def list_todos(
 
 @app.command()
 def done(
+    ctx: typer.Context,
     id: Annotated[str, typer.Argument(help="Todo ID (or partial)")],
     project: Annotated[str | None, typer.Option("-p", "--project", help="Target project")] = None,
     global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
 ):
     """Mark todo as done."""
     cfg = _get_config()
-    if global_:
-        project_id = None
-    elif project:
-        project_id = _resolve_project(project)
-    else:
-        project_id = _detect_project(worktree_shared=cfg.worktree_shared)
+    project_id = _resolve_project_from_ctx(ctx, project, global_, cfg)
     svc = _get_service(cfg, project_id)
 
     # Try to find matching ID
@@ -249,18 +268,14 @@ def done(
 @app.command(name="remove")
 @app.command()
 def rm(
+    ctx: typer.Context,
     id: Annotated[str, typer.Argument(help="Todo ID (or partial)")],
     project: Annotated[str | None, typer.Option("-p", "--project", help="Target project")] = None,
     global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
 ):
     """Remove a todo."""
     cfg = _get_config()
-    if global_:
-        project_id = None
-    elif project:
-        project_id = _resolve_project(project)
-    else:
-        project_id = _detect_project(worktree_shared=cfg.worktree_shared)
+    project_id = _resolve_project_from_ctx(ctx, project, global_, cfg)
     svc = _get_service(cfg, project_id)
 
     item = _find_item_by_partial_id(svc, id)
