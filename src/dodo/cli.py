@@ -46,7 +46,6 @@ def _detect_project(worktree_shared: bool = False) -> str | None:
 def _resolve_dodo(
     config: Config,
     dodo_name: str | None = None,
-    local: bool = False,
     global_: bool = False,
 ) -> tuple[str | None, Path | None]:
     """Resolve which dodo to use.
@@ -57,25 +56,40 @@ def _resolve_dodo(
     if global_:
         return None, None
 
-    # Explicit dodo name provided
+    # Explicit dodo name provided - auto-detect local vs global
     if dodo_name:
-        if local:
-            path = Path.cwd() / ".dodo" / dodo_name
-        else:
-            path = config.config_dir / dodo_name
-        return dodo_name, path
+        # Check local first (.dodo/<name>/)
+        local_path = Path.cwd() / ".dodo" / dodo_name
+        if local_path.exists():
+            return dodo_name, local_path
 
-    # Auto-detect: local first, then git-based
+        # Check parent directories for .dodo/<name>/
+        for parent in Path.cwd().parents:
+            candidate = parent / ".dodo" / dodo_name
+            if candidate.exists():
+                return dodo_name, candidate
+            if parent == Path.home() or parent == Path("/"):
+                break
+
+        # Check global (~/.config/dodo/<name>/)
+        global_path = config.config_dir / dodo_name
+        if global_path.exists():
+            return dodo_name, global_path
+
+        # Not found - return the global path (will error later)
+        return dodo_name, global_path
+
+    # No name: auto-detect default dodo
+    # Check local .dodo/ first (default dodo)
     local_dodo = Path.cwd() / ".dodo"
     if local_dodo.exists() and (local_dodo / "dodo.json").exists():
         return "local", local_dodo
 
-    # Check parent directories for .dodo
+    # Check parent directories for .dodo/
     for parent in Path.cwd().parents:
         candidate = parent / ".dodo"
         if candidate.exists() and (candidate / "dodo.json").exists():
             return "local", candidate
-        # Stop at filesystem root or home
         if parent == Path.home() or parent == Path("/"):
             break
 
@@ -215,12 +229,11 @@ def add(
     text: Annotated[str, typer.Argument(help="Todo text (use quotes)")],
     global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
     dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
-    local: Annotated[bool, typer.Option("--local", help="Use local .dodo/")] = False,
 ):
     """Add a todo item."""
     cfg = _get_config()
 
-    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, local, global_)
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
 
     if explicit_path:
         svc = _get_service_with_path(cfg, explicit_path)
@@ -243,7 +256,6 @@ def list_todos(
     project: Annotated[str | None, typer.Option("-p", "--project")] = None,
     global_: Annotated[bool, typer.Option("-g", "--global")] = False,
     dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
-    local: Annotated[bool, typer.Option("--local", help="Use local .dodo/")] = False,
     done: Annotated[bool, typer.Option("--done", help="Show completed")] = False,
     all_: Annotated[bool, typer.Option("-a", "--all", help="Show all")] = False,
     format_: Annotated[str | None, typer.Option("-f", "--format", help="Output format")] = None,
@@ -255,8 +267,8 @@ def list_todos(
     cfg = _get_config()
 
     # Use --dodo flag if provided, otherwise fall back to existing behavior
-    if dodo or local:
-        dodo_id, explicit_path = _resolve_dodo(cfg, dodo, local, global_)
+    if dodo:
+        dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
         if explicit_path:
             svc = _get_service_with_path(cfg, explicit_path)
         else:

@@ -117,17 +117,15 @@ class TestAIDodoWorkflow:
         result = runner.invoke(app, ["new", "agent-session-123", "--local", "--backend", "sqlite"])
         assert result.exit_code == 0, f"Failed to create dodo: {result.output}"
 
-        # Add tasks
-        result = runner.invoke(app, ["add", "Fetch data", "--dodo", "agent-session-123", "--local"])
+        # Add tasks (--dodo auto-detects local vs global)
+        result = runner.invoke(app, ["add", "Fetch data", "--dodo", "agent-session-123"])
         assert result.exit_code == 0, f"Failed to add first task: {result.output}"
 
-        result = runner.invoke(
-            app, ["add", "Process data", "--dodo", "agent-session-123", "--local"]
-        )
+        result = runner.invoke(app, ["add", "Process data", "--dodo", "agent-session-123"])
         assert result.exit_code == 0, f"Failed to add second task: {result.output}"
 
         # List tasks
-        result = runner.invoke(app, ["list", "--dodo", "agent-session-123", "--local"])
+        result = runner.invoke(app, ["list", "--dodo", "agent-session-123"])
         assert result.exit_code == 0, f"Failed to list tasks: {result.output}"
         assert "Fetch data" in result.stdout
         assert "Process data" in result.stdout
