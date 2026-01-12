@@ -3,6 +3,21 @@
 from pathlib import Path
 
 import pytest
+from typer.testing import CliRunner
+
+from dodo.config import clear_config_cache
+
+runner = CliRunner()
+
+
+@pytest.fixture
+def cli_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Set up isolated environment for CLI tests."""
+    clear_config_cache()
+    config_dir = tmp_path / ".config" / "dodo"
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    return config_dir
 
 
 class TestFullWorkflow:
@@ -87,3 +102,37 @@ class TestFullWorkflow:
         svc2 = TodoService(cfg2, project_id=None)
         svc2.add("SQLite todo")
         assert (config_dir / "dodo.db").exists()
+
+
+class TestAIDodoWorkflow:
+    """Integration tests for AI agent dodo workflow."""
+
+    def test_ai_ephemeral_dodo_workflow(self, cli_env, tmp_path, monkeypatch):
+        """Full AI workflow: create, add tasks, list, destroy."""
+        from dodo.cli import app
+
+        monkeypatch.chdir(tmp_path)
+
+        # Create ephemeral dodo
+        result = runner.invoke(app, ["new", "agent-session-123", "--local", "--backend", "sqlite"])
+        assert result.exit_code == 0, f"Failed to create dodo: {result.output}"
+
+        # Add tasks
+        result = runner.invoke(app, ["add", "Fetch data", "--dodo", "agent-session-123", "--local"])
+        assert result.exit_code == 0, f"Failed to add first task: {result.output}"
+
+        result = runner.invoke(
+            app, ["add", "Process data", "--dodo", "agent-session-123", "--local"]
+        )
+        assert result.exit_code == 0, f"Failed to add second task: {result.output}"
+
+        # List tasks
+        result = runner.invoke(app, ["list", "--dodo", "agent-session-123", "--local"])
+        assert result.exit_code == 0, f"Failed to list tasks: {result.output}"
+        assert "Fetch data" in result.stdout
+        assert "Process data" in result.stdout
+
+        # Destroy
+        result = runner.invoke(app, ["destroy", "agent-session-123", "--local"])
+        assert result.exit_code == 0, f"Failed to destroy dodo: {result.output}"
+        assert not (tmp_path / ".dodo" / "agent-session-123").exists()
