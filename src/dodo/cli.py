@@ -409,6 +409,43 @@ def new(
 
 
 @app.command()
+def destroy(
+    name: Annotated[str | None, typer.Argument(help="Name of the dodo to destroy")] = None,
+    local: Annotated[bool, typer.Option("--local", help="Destroy from .dodo/ locally")] = False,
+):
+    """Destroy a dodo and its data."""
+    import shutil
+    from pathlib import Path
+
+    cfg = _get_config()
+
+    # Determine target directory
+    if local:
+        base = Path.cwd() / ".dodo"
+        if name:
+            target_dir = base / name
+        else:
+            target_dir = base
+    else:
+        if name:
+            target_dir = cfg.config_dir / name
+        else:
+            console.print("[red]Error:[/red] Specify a name or use --local")
+            raise typer.Exit(1)
+
+    if not target_dir.exists():
+        location = str(target_dir).replace(str(Path.home()), "~")
+        console.print(f"[red]Error:[/red] Dodo not found at {location}")
+        raise typer.Exit(1)
+
+    # Remove the directory
+    shutil.rmtree(target_dir)
+
+    location = str(target_dir).replace(str(Path.home()), "~")
+    console.print(f"[green]✓[/green] Destroyed dodo at {location}")
+
+
+@app.command()
 def config():
     """Open interactive config editor."""
     from dodo.ui.interactive import interactive_config
