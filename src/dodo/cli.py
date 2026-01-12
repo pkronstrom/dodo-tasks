@@ -440,8 +440,37 @@ def backend(
 
     # Set backend
     if migrate:
-        # TODO: implement migration
-        console.print("[yellow]Migration not yet implemented[/yellow]")
+        # Get source backend name
+        current_config = ProjectConfig.load(project_dir)
+        source_backend = migrate_from or (
+            current_config.backend if current_config else cfg.default_backend
+        )
+
+        if source_backend == name:
+            console.print(f"[yellow]Already using {name} backend[/yellow]")
+            return
+
+        # Export from source backend
+        console.print(f"[dim]Exporting from {source_backend}...[/dim]")
+        source_svc = _get_service(cfg, project_id)
+        items = source_svc._backend.export_all()
+
+        if not items:
+            console.print("[yellow]No todos to migrate[/yellow]")
+        else:
+            # Save new backend config first so import uses correct backend
+            project_dir.mkdir(parents=True, exist_ok=True)
+            new_config = ProjectConfig(backend=name)
+            new_config.save(project_dir)
+
+            # Import to new backend
+            console.print(f"[dim]Importing to {name}...[/dim]")
+            dest_svc = _get_service(cfg, project_id)
+            imported, skipped = dest_svc._backend.import_all(items)
+
+            console.print(f"[green]✓[/green] Migrated {imported} todos ({skipped} skipped)")
+            console.print(f"[green]✓[/green] Backend set to: {name}")
+            return
 
     project_dir.mkdir(parents=True, exist_ok=True)
     config = ProjectConfig(backend=name)
