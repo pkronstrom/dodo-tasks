@@ -132,3 +132,58 @@ class TestCliRm:
 
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "Removed" in result.stdout
+
+
+class TestCliNew:
+    def test_new_creates_default_dodo(self, cli_env):
+        """dodo new creates default dodo in ~/.config/dodo/"""
+        result = runner.invoke(app, ["new"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Created dodo" in result.stdout
+        # Check file was created
+        config_dir = cli_env
+        assert (config_dir / "dodo.db").exists() or (config_dir / "dodo.md").exists()
+
+    def test_new_creates_named_dodo(self, cli_env):
+        """dodo new <name> creates named dodo in ~/.config/dodo/<name>/"""
+        result = runner.invoke(app, ["new", "my-session"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "my-session" in result.stdout
+        config_dir = cli_env
+        assert (config_dir / "my-session").is_dir()
+
+    def test_new_local_creates_in_cwd(self, cli_env, tmp_path, monkeypatch):
+        """dodo new --local creates .dodo/ in current directory"""
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["new", "--local"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert ".dodo" in result.stdout
+        assert (tmp_path / ".dodo").is_dir()
+
+    def test_new_named_local_creates_subdir(self, cli_env, tmp_path, monkeypatch):
+        """dodo new <name> --local creates .dodo/<name>/"""
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["new", "agent-123", "--local"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert (tmp_path / ".dodo" / "agent-123").is_dir()
+
+    def test_new_with_backend(self, cli_env):
+        """dodo new --backend sqlite uses specified backend"""
+        result = runner.invoke(app, ["new", "test-proj", "--backend", "sqlite"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        config_dir = cli_env
+        assert (config_dir / "test-proj" / "dodo.db").exists()
+
+    def test_new_idempotent_shows_hint(self, cli_env):
+        """dodo new when dodo exists shows hint to use name"""
+        runner.invoke(app, ["new"])
+        result = runner.invoke(app, ["new"])
+
+        assert result.exit_code == 0
+        assert "already exists" in result.stdout.lower()
+        assert "dodo new <name>" in result.stdout
