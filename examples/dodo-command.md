@@ -1,39 +1,39 @@
 # Dodo Command Reference
 
-This document provides examples for managing multiple dodo instances, including creating, using, and destroying named dodos.
+Commands for managing multiple dodo instances - creating, using, and destroying named dodos.
 
 ## dodo new
 
-Create new dodo instances for session-based task tracking.
+Create new dodo instances.
 
 ```bash
 dodo new                              # Create default dodo in ~/.config/dodo/
 dodo new <name>                       # Create named dodo in ~/.config/dodo/<name>/
 dodo new --local                      # Create local dodo in .dodo/
 dodo new <name> --local               # Create named local dodo in .dodo/<name>/
-dodo new --backend sqlite             # Specify backend (sqlite or markdown)
+dodo new -b sqlite                    # Specify backend (-b or --backend)
 ```
 
 ### Examples
 
 ```bash
-# Create a named session for a project
+# Create a named global dodo
 dodo new feature-auth
 
-# Create a local dodo for the current project
+# Create a local dodo for this project
 dodo new project-tasks --local
 
-# Create with explicit SQLite backend for better performance
-dodo new ai-session --backend sqlite --local
+# Create with SQLite backend (recommended for AI agents)
+dodo new ai-session -b sqlite --local
 ```
 
 ## dodo destroy
 
-Remove dodo instances when they are no longer needed. **Auto-detects** local vs global location.
+Remove dodo instances. **Auto-detects** local vs global location.
 
 ```bash
-dodo destroy <name>                   # Auto-detects and removes (local or global)
-dodo destroy --local                  # Remove default local .dodo/ (no name)
+dodo destroy <name>                   # Auto-detects and removes
+dodo destroy --local                  # Remove default .dodo/ (no name)
 ```
 
 ### Examples
@@ -41,109 +41,92 @@ dodo destroy --local                  # Remove default local .dodo/ (no name)
 ```bash
 # Remove a named dodo (auto-detects location)
 dodo destroy feature-auth
-dodo destroy project-tasks    # Finds .dodo/project-tasks/ or ~/.config/dodo/project-tasks/
+dodo destroy project-tasks
 
-# Clean up default local dodo (no name)
+# Remove default local dodo
 dodo destroy --local
 ```
 
-## --dodo flag
+## -d / --dodo flag
 
-Target a specific dodo instance for any command. **Auto-detects** whether the dodo is local or global - no need to specify `--local`.
+Target a specific dodo. **Auto-detects** local vs global - checks `.dodo/<name>/` first, then `~/.config/dodo/<name>/`.
 
 ```bash
-dodo add "task" --dodo my-session     # Add to specific dodo (auto-detects location)
-dodo list --dodo my-session           # List from specific dodo
-dodo done 1 --dodo my-session         # Complete task in specific dodo
+dodo add "task" -d my-session         # Add to specific dodo
+dodo list -d my-session               # List from specific dodo
+dodo done 1 -d my-session             # Complete task in specific dodo
 ```
-
-Resolution order:
-1. Check `.dodo/<name>/` in current directory and parents (local)
-2. Check `~/.config/dodo/<name>/` (global)
 
 ### Examples
 
 ```bash
-# Add task to a specific session
-dodo add "Implement login form" --dodo feature-auth
-
-# List tasks from a specific session
-dodo list --dodo feature-auth
-
-# Mark task done in a specific session
-dodo done 1 --dodo feature-auth
-
-# Works the same for local dodos - auto-detected
-dodo new ci-tasks --local                    # Create local
-dodo add "Fix build error" --dodo ci-tasks   # Auto-finds .dodo/ci-tasks/
-dodo list --dodo ci-tasks                    # Auto-finds .dodo/ci-tasks/
+# Full workflow with shorthand
+dodo new ci-tasks --local
+dodo add "Fix build" -d ci-tasks
+dodo add "Run tests" -d ci-tasks
+dodo list -d ci-tasks
+dodo done 1 -d ci-tasks
+dodo destroy ci-tasks
 ```
 
 ## AI Agent Usage
 
-AI agents can use ephemeral dodo instances to track tasks during autonomous operations.
+AI agents can use ephemeral dodos for task tracking during autonomous operations.
 
-### Creating an Ephemeral Session
+### Ephemeral Session
 
 ```bash
-# Create ephemeral dodo for task tracking
-dodo new agent-session-123 --local --backend sqlite
+# Create
+dodo new agent-123 --local -b sqlite
 
-# Add tasks (--dodo auto-detects local dodo)
-dodo add "Fetch data" --dodo agent-session-123
-dodo add "Process data" --dodo agent-session-123
-dodo add "Generate report" --dodo agent-session-123
+# Add tasks
+dodo add "Fetch data" -d agent-123
+dodo add "Process data" -d agent-123
+dodo add "Generate report" -d agent-123
 
-# List tasks
-dodo list --dodo agent-session-123
+# Work
+dodo list -d agent-123
+dodo done 1 -d agent-123
 
-# Mark tasks complete as work progresses
-dodo done 1 --dodo agent-session-123
-
-# Cleanup when done (auto-detects local)
-dodo destroy agent-session-123
+# Cleanup
+dodo destroy agent-123
 ```
 
-### Why Use Named Dodos for AI Agents?
+### Why Named Dodos for AI?
 
-1. **Isolation**: Each agent session has its own task list, preventing conflicts
-2. **Cleanup**: Easy to remove all tasks when the session ends
-3. **Tracking**: Clear separation between human tasks and AI-generated tasks
-4. **Local scope**: Using `--local` on create keeps agent tasks in the project directory
+1. **Isolation** - Each session has its own task list
+2. **Cleanup** - Easy removal when done
+3. **Tracking** - Separation from human tasks
+4. **Local scope** - `--local` keeps tasks in project directory
 
 ### Multi-Agent Workflow
 
 ```bash
-# Agent 1: Research phase
-dodo new research-agent --local --backend sqlite
-dodo add "Analyze codebase" --dodo research-agent
-dodo add "Identify patterns" --dodo research-agent
+# Agent 1: Research
+dodo new research -b sqlite --local
+dodo add "Analyze codebase" -d research
+dodo add "Identify patterns" -d research
 
-# Agent 2: Implementation phase
-dodo new impl-agent --local --backend sqlite
-dodo add "Implement feature X" --dodo impl-agent
-dodo add "Write tests" --dodo impl-agent
+# Agent 2: Implementation
+dodo new impl -b sqlite --local
+dodo add "Implement feature" -d impl
+dodo add "Write tests" -d impl
 
-# Check progress of each agent
-dodo list --dodo research-agent
-dodo list --dodo impl-agent
+# Check progress
+dodo list -d research
+dodo list -d impl
 
-# Cleanup after agents complete (auto-detects local)
-dodo destroy research-agent
-dodo destroy impl-agent
+# Cleanup
+dodo destroy research
+dodo destroy impl
 ```
 
 ## Backend Selection
 
-When creating a new dodo, you can specify the storage backend:
-
-- **sqlite** (default): Fast, supports concurrent access, good for frequent updates
-- **markdown**: Human-readable files, good for version control and manual editing
-
 ```bash
-# SQLite backend (recommended for AI agents)
-dodo new ai-session --backend sqlite --local
-
-# Markdown backend (good for shared project tasks)
-dodo new shared-tasks --backend markdown --local
+dodo new my-dodo -b sqlite      # Fast, concurrent access (default)
+dodo new my-dodo -b markdown    # Human-readable, git-friendly
 ```
+
+- **sqlite**: Recommended for AI agents, frequent updates
+- **markdown**: Good for shared tasks, manual editing
