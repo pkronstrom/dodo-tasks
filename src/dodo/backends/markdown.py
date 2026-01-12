@@ -108,7 +108,7 @@ class MarkdownBackend:
             for idx, (line, item) in enumerate(zip(lines, items)):
                 if item and item.id == id:
                     updated_item = TodoItem(
-                        id=generate_todo_id(text, item.created_at),
+                        id=item.id,  # Keep original ID stable on text edit
                         text=text,
                         status=item.status,
                         created_at=item.created_at,

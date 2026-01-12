@@ -109,7 +109,7 @@ class ObsidianBackend:
             item = parse_todo_line(line)
             if item and item.id == id:
                 updated_item = TodoItem(
-                    id=generate_todo_id(text, item.created_at),
+                    id=item.id,  # Keep original ID stable on text edit
                     text=text,
                     status=item.status,
                     created_at=item.created_at,
