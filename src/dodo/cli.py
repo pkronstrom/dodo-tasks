@@ -59,10 +59,8 @@ def _load_json_file(path) -> dict:
 
 
 def _get_config_dir():
-    """Get config directory path."""
-    from pathlib import Path
-
-    return Path.home() / ".config" / "dodo"
+    """Get config directory path from Config."""
+    return _get_config().config_dir
 
 
 def _get_plugin_for_command(argv: list[str]) -> tuple[str, bool] | None:
