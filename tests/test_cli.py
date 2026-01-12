@@ -232,3 +232,31 @@ class TestCliDestroy:
 
         assert result.exit_code == 0
         assert not (tmp_path / ".dodo").exists()
+
+
+class TestCliDodoFlag:
+    def test_add_with_dodo_flag(self, cli_env):
+        """dodo add --dodo <name> adds to specific dodo"""
+        runner.invoke(app, ["new", "my-tasks"])
+        result = runner.invoke(app, ["add", "Test task", "--dodo", "my-tasks"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Test task" in result.stdout
+
+    def test_list_with_dodo_flag(self, cli_env):
+        """dodo list --dodo <name> lists from specific dodo"""
+        runner.invoke(app, ["new", "my-tasks"])
+        runner.invoke(app, ["add", "Task in my-tasks", "--dodo", "my-tasks"])
+
+        result = runner.invoke(app, ["list", "--dodo", "my-tasks"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Task in my-tasks" in result.stdout
+
+    def test_dodo_flag_local(self, cli_env, tmp_path, monkeypatch):
+        """dodo add --dodo <name> --local uses local .dodo/<name>/"""
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(app, ["new", "local-tasks", "--local"])
+        result = runner.invoke(app, ["add", "Local task", "--dodo", "local-tasks", "--local"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
