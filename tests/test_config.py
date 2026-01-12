@@ -72,7 +72,7 @@ class TestConfigPersistence:
         config = Config.load(tmp_path)
         toggles = config.get_toggles()
 
-        assert len(toggles) == 3
+        assert len(toggles) == 2
         names = [t[0] for t in toggles]
         assert "worktree_shared" in names
         assert "timestamps_enabled" in names
@@ -82,6 +82,12 @@ class TestConfigPersistence:
             assert isinstance(name, str)
             assert isinstance(desc, str)
             assert isinstance(value, bool)
+
+
+class TestLocalStorageRemoved:
+    def test_local_storage_not_in_toggles(self):
+        """local_storage should be removed from config toggles."""
+        assert "local_storage" not in ConfigMeta.TOGGLES
 
 
 class TestConfigCaching:
