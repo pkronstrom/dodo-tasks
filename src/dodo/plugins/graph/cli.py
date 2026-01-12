@@ -18,8 +18,8 @@ dep_app = typer.Typer(
 )
 
 
-def _get_graph_adapter():
-    """Get adapter with graph wrapper (if available)."""
+def _get_graph_backend():
+    """Get backend with graph wrapper (if available)."""
     from dodo.config import Config
     from dodo.core import TodoService
     from dodo.project import detect_project
@@ -28,20 +28,20 @@ def _get_graph_adapter():
     project_id = detect_project(worktree_shared=cfg.worktree_shared)
     svc = TodoService(cfg, project_id)
 
-    adapter = svc._adapter
-    if not hasattr(adapter, "get_ready"):
-        console.print("[red]Error:[/red] Graph plugin requires SQLite adapter")
-        console.print("[dim]Set adapter with: dodo config (then select sqlite)[/dim]")
+    backend = svc._backend
+    if not hasattr(backend, "get_ready"):
+        console.print("[red]Error:[/red] Graph plugin requires SQLite backend")
+        console.print("[dim]Set backend with: dodo config (then select sqlite)[/dim]")
         raise typer.Exit(1)
 
-    return adapter, project_id
+    return backend, project_id
 
 
 def ready() -> None:
     """List todos with no blocking dependencies (ready to work on)."""
-    adapter, project_id = _get_graph_adapter()
+    backend, project_id = _get_graph_backend()
 
-    items = adapter.get_ready(project_id)
+    items = backend.get_ready(project_id)
 
     if not items:
         console.print("[dim]No ready todos[/dim]")
@@ -60,9 +60,9 @@ def ready() -> None:
 
 def blocked() -> None:
     """List todos that are blocked by other todos."""
-    adapter, project_id = _get_graph_adapter()
+    backend, project_id = _get_graph_backend()
 
-    items = adapter.get_blocked_todos(project_id)
+    items = backend.get_blocked_todos(project_id)
 
     if not items:
         console.print("[dim]No blocked todos[/dim]")
@@ -74,7 +74,7 @@ def blocked() -> None:
     table.add_column("Blocked by", style="yellow")
 
     for item in items:
-        blockers = adapter.get_blockers(item.id)
+        blockers = backend.get_blockers(item.id)
         blocker_text = ", ".join(blockers[:3])
         if len(blockers) > 3:
             blocker_text += f" (+{len(blockers) - 3} more)"
@@ -90,17 +90,17 @@ def add_dep(
     blocked: Annotated[str, typer.Argument(help="ID of blocked todo")],
 ) -> None:
     """Add a dependency: <blocker> blocks <blocked>."""
-    adapter, _ = _get_graph_adapter()
+    backend, _ = _get_graph_backend()
 
     # Validate both todos exist
-    if not adapter.get(blocker):
+    if not backend.get(blocker):
         console.print(f"[red]Error:[/red] Todo not found: {blocker}")
         raise typer.Exit(1)
-    if not adapter.get(blocked):
+    if not backend.get(blocked):
         console.print(f"[red]Error:[/red] Todo not found: {blocked}")
         raise typer.Exit(1)
 
-    adapter.add_dependency(blocker, blocked)
+    backend.add_dependency(blocker, blocked)
     console.print(f"[green]Added:[/green] {blocker} blocks {blocked}")
 
 
@@ -110,9 +110,9 @@ def remove_dep(
     blocked: Annotated[str, typer.Argument(help="ID of blocked todo")],
 ) -> None:
     """Remove a dependency."""
-    adapter, _ = _get_graph_adapter()
+    backend, _ = _get_graph_backend()
 
-    adapter.remove_dependency(blocker, blocked)
+    backend.remove_dependency(blocker, blocked)
     console.print(f"[yellow]Removed:[/yellow] {blocker} no longer blocks {blocked}")
 
 
@@ -121,11 +121,11 @@ def list_deps(
     tree: Annotated[bool, typer.Option("--tree", "-t", help="Show as tree")] = False,
 ) -> None:
     """List all dependencies."""
-    adapter, project_id = _get_graph_adapter()
+    backend, project_id = _get_graph_backend()
 
     if tree:
         # Get all todos with blocked_by info
-        items = adapter.list(project=project_id)
+        items = backend.list(project=project_id)
         if not items:
             console.print("[dim]No todos[/dim]")
             return
@@ -137,7 +137,7 @@ def list_deps(
         console.print(output)
         return
 
-    deps = adapter.list_all_dependencies()
+    deps = backend.list_all_dependencies()
 
     if not deps:
         console.print("[dim]No dependencies[/dim]")

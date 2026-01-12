@@ -8,7 +8,7 @@ This plugin adds dependency management between todos:
 
 Also available under `dodo plugins graph` for discoverability.
 
-Only works with SQLite adapter (requires database for dependency storage).
+Only works with SQLite backend (requires database for dependency storage).
 """
 
 from __future__ import annotations
@@ -108,14 +108,14 @@ def register_formatters() -> dict[str, type]:
     return {"tree": TreeFormatter}
 
 
-def extend_adapter(adapter, config: Config):
-    """Wrap adapter with dependency tracking if SQLite."""
+def extend_backend(backend, config: Config):
+    """Wrap backend with dependency tracking if SQLite."""
     from dodo.plugins.graph.wrapper import GraphWrapper
 
-    # Only wrap SQLite adapters (they have _path attribute)
-    if hasattr(adapter, "_path") and str(adapter._path).endswith(".db"):
-        return GraphWrapper(adapter)
-    return adapter
+    # Only wrap SQLite backends (they have _path attribute)
+    if hasattr(backend, "_path") and str(backend._path).endswith(".db"):
+        return GraphWrapper(backend)
+    return backend
 
 
 def extend_formatter(formatter, config: Config):

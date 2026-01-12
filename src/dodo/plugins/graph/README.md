@@ -11,7 +11,7 @@ Track dependencies between todos - block tasks until their prerequisites are don
 
 ## Prerequisites
 
-Requires the **sqlite adapter**. The graph plugin stores dependency relationships in the same SQLite database as your todos.
+Requires the **sqlite backend**. The graph plugin stores dependency relationships in the same SQLite database as your todos.
 
 ## Setup
 
@@ -21,10 +21,10 @@ Requires the **sqlite adapter**. The graph plugin stores dependency relationship
    dodo plugins enable graph
    ```
 
-2. Set sqlite as your adapter:
+2. Set sqlite as your backend:
    ```bash
    dodo config
-   # Navigate to "Adapter" and select "sqlite"
+   # Navigate to "Backend" and select "sqlite"
    ```
 
 ## Usage
@@ -82,7 +82,7 @@ The `→N` indicator shows how many tasks are blocked by this one.
 
 ## How It Works
 
-The graph plugin wraps the sqlite adapter with a `GraphWrapper` that:
+The graph plugin wraps the sqlite backend with a `GraphWrapper` that:
 1. Stores dependencies in a `dependencies` table
 2. Attaches `blocked_by` info to todos when listing
 3. Provides ready/blocked filtering
@@ -101,6 +101,6 @@ def register_commands(app, config)       # Nested: dodo plugins graph
 def register_root_commands(app, config)  # Root: dodo graph, dodo dep
 def register_formatters()                # Provides: tree formatter
 def register_config()                    # Config: graph_tree_view
-def extend_adapter(adapter, config)      # Wraps sqlite with GraphWrapper
+def extend_backend(backend, config)      # Wraps sqlite with GraphWrapper
 def extend_formatter(formatter, config)  # Adds blocked_by column to table
 ```
