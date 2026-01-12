@@ -48,74 +48,10 @@ def _resolve_dodo(
     dodo_name: str | None = None,
     global_: bool = False,
 ) -> tuple[str | None, Path | None]:
-    """Resolve which dodo to use.
+    """Resolve which dodo to use. Wrapper for shared resolve_dodo."""
+    from dodo.resolve import resolve_dodo
 
-    Returns:
-        (dodo_id, explicit_path) - explicit_path is set for named dodos
-    """
-    if global_:
-        return None, None
-
-    # Explicit dodo name provided - auto-detect local vs global
-    if dodo_name:
-        # Check local first (.dodo/<name>/)
-        local_path = Path.cwd() / ".dodo" / dodo_name
-        if local_path.exists():
-            return dodo_name, local_path
-
-        # Check parent directories for .dodo/<name>/
-        for parent in Path.cwd().parents:
-            candidate = parent / ".dodo" / dodo_name
-            if candidate.exists():
-                return dodo_name, candidate
-            if parent == Path.home() or parent == Path("/"):
-                break
-
-        # Check global (~/.config/dodo/<name>/)
-        global_path = config.config_dir / dodo_name
-        if global_path.exists():
-            return dodo_name, global_path
-
-        # Not found - return the global path (will error later)
-        return dodo_name, global_path
-
-    # No name: auto-detect dodo
-    # Priority: default .dodo/ > single named .dodo/<name>/ > parent dirs > git-based
-
-    def find_dodo_in_dir(base: Path) -> tuple[str | None, Path | None]:
-        """Find a dodo in a directory. Returns (name, path) or (None, None)."""
-        dodo_dir = base / ".dodo"
-        if not dodo_dir.exists():
-            return None, None
-
-        # Check for default dodo (dodo.json directly in .dodo/)
-        if (dodo_dir / "dodo.json").exists():
-            return "local", dodo_dir
-
-        # Check for named dodos (.dodo/<name>/dodo.json)
-        named_dodos = [d for d in dodo_dir.iterdir() if d.is_dir() and (d / "dodo.json").exists()]
-        if len(named_dodos) == 1:
-            # Single named dodo - auto-select it
-            return named_dodos[0].name, named_dodos[0]
-        # Multiple or none - don't auto-select
-        return None, None
-
-    # Check current directory
-    name, path = find_dodo_in_dir(Path.cwd())
-    if path:
-        return name, path
-
-    # Check parent directories
-    for parent in Path.cwd().parents:
-        name, path = find_dodo_in_dir(parent)
-        if path:
-            return name, path
-        if parent == Path.home() or parent == Path("/"):
-            break
-
-    # Fall back to git-based detection
-    project_id = _detect_project(worktree_shared=config.worktree_shared)
-    return project_id, None
+    return resolve_dodo(config, dodo_name, global_)
 
 
 def _get_service_with_path(config: Config, path: Path) -> TodoService:
