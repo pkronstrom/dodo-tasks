@@ -350,6 +350,65 @@ def init(
 
 
 @app.command()
+def new(
+    name: Annotated[str | None, typer.Argument(help="Name for the dodo")] = None,
+    local: Annotated[bool, typer.Option("--local", help="Create in .dodo/ locally")] = False,
+    backend: Annotated[
+        str | None, typer.Option("--backend", "-b", help="Backend (sqlite|markdown)")
+    ] = None,
+):
+    """Create a new dodo."""
+    from pathlib import Path
+
+    from dodo.project_config import ProjectConfig
+
+    cfg = _get_config()
+    backend_name = backend or cfg.default_backend
+
+    # Determine target directory
+    if local:
+        # Local storage in .dodo/
+        base = Path.cwd() / ".dodo"
+        if name:
+            target_dir = base / name
+        else:
+            target_dir = base
+    else:
+        # Centralized in ~/.config/dodo/
+        if name:
+            target_dir = cfg.config_dir / name
+        else:
+            target_dir = cfg.config_dir
+
+    # Check if already exists
+    config_file = target_dir / "dodo.json"
+    db_file = target_dir / "dodo.db"
+    md_file = target_dir / "dodo.md"
+
+    if config_file.exists() or db_file.exists() or md_file.exists():
+        location = str(target_dir).replace(str(Path.home()), "~")
+        console.print(f"[yellow]Dodo already exists in {location}[/yellow]")
+        console.print("  Hint: Use [bold]dodo new <name>[/bold] to create a named dodo")
+        return
+
+    # Create directory and config
+    target_dir.mkdir(parents=True, exist_ok=True)
+    project_config = ProjectConfig(backend=backend_name)
+    project_config.save(target_dir)
+
+    # Initialize empty backend file
+    if backend_name == "sqlite":
+        from dodo.backends.sqlite import SqliteBackend
+
+        SqliteBackend(target_dir / "dodo.db")
+    elif backend_name == "markdown":
+        (target_dir / "dodo.md").write_text("")
+
+    location = str(target_dir).replace(str(Path.home()), "~")
+    console.print(f"[green]✓[/green] Created dodo in {location}")
+
+
+@app.command()
 def config():
     """Open interactive config editor."""
     from dodo.ui.interactive import interactive_config
