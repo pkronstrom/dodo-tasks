@@ -17,7 +17,7 @@ class TestTodoServiceAdd:
         item = svc.add("Test todo")
 
         assert item.text == "Test todo"
-        assert (tmp_path / "config" / "dodo.md").exists()
+        assert (tmp_path / "config" / "dodo.db").exists()
 
     def test_add_to_project(self, tmp_path: Path):
         config = Config.load(tmp_path / "config")
@@ -25,7 +25,7 @@ class TestTodoServiceAdd:
 
         svc.add("Project todo")
 
-        assert (tmp_path / "config" / "projects" / "myapp_abc123" / "dodo.md").exists()
+        assert (tmp_path / "config" / "projects" / "myapp_abc123" / "dodo.db").exists()
 
 
 class TestTodoServiceList:
@@ -73,9 +73,9 @@ class TestTodoServiceDelete:
         assert svc.get(item.id) is None
 
 
-class TestTodoServiceAdapterSelection:
-    def test_uses_configured_adapter(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("DODO_DEFAULT_ADAPTER", "sqlite")
+class TestTodoServiceBackendSelection:
+    def test_uses_configured_backend(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("DODO_DEFAULT_BACKEND", "sqlite")
         config = Config.load(tmp_path / "config")
         svc = TodoService(config, project_id=None)
 
