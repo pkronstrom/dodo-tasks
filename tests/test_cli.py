@@ -1,6 +1,7 @@
 """Tests for CLI commands."""
 
 import re
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -11,6 +12,37 @@ from dodo.cli import app
 from dodo.config import clear_config_cache
 
 runner = CliRunner()
+
+
+class TestCliImport:
+    """Tests that verify cli module can be imported correctly."""
+
+    def test_cli_module_imports_without_error(self):
+        """Verify cli module can be imported without NameError or ImportError.
+
+        This catches issues like missing imports that only manifest at module load time.
+        """
+        # Force reimport to catch any import-time errors
+        import importlib
+
+        import dodo.cli
+
+        # Reload to catch any issues that might only appear on fresh import
+        importlib.reload(dodo.cli)
+
+    def test_help_command_works(self, cli_env, monkeypatch):
+        """Verify --help works without errors.
+
+        The --help flag triggers _register_all_plugin_root_commands at module load,
+        which requires import_plugin to be properly imported.
+        """
+        # Simulate --help being in argv to trigger plugin registration path
+        monkeypatch.setattr(sys, "argv", ["dodo", "--help"])
+
+        result = runner.invoke(app, ["--help"])
+
+        assert result.exit_code == 0, f"--help failed: {result.output}"
+        assert "Todo router" in result.stdout
 
 
 @pytest.fixture

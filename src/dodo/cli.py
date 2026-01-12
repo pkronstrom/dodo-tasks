@@ -103,6 +103,7 @@ def _get_plugin_for_command(argv: list[str]) -> tuple[str, bool] | None:
 
 def _register_plugin_for_command(plugin_name: str, is_root: bool) -> None:
     """Load plugin and register its commands."""
+    from dodo.plugins import import_plugin
 
     plugin = import_plugin(plugin_name, None)
     cfg = _get_config()
@@ -117,6 +118,7 @@ def _register_plugin_for_command(plugin_name: str, is_root: bool) -> None:
 
 def _register_all_plugin_root_commands() -> None:
     """Register all enabled plugins' root commands (for --help display)."""
+    from dodo.plugins import import_plugin
 
     config_dir = _get_config_dir()
     registry = _load_json_file(config_dir / "plugin_registry.json")
