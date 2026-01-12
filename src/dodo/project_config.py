@@ -68,22 +68,3 @@ class ProjectConfig:
         project_dir.mkdir(parents=True, exist_ok=True)
         config_file = project_dir / "dodo.json"
         config_file.write_text(json.dumps({"backend": self.backend}, indent=2))
-
-    @classmethod
-    def ensure(cls, project_dir: Path, default_backend: str) -> ProjectConfig:
-        """Load or create project config with default.
-
-        Args:
-            project_dir: Directory for dodo.json
-            default_backend: Backend to use if creating new config
-
-        Returns:
-            Existing or newly created ProjectConfig
-        """
-        config = cls.load(project_dir)
-        if config is not None:
-            return config
-
-        config = cls(backend=default_backend)
-        config.save(project_dir)
-        return config

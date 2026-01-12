@@ -33,14 +33,3 @@ def test_save_creates_file(tmp_path):
     assert (project_dir / "dodo.json").exists()
     data = json.loads((project_dir / "dodo.json").read_text())
     assert data["backend"] == "sqlite"
-
-
-def test_ensure_creates_with_default(tmp_path):
-    """ensure() creates config with default backend if missing."""
-    project_dir = tmp_path / "project"
-    project_dir.mkdir()
-
-    config = ProjectConfig.ensure(project_dir, default_backend="sqlite")
-
-    assert config.backend == "sqlite"
-    assert (project_dir / "dodo.json").exists()
