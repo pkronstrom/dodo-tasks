@@ -490,11 +490,25 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
     from dodo.resolve import resolve_dodo
 
     # Detect current dodo (auto-detected)
-    current_name, _ = resolve_dodo(cfg)
+    current_name, current_path = resolve_dodo(cfg)
     current_name = current_name or "global"
+    # For git-based detection, current_name is the project_id; for local, we have current_path
 
     # Detect if in a worktree with a parent repo
     is_worktree, parent_root, parent_id = detect_worktree_parent()
+
+    def count_todos_in_dir(storage_dir: Path) -> int:
+        """Get todo count from a storage directory (contains dodo.db or dodo.md)."""
+        try:
+            db_path = storage_dir / "dodo.db"
+            md_path = storage_dir / "dodo.md"
+            if db_path.exists():
+                return len(SqliteBackend(db_path).list())
+            elif md_path.exists():
+                return len(MarkdownBackend(md_path).list())
+            return 0
+        except (OSError, KeyError, ValueError):
+            return 0
 
     def get_todo_count(project_id: str | None, worktree_shared: bool = False) -> int:
         """Get todo count for a project."""
@@ -528,11 +542,17 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
     dodos.append(("global", "global", global_path, global_count, current_name == "global"))
     added_names.add("global")
 
-    # Current auto-detected project (if not global)
+    # Current auto-detected dodo (if not global)
     if current_name != "global" and current_name not in added_names:
-        curr_path = _get_project_storage_path(cfg, current_project, cfg.worktree_shared)
-        curr_count = get_todo_count(current_project, cfg.worktree_shared)
-        dodos.append(("current", current_name, curr_path, curr_count, True))
+        if current_path:
+            # Local dodo - use explicit storage directory
+            curr_storage = current_path / f"dodo.{cfg.default_backend[:2]}"  # .db or .md
+            curr_count = count_todos_in_dir(current_path)
+        else:
+            # Git-based dodo - use project_id
+            curr_storage = _get_project_storage_path(cfg, current_name, cfg.worktree_shared)
+            curr_count = get_todo_count(current_name, cfg.worktree_shared)
+        dodos.append(("current", current_name, curr_storage, curr_count, True))
         added_names.add(current_name)
 
     # Parent's project if in worktree
@@ -623,7 +643,8 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
         if key == "global":
             return None
         elif key == "current":
-            return current_project
+            # For local dodos, current_name is used (current_path handled separately)
+            return None if current_path else current_name
         elif key == "parent":
             return parent_id
         else:
@@ -631,9 +652,12 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
 
     def handle_view_todos(key: str, name: str) -> None:
         """View todos for selected dodo."""
-        proj_id = get_project_id_for_item(key, name)
-        ws = key == "parent"
-        temp_svc = TodoService(cfg, proj_id)
+        # Handle local dodos with explicit path
+        if key == "current" and current_path:
+            temp_svc = TodoService(cfg, project_id=None, storage_path=current_path)
+        else:
+            proj_id = get_project_id_for_item(key, name)
+            temp_svc = TodoService(cfg, proj_id)
         display_name = name if name else "global"
         _todos_loop(temp_svc, display_name, cfg)
 
