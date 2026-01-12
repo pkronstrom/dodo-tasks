@@ -28,7 +28,18 @@ class SqliteBackend:
 
     def __init__(self, db_path: Path):
         self._path = db_path
+        self._conn: sqlite3.Connection | None = None
         self._ensure_schema()
+
+    def __del__(self) -> None:
+        """Clean up connection on garbage collection."""
+        self.close()
+
+    def close(self) -> None:
+        """Close the database connection."""
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
 
     def add(self, text: str, project: str | None = None) -> TodoItem:
         item = TodoItem(
@@ -142,18 +153,21 @@ class SqliteBackend:
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self._path)
-        # Pragmas for concurrent access (multiple agents)
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.execute("PRAGMA busy_timeout = 5000")
-        conn.execute("PRAGMA synchronous = NORMAL")
-        conn.execute("PRAGMA foreign_keys = ON")
+        """Get database connection, reusing existing connection if available."""
+        if self._conn is None:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            self._conn = sqlite3.connect(self._path)
+            # Pragmas for concurrent access (multiple agents)
+            self._conn.execute("PRAGMA journal_mode = WAL")
+            self._conn.execute("PRAGMA busy_timeout = 5000")
+            self._conn.execute("PRAGMA synchronous = NORMAL")
+            self._conn.execute("PRAGMA foreign_keys = ON")
         try:
-            yield conn
-            conn.commit()
-        finally:
-            conn.close()
+            yield self._conn
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
 
     def _ensure_schema(self) -> None:
         with self._connect() as conn:
