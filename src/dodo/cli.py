@@ -392,22 +392,35 @@ def ai(
         console.print(f"[green]✓[/green] Added to {dest}: {item.text} [dim]({item.id})[/dim]")
 
 
-@app.command()
+@app.command(hidden=True)  # Hide from help
 def init(
-    local: Annotated[bool, typer.Option("--local", help="Store todos in project dir")] = False,
+    local: Annotated[bool, typer.Option("--local", help="Store todos in local dir")] = False,
 ):
-    """Initialize dodo for current project."""
+    """Initialize dodo for current project. (Deprecated: use 'dodo new')"""
+    console.print("[yellow]Note:[/yellow] 'dodo init' is deprecated. Use 'dodo new' instead.")
+
     cfg = _get_config()
     project_id = _detect_project(worktree_shared=cfg.worktree_shared)
 
     if not project_id:
         console.print("[red]Error:[/red] Not in a git repository")
+        console.print("  Use [bold]dodo new[/bold] to create a dodo anywhere.")
         raise typer.Exit(1)
 
+    # Equivalent to: dodo new --local (for git projects)
     if local:
-        cfg.set("local_storage", True)
+        target_dir = Path.cwd() / ".dodo"
+    else:
+        target_dir = cfg.config_dir / "projects" / project_id
 
-    console.print(f"[green]✓[/green] Initialized project: {project_id}")
+    from dodo.project_config import ProjectConfig
+
+    if not (target_dir / "dodo.json").exists():
+        target_dir.mkdir(parents=True, exist_ok=True)
+        project_config = ProjectConfig(backend=cfg.default_backend)
+        project_config.save(target_dir)
+
+    console.print(f"[green]✓[/green] Initialized: {project_id}")
 
 
 @app.command()
@@ -567,7 +580,7 @@ def info(
     pending = sum(1 for i in items if i.status == Status.PENDING)
     done = sum(1 for i in items if i.status == Status.DONE)
 
-    console.print(f"[bold]Project:[/bold] {target}")
+    console.print(f"[bold]Dodo:[/bold] {target}")
     console.print(f"[bold]Backend:[/bold] {svc.backend_name}")
     console.print(f"[bold]Storage:[/bold] {svc.storage_path}")
     console.print(f"[bold]Todos:[/bold] {len(items)} total ({pending} pending, {done} done)")
@@ -590,7 +603,7 @@ def backend(
     project_id = _detect_project(worktree_shared=cfg.worktree_shared)
 
     if not project_id:
-        console.print("[red]Error:[/red] Not in a project")
+        console.print("[red]Error:[/red] No dodo found")
         raise typer.Exit(1)
 
     # Get project config directory (respects local_storage setting)
@@ -687,7 +700,7 @@ def _resolve_project(partial: str | None) -> str | None:
     if len(matches) == 1:
         return matches[0]
     elif len(matches) > 1:
-        console.print(f"[yellow]Ambiguous project '{partial}'. Matches:[/yellow]")
+        console.print(f"[yellow]Ambiguous dodo '{partial}'. Matches:[/yellow]")
         for m in matches:
             console.print(f"  - {m}")
         raise typer.Exit(1)

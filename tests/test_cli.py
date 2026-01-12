@@ -234,6 +234,21 @@ class TestCliDestroy:
         assert not (tmp_path / ".dodo").exists()
 
 
+class TestCliInitDeprecation:
+    def test_init_shows_deprecation_warning(self, cli_env, tmp_path, monkeypatch):
+        """dodo init shows deprecation warning pointing to dodo new"""
+        # Create a fake git repo
+        git_dir = tmp_path / ".git"
+        git_dir.mkdir()
+        monkeypatch.chdir(tmp_path)
+
+        with patch("dodo.project.detect_project", return_value="test_abc123"):
+            result = runner.invoke(app, ["init"])
+
+        assert result.exit_code == 0
+        assert "deprecated" in result.stdout.lower() or "dodo new" in result.stdout
+
+
 class TestCliDodoFlag:
     def test_add_with_dodo_flag(self, cli_env):
         """dodo add --dodo <name> adds to specific dodo"""
