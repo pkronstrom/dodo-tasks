@@ -1,4 +1,4 @@
-"""SQLite adapter."""
+"""SQLite backend."""
 
 import sqlite3
 import uuid
@@ -10,7 +10,7 @@ from pathlib import Path
 from dodo.models import Status, TodoItem
 
 
-class SqliteAdapter:
+class SqliteBackend:
     """SQLite backend - better for querying/filtering large lists."""
 
     SCHEMA = """
