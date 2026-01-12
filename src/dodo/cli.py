@@ -79,17 +79,37 @@ def _resolve_dodo(
         # Not found - return the global path (will error later)
         return dodo_name, global_path
 
-    # No name: auto-detect default dodo
-    # Check local .dodo/ first (default dodo)
-    local_dodo = Path.cwd() / ".dodo"
-    if local_dodo.exists() and (local_dodo / "dodo.json").exists():
-        return "local", local_dodo
+    # No name: auto-detect dodo
+    # Priority: default .dodo/ > single named .dodo/<name>/ > parent dirs > git-based
 
-    # Check parent directories for .dodo/
+    def find_dodo_in_dir(base: Path) -> tuple[str | None, Path | None]:
+        """Find a dodo in a directory. Returns (name, path) or (None, None)."""
+        dodo_dir = base / ".dodo"
+        if not dodo_dir.exists():
+            return None, None
+
+        # Check for default dodo (dodo.json directly in .dodo/)
+        if (dodo_dir / "dodo.json").exists():
+            return "local", dodo_dir
+
+        # Check for named dodos (.dodo/<name>/dodo.json)
+        named_dodos = [d for d in dodo_dir.iterdir() if d.is_dir() and (d / "dodo.json").exists()]
+        if len(named_dodos) == 1:
+            # Single named dodo - auto-select it
+            return named_dodos[0].name, named_dodos[0]
+        # Multiple or none - don't auto-select
+        return None, None
+
+    # Check current directory
+    name, path = find_dodo_in_dir(Path.cwd())
+    if path:
+        return name, path
+
+    # Check parent directories
     for parent in Path.cwd().parents:
-        candidate = parent / ".dodo"
-        if candidate.exists() and (candidate / "dodo.json").exists():
-            return "local", candidate
+        name, path = find_dodo_in_dir(parent)
+        if path:
+            return name, path
         if parent == Path.home() or parent == Path("/"):
             break
 
@@ -266,20 +286,13 @@ def list_todos(
 
     cfg = _get_config()
 
-    # Use --dodo flag if provided, otherwise fall back to existing behavior
-    if dodo:
-        dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
-        if explicit_path:
-            svc = _get_service_with_path(cfg, explicit_path)
-        else:
-            svc = _get_service(cfg, dodo_id)
-    elif global_:
-        svc = _get_service(cfg, None)
+    # Auto-detect dodo (respects --dodo flag, --global flag, or auto-detection)
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
+
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
     else:
-        project_id = _resolve_project(project) or _detect_project(
-            worktree_shared=cfg.worktree_shared
-        )
-        svc = _get_service(cfg, project_id)
+        svc = _get_service(cfg, dodo_id)
 
     status = None if all_ else (Status.DONE if done else Status.PENDING)
     items = svc.list(status=status)
@@ -402,37 +415,6 @@ def ai(
         item = svc.add(todo_text)
         dest = f"[cyan]{target}[/cyan]" if target != "global" else "[dim]global[/dim]"
         console.print(f"[green]✓[/green] Added to {dest}: {item.text} [dim]({item.id})[/dim]")
-
-
-@app.command(hidden=True)  # Hide from help
-def init(
-    local: Annotated[bool, typer.Option("--local", help="Store todos in local dir")] = False,
-):
-    """Initialize dodo for current project. (Deprecated: use 'dodo new')"""
-    console.print("[yellow]Note:[/yellow] 'dodo init' is deprecated. Use 'dodo new' instead.")
-
-    cfg = _get_config()
-    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
-
-    if not project_id:
-        console.print("[red]Error:[/red] Not in a git repository")
-        console.print("  Use [bold]dodo new[/bold] to create a dodo anywhere.")
-        raise typer.Exit(1)
-
-    # Equivalent to: dodo new --local (for git projects)
-    if local:
-        target_dir = Path.cwd() / ".dodo"
-    else:
-        target_dir = cfg.config_dir / "projects" / project_id
-
-    from dodo.project_config import ProjectConfig
-
-    if not (target_dir / "dodo.json").exists():
-        target_dir.mkdir(parents=True, exist_ok=True)
-        project_config = ProjectConfig(backend=cfg.default_backend)
-        project_config.save(target_dir)
-
-    console.print(f"[green]✓[/green] Initialized: {project_id}")
 
 
 @app.command()
