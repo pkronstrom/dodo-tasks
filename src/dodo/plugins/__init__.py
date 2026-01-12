@@ -267,8 +267,8 @@ def apply_hooks(hook: str, target: T, config: Config) -> T:
     """Apply all enabled plugins for a hook phase.
 
     Args:
-        hook: The hook name (e.g., "extend_adapter", "extend_formatter")
-        target: The object to pass to plugins (adapter, formatter, etc.)
+        hook: The hook name (e.g., "extend_backend", "extend_formatter")
+        target: The object to pass to plugins (backend, formatter, etc.)
         config: The Config instance
 
     Returns:
