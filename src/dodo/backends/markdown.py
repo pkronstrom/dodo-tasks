@@ -1,5 +1,8 @@
 """Markdown file backend."""
 
+import fcntl
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -10,6 +13,21 @@ from dodo.backends.utils import (
     parse_todo_line,
 )
 from dodo.models import Status, TodoItem
+
+
+@contextmanager
+def _file_lock(lock_path: Path) -> Iterator[None]:
+    """Acquire exclusive file lock for atomic operations.
+
+    Uses flock() for advisory locking. Creates lock file if needed.
+    """
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open("w") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 @dataclass
@@ -30,6 +48,7 @@ class MarkdownBackend:
     def __init__(self, file_path: Path, format: MarkdownFormat | None = None):
         self._path = file_path
         self._format = format or MarkdownFormat()
+        self._lock_path = file_path.with_suffix(".lock")
 
     def add(self, text: str, project: str | None = None) -> TodoItem:
         timestamp = datetime.now()
@@ -40,7 +59,8 @@ class MarkdownBackend:
             created_at=timestamp,
             project=project,
         )
-        self._append_item(item)
+        with _file_lock(self._lock_path):
+            self._append_item(item)
         return item
 
     def list(
@@ -57,60 +77,63 @@ class MarkdownBackend:
         return next((i for i in self._read_items() if i.id == id), None)
 
     def update(self, id: str, status: Status) -> TodoItem:
-        lines, items = self._read_lines_with_items()
-        updated_item = None
+        with _file_lock(self._lock_path):
+            lines, items = self._read_lines_with_items()
+            updated_item = None
 
-        for idx, (line, item) in enumerate(zip(lines, items)):
-            if item and item.id == id:
-                updated_item = TodoItem(
-                    id=item.id,
-                    text=item.text,
-                    status=status,
-                    created_at=item.created_at,
-                    completed_at=datetime.now() if status == Status.DONE else None,
-                    project=item.project,
-                )
-                lines[idx] = format_todo_line(updated_item, self._format.timestamp_fmt)
-                break
+            for idx, (line, item) in enumerate(zip(lines, items)):
+                if item and item.id == id:
+                    updated_item = TodoItem(
+                        id=item.id,
+                        text=item.text,
+                        status=status,
+                        created_at=item.created_at,
+                        completed_at=datetime.now() if status == Status.DONE else None,
+                        project=item.project,
+                    )
+                    lines[idx] = format_todo_line(updated_item, self._format.timestamp_fmt)
+                    break
 
-        if not updated_item:
-            raise KeyError(f"Todo not found: {id}")
+            if not updated_item:
+                raise KeyError(f"Todo not found: {id}")
 
-        self._write_lines(lines)
-        return updated_item
+            self._write_lines(lines)
+            return updated_item
 
     def update_text(self, id: str, text: str) -> TodoItem:
-        lines, items = self._read_lines_with_items()
-        updated_item = None
+        with _file_lock(self._lock_path):
+            lines, items = self._read_lines_with_items()
+            updated_item = None
 
-        for idx, (line, item) in enumerate(zip(lines, items)):
-            if item and item.id == id:
-                updated_item = TodoItem(
-                    id=generate_todo_id(text, item.created_at),
-                    text=text,
-                    status=item.status,
-                    created_at=item.created_at,
-                    completed_at=item.completed_at,
-                    project=item.project,
-                )
-                lines[idx] = format_todo_line(updated_item, self._format.timestamp_fmt)
-                break
+            for idx, (line, item) in enumerate(zip(lines, items)):
+                if item and item.id == id:
+                    updated_item = TodoItem(
+                        id=generate_todo_id(text, item.created_at),
+                        text=text,
+                        status=item.status,
+                        created_at=item.created_at,
+                        completed_at=item.completed_at,
+                        project=item.project,
+                    )
+                    lines[idx] = format_todo_line(updated_item, self._format.timestamp_fmt)
+                    break
 
-        if not updated_item:
-            raise KeyError(f"Todo not found: {id}")
+            if not updated_item:
+                raise KeyError(f"Todo not found: {id}")
 
-        self._write_lines(lines)
-        return updated_item
+            self._write_lines(lines)
+            return updated_item
 
     def delete(self, id: str) -> None:
-        lines, items = self._read_lines_with_items()
-        original_len = len(lines)
-        new_lines = [ln for ln, item in zip(lines, items) if not item or item.id != id]
+        with _file_lock(self._lock_path):
+            lines, items = self._read_lines_with_items()
+            original_len = len(lines)
+            new_lines = [ln for ln, item in zip(lines, items) if not item or item.id != id]
 
-        if len(new_lines) == original_len:
-            raise KeyError(f"Todo not found: {id}")
+            if len(new_lines) == original_len:
+                raise KeyError(f"Todo not found: {id}")
 
-        self._write_lines(new_lines)
+            self._write_lines(new_lines)
 
     def export_all(self) -> list[TodoItem]:
         """Export all todos for migration."""
@@ -118,15 +141,16 @@ class MarkdownBackend:
 
     def import_all(self, items: list[TodoItem]) -> tuple[int, int]:
         """Import todos. Returns (imported, skipped)."""
-        existing_ids = {i.id for i in self._read_items()}
-        imported, skipped = 0, 0
-        for item in items:
-            if item.id in existing_ids:
-                skipped += 1
-            else:
-                self._append_item(item)
-                imported += 1
-        return imported, skipped
+        with _file_lock(self._lock_path):
+            existing_ids = {i.id for i in self._read_items()}
+            imported, skipped = 0, 0
+            for item in items:
+                if item.id in existing_ids:
+                    skipped += 1
+                else:
+                    self._append_item(item)
+                    imported += 1
+            return imported, skipped
 
     # Customization methods (kept for frontmatter/section support)
 
