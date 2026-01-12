@@ -1,5 +1,5 @@
 {
   "name": "graph",
   "version": "1.0.0",
-  "description": "Dependency tracking (requires sqlite adapter)"
+  "description": "Dependency tracking (requires sqlite backend)"
 }

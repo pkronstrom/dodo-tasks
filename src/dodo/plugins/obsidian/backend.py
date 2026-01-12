@@ -1,10 +1,10 @@
-"""Obsidian Local REST API adapter."""
+"""Obsidian Local REST API backend."""
 
 from datetime import datetime
 
 import httpx
 
-from dodo.adapters.utils import (
+from dodo.backends.utils import (
     format_todo_line,
     generate_todo_id,
     parse_todo_line,
@@ -12,7 +12,7 @@ from dodo.adapters.utils import (
 from dodo.models import Status, TodoItem
 
 
-class ObsidianAdapter:
+class ObsidianBackend:
     """Obsidian Local REST API backend.
 
     Requires: obsidian-local-rest-api plugin running.
@@ -109,7 +109,7 @@ class ObsidianAdapter:
             item = parse_todo_line(line)
             if item and item.id == id:
                 updated_item = TodoItem(
-                    id=generate_todo_id(text, item.created_at),
+                    id=item.id,  # Keep original ID stable on text edit
                     text=text,
                     status=item.status,
                     created_at=item.created_at,

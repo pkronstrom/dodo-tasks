@@ -1,4 +1,4 @@
-"""SQLite adapter."""
+"""SQLite backend."""
 
 import sqlite3
 import uuid
@@ -10,7 +10,7 @@ from pathlib import Path
 from dodo.models import Status, TodoItem
 
 
-class SqliteAdapter:
+class SqliteBackend:
     """SQLite backend - better for querying/filtering large lists."""
 
     SCHEMA = """
@@ -28,7 +28,18 @@ class SqliteAdapter:
 
     def __init__(self, db_path: Path):
         self._path = db_path
+        self._conn: sqlite3.Connection | None = None
         self._ensure_schema()
+
+    def __del__(self) -> None:
+        """Clean up connection on garbage collection."""
+        self.close()
+
+    def close(self) -> None:
+        """Close the database connection."""
+        if self._conn is not None:
+            self._conn.close()
+            self._conn = None
 
     def add(self, text: str, project: str | None = None) -> TodoItem:
         item = TodoItem(
@@ -117,43 +128,60 @@ class SqliteAdapter:
         return self.list()
 
     def import_all(self, items: list[TodoItem]) -> tuple[int, int]:
-        """Import todos. Returns (imported, skipped)."""
+        """Import todos. Returns (imported, skipped).
+
+        Skips duplicates by ID or by text+created_at to prevent
+        duplicate imports when backends have different IDs for same todos.
+        """
         imported, skipped = 0, 0
         with self._connect() as conn:
             for item in items:
-                # Check if exists
+                # Check if exists by ID
                 existing = conn.execute("SELECT 1 FROM todos WHERE id = ?", (item.id,)).fetchone()
                 if existing:
                     skipped += 1
-                else:
-                    conn.execute(
-                        "INSERT INTO todos (id, text, status, project, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?)",
-                        (
-                            item.id,
-                            item.text,
-                            item.status.value,
-                            item.project,
-                            item.created_at.isoformat(),
-                            item.completed_at.isoformat() if item.completed_at else None,
-                        ),
-                    )
-                    imported += 1
+                    continue
+
+                # Also check by text + created_at (catches different IDs, same content)
+                existing_by_content = conn.execute(
+                    "SELECT 1 FROM todos WHERE text = ? AND created_at = ?",
+                    (item.text, item.created_at.isoformat()),
+                ).fetchone()
+                if existing_by_content:
+                    skipped += 1
+                    continue
+
+                conn.execute(
+                    "INSERT INTO todos (id, text, status, project, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        item.id,
+                        item.text,
+                        item.status.value,
+                        item.project,
+                        item.created_at.isoformat(),
+                        item.completed_at.isoformat() if item.completed_at else None,
+                    ),
+                )
+                imported += 1
         return imported, skipped
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self._path)
-        # Pragmas for concurrent access (multiple agents)
-        conn.execute("PRAGMA journal_mode = WAL")
-        conn.execute("PRAGMA busy_timeout = 5000")
-        conn.execute("PRAGMA synchronous = NORMAL")
-        conn.execute("PRAGMA foreign_keys = ON")
+        """Get database connection, reusing existing connection if available."""
+        if self._conn is None:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            self._conn = sqlite3.connect(self._path)
+            # Pragmas for concurrent access (multiple agents)
+            self._conn.execute("PRAGMA journal_mode = WAL")
+            self._conn.execute("PRAGMA busy_timeout = 5000")
+            self._conn.execute("PRAGMA synchronous = NORMAL")
+            self._conn.execute("PRAGMA foreign_keys = ON")
         try:
-            yield conn
-            conn.commit()
-        finally:
-            conn.close()
+            yield self._conn
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
 
     def _ensure_schema(self) -> None:
         with self._connect() as conn:

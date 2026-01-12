@@ -1,7 +1,7 @@
 """Plugin system with lazy loading and hook-based extension.
 
 This module provides the hook-based plugin system for extending dodo
-with adapters, commands, and formatters.
+with backends, commands, and formatters.
 """
 
 from __future__ import annotations
@@ -48,8 +48,8 @@ _BUILTIN_PLUGINS_DIR = Path(__file__).parent
 _KNOWN_HOOKS = [
     "register_commands",
     "register_config",
-    "register_adapter",
-    "extend_adapter",
+    "register_backend",
+    "extend_backend",
     "extend_formatter",
 ]
 
@@ -267,8 +267,8 @@ def apply_hooks(hook: str, target: T, config: Config) -> T:
     """Apply all enabled plugins for a hook phase.
 
     Args:
-        hook: The hook name (e.g., "extend_adapter", "extend_formatter")
-        target: The object to pass to plugins (adapter, formatter, etc.)
+        hook: The hook name (e.g., "extend_backend", "extend_formatter")
+        target: The object to pass to plugins (backend, formatter, etc.)
         config: The Config instance
 
     Returns:

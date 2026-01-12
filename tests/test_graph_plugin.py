@@ -3,12 +3,12 @@
 
 def test_list_attaches_blocked_by(tmp_path):
     """GraphWrapper.list() should attach blocked_by to items."""
+    from dodo.backends.sqlite import SqliteBackend
     from dodo.plugins.graph.wrapper import GraphWrapper
-    from dodo.plugins.sqlite.adapter import SqliteAdapter
 
     db_path = tmp_path / "test.db"
-    adapter = SqliteAdapter(db_path)
-    wrapper = GraphWrapper(adapter)
+    backend = SqliteBackend(db_path)
+    wrapper = GraphWrapper(backend)
 
     # Add todos
     t1 = wrapper.add("Task 1")

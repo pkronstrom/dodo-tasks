@@ -1,5 +1,0 @@
-{
-  "name": "sqlite",
-  "version": "1.0.0",
-  "description": "SQLite database storage (better for large lists)"
-}

@@ -8,7 +8,7 @@ This plugin adds dependency management between todos:
 
 Also available under `dodo plugins graph` for discoverability.
 
-Only works with SQLite adapter (requires database for dependency storage).
+Only works with SQLite backend (requires database for dependency storage).
 """
 
 from __future__ import annotations
@@ -64,8 +64,8 @@ def register_config() -> list[ConfigVar]:
     ]
 
 
-def register_commands(app: typer.Typer, config: Config) -> None:
-    """Add dependency tracking CLI commands under 'dodo plugins graph'."""
+def _build_graph_app() -> typer.Typer:
+    """Build the graph command Typer app."""
     import typer as t
 
     from dodo.plugins.graph.cli import blocked, dep_app, ready
@@ -78,25 +78,20 @@ def register_commands(app: typer.Typer, config: Config) -> None:
     graph_app.command()(ready)
     graph_app.command()(blocked)
     graph_app.add_typer(dep_app, name="dep")
+    return graph_app
 
+
+def register_commands(app: typer.Typer, config: Config) -> None:
+    """Add dependency tracking CLI commands under 'dodo plugins graph'."""
+    graph_app = _build_graph_app()
     app.add_typer(graph_app, name="graph")
 
 
 def register_root_commands(app: typer.Typer, config: Config) -> None:
     """Register root-level commands (dodo graph, dodo dep)."""
-    import typer as t
+    from dodo.plugins.graph.cli import dep_app
 
-    from dodo.plugins.graph.cli import blocked, dep_app, ready
-
-    graph_app = t.Typer(
-        name="graph",
-        help="Todo dependency tracking and visualization.",
-        no_args_is_help=True,
-    )
-    graph_app.command()(ready)
-    graph_app.command()(blocked)
-    graph_app.add_typer(dep_app, name="dep")
-
+    graph_app = _build_graph_app()
     app.add_typer(graph_app, name="graph")
     app.add_typer(dep_app, name="dep")
 
@@ -108,14 +103,15 @@ def register_formatters() -> dict[str, type]:
     return {"tree": TreeFormatter}
 
 
-def extend_adapter(adapter, config: Config):
-    """Wrap adapter with dependency tracking if SQLite."""
+def extend_backend(backend, config: Config):
+    """Wrap backend with dependency tracking if SQLite."""
+    from dodo.backends.sqlite import SqliteBackend
     from dodo.plugins.graph.wrapper import GraphWrapper
 
-    # Only wrap SQLite adapters (they have _path attribute)
-    if hasattr(adapter, "_path") and str(adapter._path).endswith(".db"):
-        return GraphWrapper(adapter)
-    return adapter
+    # Only wrap SQLite backends
+    if isinstance(backend, SqliteBackend):
+        return GraphWrapper(backend)
+    return backend
 
 
 def extend_formatter(formatter, config: Config):

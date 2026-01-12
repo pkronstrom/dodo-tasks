@@ -39,7 +39,8 @@ def test_auto_scan_when_registry_missing(tmp_path):
     # Load registry - should trigger auto-scan and find builtin plugins
     registry = load_registry(config_dir)
 
-    # Should return dict with builtin plugins (sqlite, obsidian, graph, ntfy-inbox)
+    # Should return dict with builtin plugins (obsidian, graph, ntfy-inbox)
+    # Note: sqlite is now a built-in backend, not a plugin
     assert isinstance(registry, dict)
     assert len(registry) > 0, "Should auto-scan and find builtin plugins"
-    assert "sqlite" in registry, "Should find sqlite builtin plugin"
+    assert "obsidian" in registry, "Should find obsidian builtin plugin"

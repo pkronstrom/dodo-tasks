@@ -67,21 +67,22 @@ class TestFullWorkflow:
         assert len(svc_global.list()) == 1
         assert svc_global.list()[0].text == "Global todo"
 
-    def test_adapter_switching(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        """Test switching between adapters."""
+    def test_backend_switching(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """Test switching between backends."""
         config_dir = tmp_path / ".config" / "dodo"
 
         from dodo.config import Config
         from dodo.core import TodoService
 
-        # Test with markdown
+        # Test with markdown (explicit env override since default is sqlite)
+        monkeypatch.setenv("DODO_DEFAULT_BACKEND", "markdown")
         cfg = Config.load(config_dir)
         svc = TodoService(cfg, project_id=None)
         svc.add("Markdown todo")
         assert (config_dir / "dodo.md").exists()
 
         # Switch to SQLite
-        monkeypatch.setenv("DODO_DEFAULT_ADAPTER", "sqlite")
+        monkeypatch.setenv("DODO_DEFAULT_BACKEND", "sqlite")
         cfg2 = Config.load(config_dir)
         svc2 = TodoService(cfg2, project_id=None)
         svc2.add("SQLite todo")

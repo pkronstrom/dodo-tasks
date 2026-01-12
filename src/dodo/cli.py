@@ -42,33 +42,6 @@ def _detect_project(worktree_shared: bool = False) -> str | None:
     return detect_project(worktree_shared=worktree_shared)
 
 
-def _resolve_project_from_ctx(
-    ctx: typer.Context,
-    cmd_project: str | None,
-    cmd_global: bool,
-    cfg: Config,
-) -> str | None:
-    """Resolve project from global or command-level options.
-
-    Priority: command-level > global-level > auto-detect
-    """
-    # Command-level flags take priority
-    if cmd_global:
-        return None
-    if cmd_project:
-        return _resolve_project(cmd_project)
-
-    # Then global flags
-    global_opts = ctx.obj or {}
-    if global_opts.get("global"):
-        return None
-    if global_opts.get("project"):
-        return _resolve_project(global_opts["project"])
-
-    # Finally, auto-detect
-    return _detect_project(worktree_shared=cfg.worktree_shared)
-
-
 # --- Plugin command routing ---
 
 
@@ -86,9 +59,16 @@ def _load_json_file(path) -> dict:
 
 
 def _get_config_dir():
-    """Get config directory path."""
+    """Get config directory path, respecting DODO_CONFIG_DIR env var.
+
+    Optimized to avoid loading full Config at import time.
+    """
+    import os
     from pathlib import Path
 
+    config_dir = os.environ.get("DODO_CONFIG_DIR")
+    if config_dir:
+        return Path(config_dir)
     return Path.home() / ".config" / "dodo"
 
 
@@ -123,7 +103,6 @@ def _get_plugin_for_command(argv: list[str]) -> tuple[str, bool] | None:
 
 def _register_plugin_for_command(plugin_name: str, is_root: bool) -> None:
     """Load plugin and register its commands."""
-    from dodo.plugins import import_plugin
 
     plugin = import_plugin(plugin_name, None)
     cfg = _get_config()
@@ -138,7 +117,6 @@ def _register_plugin_for_command(plugin_name: str, is_root: bool) -> None:
 
 def _register_all_plugin_root_commands() -> None:
     """Register all enabled plugins' root commands (for --help display)."""
-    from dodo.plugins import import_plugin
 
     config_dir = _get_config_dir()
     registry = _load_json_file(config_dir / "plugin_registry.json")
@@ -173,16 +151,8 @@ else:
 
 
 @app.callback(invoke_without_command=True)
-def main(
-    ctx: typer.Context,
-    project: Annotated[str | None, typer.Option("-p", "--project", help="Target project")] = None,
-    global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
-):
+def main(ctx: typer.Context):
     """Launch interactive menu if no command given."""
-    ctx.ensure_object(dict)
-    ctx.obj["project"] = project
-    ctx.obj["global"] = global_
-
     if ctx.invoked_subcommand is None:
         from dodo.ui.interactive import interactive_menu
 
@@ -191,18 +161,21 @@ def main(
 
 @app.command()
 def add(
-    ctx: typer.Context,
-    text: Annotated[list[str], typer.Argument(help="Todo text")],
-    project: Annotated[str | None, typer.Option("-p", "--project", help="Target project")] = None,
+    text: Annotated[str, typer.Argument(help="Todo text (use quotes)")],
     global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
 ):
     """Add a todo item."""
     cfg = _get_config()
-    project_id = _resolve_project_from_ctx(ctx, project, global_, cfg)
-    target = project_id or "global"
+
+    if global_:
+        target = "global"
+        project_id = None
+    else:
+        project_id = _detect_project(worktree_shared=cfg.worktree_shared)
+        target = project_id or "global"
 
     svc = _get_service(cfg, project_id)
-    item = svc.add(" ".join(text))
+    item = svc.add(text)
 
     _save_last_action("add", item.id, target)
 
@@ -213,7 +186,6 @@ def add(
 @app.command(name="ls")
 @app.command(name="list")
 def list_todos(
-    ctx: typer.Context,
     project: Annotated[str | None, typer.Option("-p", "--project")] = None,
     global_: Annotated[bool, typer.Option("-g", "--global")] = False,
     done: Annotated[bool, typer.Option("--done", help="Show completed")] = False,
@@ -225,7 +197,13 @@ def list_todos(
     from dodo.models import Status
 
     cfg = _get_config()
-    project_id = _resolve_project_from_ctx(ctx, project, global_, cfg)
+
+    if global_:
+        project_id = None
+    else:
+        project_id = _resolve_project(project) or _detect_project(
+            worktree_shared=cfg.worktree_shared
+        )
 
     svc = _get_service(cfg, project_id)
     status = None if all_ else (Status.DONE if done else Status.PENDING)
@@ -245,14 +223,11 @@ def list_todos(
 
 @app.command()
 def done(
-    ctx: typer.Context,
     id: Annotated[str, typer.Argument(help="Todo ID (or partial)")],
-    project: Annotated[str | None, typer.Option("-p", "--project", help="Target project")] = None,
-    global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
 ):
     """Mark todo as done."""
     cfg = _get_config()
-    project_id = _resolve_project_from_ctx(ctx, project, global_, cfg)
+    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
     svc = _get_service(cfg, project_id)
 
     # Try to find matching ID
@@ -268,14 +243,11 @@ def done(
 @app.command(name="remove")
 @app.command()
 def rm(
-    ctx: typer.Context,
     id: Annotated[str, typer.Argument(help="Todo ID (or partial)")],
-    project: Annotated[str | None, typer.Option("-p", "--project", help="Target project")] = None,
-    global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
 ):
     """Remove a todo."""
     cfg = _get_config()
-    project_id = _resolve_project_from_ctx(ctx, project, global_, cfg)
+    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
     svc = _get_service(cfg, project_id)
 
     item = _find_item_by_partial_id(svc, id)
@@ -437,9 +409,82 @@ def info(
     done = sum(1 for i in items if i.status == Status.DONE)
 
     console.print(f"[bold]Project:[/bold] {target}")
-    console.print(f"[bold]Adapter:[/bold] {cfg.default_adapter}")
+    console.print(f"[bold]Backend:[/bold] {svc.backend_name}")
     console.print(f"[bold]Storage:[/bold] {svc.storage_path}")
     console.print(f"[bold]Todos:[/bold] {len(items)} total ({pending} pending, {done} done)")
+
+
+@app.command()
+def backend(
+    name: Annotated[str | None, typer.Argument(help="Backend to set")] = None,
+    migrate: Annotated[
+        bool, typer.Option("--migrate", help="Migrate todos from current backend")
+    ] = False,
+    migrate_from: Annotated[
+        str | None, typer.Option("--migrate-from", help="Source backend for migration")
+    ] = None,
+):
+    """Show or set project backend."""
+    from dodo.project_config import ProjectConfig, get_project_config_dir
+
+    cfg = _get_config()
+    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
+
+    if not project_id:
+        console.print("[red]Error:[/red] Not in a project")
+        raise typer.Exit(1)
+
+    # Get project config directory (respects local_storage setting)
+    project_dir = get_project_config_dir(cfg, project_id, cfg.worktree_shared)
+    if not project_dir:
+        console.print("[red]Error:[/red] Could not determine project config directory")
+        raise typer.Exit(1)
+
+    if name is None:
+        # Show current backend
+        config = ProjectConfig.load(project_dir)
+        current = config.backend if config else cfg.default_backend
+        console.print(f"[bold]Backend:[/bold] {current}")
+        return
+
+    # Set backend
+    if migrate:
+        # Get source backend name
+        current_config = ProjectConfig.load(project_dir)
+        source_backend = migrate_from or (
+            current_config.backend if current_config else cfg.default_backend
+        )
+
+        if source_backend == name:
+            console.print(f"[yellow]Already using {name} backend[/yellow]")
+            return
+
+        # Export from source backend
+        console.print(f"[dim]Exporting from {source_backend}...[/dim]")
+        source_svc = _get_service(cfg, project_id)
+        items = source_svc._backend.export_all()
+
+        if not items:
+            console.print("[yellow]No todos to migrate[/yellow]")
+        else:
+            # Save new backend config first so import uses correct backend
+            project_dir.mkdir(parents=True, exist_ok=True)
+            new_config = ProjectConfig(backend=name)
+            new_config.save(project_dir)
+
+            # Import to new backend
+            console.print(f"[dim]Importing to {name}...[/dim]")
+            dest_svc = _get_service(cfg, project_id)
+            imported, skipped = dest_svc._backend.import_all(items)
+
+            console.print(f"[green]✓[/green] Migrated {imported} todos ({skipped} skipped)")
+            console.print(f"[green]✓[/green] Backend set to: {name}")
+            return
+
+    project_dir.mkdir(parents=True, exist_ok=True)
+    config = ProjectConfig(backend=name)
+    config.save(project_dir)
+    console.print(f"[green]✓[/green] Backend set to: {name}")
 
 
 def _register_plugins_subapp() -> None:
