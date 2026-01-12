@@ -1,4 +1,4 @@
-"""Markdown file adapter."""
+"""Markdown file backend."""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -21,7 +21,7 @@ class MarkdownFormat:
     section_header: str | None = None
 
 
-class MarkdownAdapter:
+class MarkdownBackend:
     """Markdown file backend.
 
     Uses shared utilities from dodo.adapters.utils for parsing and formatting.
