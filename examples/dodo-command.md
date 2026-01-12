@@ -52,14 +52,17 @@ dodo destroy --local
 
 ## --dodo flag
 
-Target a specific dodo instance for any command.
+Target a specific dodo instance for any command. **Auto-detects** whether the dodo is local or global - no need to specify `--local`.
 
 ```bash
-dodo add "task" --dodo my-session     # Add to specific dodo
+dodo add "task" --dodo my-session     # Add to specific dodo (auto-detects location)
 dodo list --dodo my-session           # List from specific dodo
 dodo done 1 --dodo my-session         # Complete task in specific dodo
-dodo add "task" --dodo my-session --local  # Use local .dodo/<name>/
 ```
+
+Resolution order:
+1. Check `.dodo/<name>/` in current directory and parents (local)
+2. Check `~/.config/dodo/<name>/` (global)
 
 ### Examples
 
@@ -73,9 +76,10 @@ dodo list --dodo feature-auth
 # Mark task done in a specific session
 dodo done 1 --dodo feature-auth
 
-# Work with local project dodo
-dodo add "Fix build error" --dodo ci-tasks --local
-dodo list --dodo ci-tasks --local
+# Works the same for local dodos - auto-detected
+dodo new ci-tasks --local                    # Create local
+dodo add "Fix build error" --dodo ci-tasks   # Auto-finds .dodo/ci-tasks/
+dodo list --dodo ci-tasks                    # Auto-finds .dodo/ci-tasks/
 ```
 
 ## AI Agent Usage
@@ -88,16 +92,16 @@ AI agents can use ephemeral dodo instances to track tasks during autonomous oper
 # Create ephemeral dodo for task tracking
 dodo new agent-session-123 --local --backend sqlite
 
-# Add tasks with dependencies
-dodo add "Fetch data" --dodo agent-session-123 --local
-dodo add "Process data" --after 1 --dodo agent-session-123 --local
-dodo add "Generate report" --after 2 --dodo agent-session-123 --local
+# Add tasks (--dodo auto-detects local dodo)
+dodo add "Fetch data" --dodo agent-session-123
+dodo add "Process data" --dodo agent-session-123
+dodo add "Generate report" --dodo agent-session-123
 
-# List and manage tasks
-dodo list --dodo agent-session-123 --local
+# List tasks
+dodo list --dodo agent-session-123
 
 # Mark tasks complete as work progresses
-dodo done 1 --dodo agent-session-123 --local
+dodo done 1 --dodo agent-session-123
 
 # Cleanup when done
 dodo destroy agent-session-123 --local
@@ -108,24 +112,24 @@ dodo destroy agent-session-123 --local
 1. **Isolation**: Each agent session has its own task list, preventing conflicts
 2. **Cleanup**: Easy to remove all tasks when the session ends
 3. **Tracking**: Clear separation between human tasks and AI-generated tasks
-4. **Local scope**: Using `--local` keeps agent tasks in the project directory
+4. **Local scope**: Using `--local` on create keeps agent tasks in the project directory
 
 ### Multi-Agent Workflow
 
 ```bash
 # Agent 1: Research phase
 dodo new research-agent --local --backend sqlite
-dodo add "Analyze codebase" --dodo research-agent --local
-dodo add "Identify patterns" --after 1 --dodo research-agent --local
+dodo add "Analyze codebase" --dodo research-agent
+dodo add "Identify patterns" --dodo research-agent
 
 # Agent 2: Implementation phase
 dodo new impl-agent --local --backend sqlite
-dodo add "Implement feature X" --dodo impl-agent --local
-dodo add "Write tests" --after 1 --dodo impl-agent --local
+dodo add "Implement feature X" --dodo impl-agent
+dodo add "Write tests" --dodo impl-agent
 
 # Check progress of each agent
-dodo list --dodo research-agent --local
-dodo list --dodo impl-agent --local
+dodo list --dodo research-agent
+dodo list --dodo impl-agent
 
 # Cleanup after agents complete
 dodo destroy research-agent --local

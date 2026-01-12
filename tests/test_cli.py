@@ -269,9 +269,10 @@ class TestCliDodoFlag:
         assert "Task in my-tasks" in result.stdout
 
     def test_dodo_flag_local(self, cli_env, tmp_path, monkeypatch):
-        """dodo add --dodo <name> --local uses local .dodo/<name>/"""
+        """dodo add --dodo <name> auto-detects local .dodo/<name>/"""
         monkeypatch.chdir(tmp_path)
         runner.invoke(app, ["new", "local-tasks", "--local"])
-        result = runner.invoke(app, ["add", "Local task", "--dodo", "local-tasks", "--local"])
+        # --dodo auto-detects local vs global - no --local needed
+        result = runner.invoke(app, ["add", "Local task", "--dodo", "local-tasks"])
 
         assert result.exit_code == 0, f"Failed: {result.output}"
