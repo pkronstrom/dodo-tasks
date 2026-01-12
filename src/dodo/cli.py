@@ -96,6 +96,7 @@ def _get_plugin_for_command(argv: list[str]) -> tuple[str, bool] | None:
 
 def _register_plugin_for_command(plugin_name: str, is_root: bool) -> None:
     """Load plugin and register its commands."""
+    from dodo.plugins import import_plugin
 
     plugin = import_plugin(plugin_name, None)
     cfg = _get_config()
@@ -110,6 +111,7 @@ def _register_plugin_for_command(plugin_name: str, is_root: bool) -> None:
 
 def _register_all_plugin_root_commands() -> None:
     """Register all enabled plugins' root commands (for --help display)."""
+    from dodo.plugins import import_plugin
 
     config_dir = _get_config_dir()
     registry = _load_json_file(config_dir / "plugin_registry.json")
@@ -155,6 +157,7 @@ def main(ctx: typer.Context):
 @app.command()
 def add(
     text: Annotated[list[str], typer.Argument(help="Todo text")],
+    project: Annotated[str | None, typer.Option("-p", "--project", help="Target project")] = None,
     global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
 ):
     """Add a todo item."""
@@ -163,6 +166,9 @@ def add(
     if global_:
         target = "global"
         project_id = None
+    elif project:
+        project_id = _resolve_project(project)
+        target = project_id or "global"
     else:
         project_id = _detect_project(worktree_shared=cfg.worktree_shared)
         target = project_id or "global"
@@ -217,10 +223,17 @@ def list_todos(
 @app.command()
 def done(
     id: Annotated[str, typer.Argument(help="Todo ID (or partial)")],
+    project: Annotated[str | None, typer.Option("-p", "--project", help="Target project")] = None,
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
 ):
     """Mark todo as done."""
     cfg = _get_config()
-    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
+    if global_:
+        project_id = None
+    elif project:
+        project_id = _resolve_project(project)
+    else:
+        project_id = _detect_project(worktree_shared=cfg.worktree_shared)
     svc = _get_service(cfg, project_id)
 
     # Try to find matching ID
@@ -237,10 +250,17 @@ def done(
 @app.command()
 def rm(
     id: Annotated[str, typer.Argument(help="Todo ID (or partial)")],
+    project: Annotated[str | None, typer.Option("-p", "--project", help="Target project")] = None,
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
 ):
     """Remove a todo."""
     cfg = _get_config()
-    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
+    if global_:
+        project_id = None
+    elif project:
+        project_id = _resolve_project(project)
+    else:
+        project_id = _detect_project(worktree_shared=cfg.worktree_shared)
     svc = _get_service(cfg, project_id)
 
     item = _find_item_by_partial_id(svc, id)
