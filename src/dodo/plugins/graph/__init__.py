@@ -110,10 +110,11 @@ def register_formatters() -> dict[str, type]:
 
 def extend_backend(backend, config: Config):
     """Wrap backend with dependency tracking if SQLite."""
+    from dodo.backends.sqlite import SqliteBackend
     from dodo.plugins.graph.wrapper import GraphWrapper
 
-    # Only wrap SQLite backends (they have _path attribute)
-    if hasattr(backend, "_path") and str(backend._path).endswith(".db"):
+    # Only wrap SQLite backends
+    if isinstance(backend, SqliteBackend):
         return GraphWrapper(backend)
     return backend
 

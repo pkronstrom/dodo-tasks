@@ -93,6 +93,11 @@ class TodoService:
         """Get the resolved backend name for this project."""
         return self._backend_name
 
+    @property
+    def backend(self) -> TodoBackend:
+        """Get the underlying backend instance."""
+        return self._backend
+
     def _create_backend(self) -> TodoBackend:
         from dodo.plugins import apply_hooks
 
