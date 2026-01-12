@@ -12,7 +12,6 @@ from rich.panel import Panel
 from dodo.config import Config
 from dodo.core import TodoService
 from dodo.models import Status, TodoItem, UndoAction
-from dodo.project import detect_project
 
 from .panel_builder import calculate_visible_range, format_scroll_indicator
 from .rich_menu import RichTerminalMenu
@@ -29,10 +28,18 @@ console = Console()
 
 def interactive_menu() -> None:
     """Main interactive menu when running bare 'dodo'."""
+    from dodo.resolve import resolve_dodo
+
     cfg = Config.load()
-    project_id = detect_project(worktree_shared=cfg.worktree_shared)
-    target = project_id or "global"
-    svc = TodoService(cfg, project_id)
+    dodo_name, storage_path = resolve_dodo(cfg)
+    target = dodo_name or "global"
+
+    # Create service with explicit path if resolved
+    if storage_path:
+        svc = TodoService(cfg, project_id=None, storage_path=storage_path)
+    else:
+        svc = TodoService(cfg, project_id=dodo_name)
+
     ui = RichTerminalMenu()
 
     while True:
@@ -41,8 +48,7 @@ def interactive_menu() -> None:
         done = sum(1 for i in items if i.status == Status.DONE)
 
         # Get storage path for display
-        storage_path = _get_project_storage_path(cfg, project_id, cfg.worktree_shared)
-        storage_display = _shorten_path(storage_path, cfg.config_dir)
+        storage_display = _shorten_path(Path(svc.storage_path), cfg.config_dir)
 
         # Adaptive panel width
         term_width = console.width or DEFAULT_PANEL_WIDTH
@@ -50,19 +56,11 @@ def interactive_menu() -> None:
 
         console.clear()
 
-        # Build detection explanation
-        if project_id:
-            detect_info = f"Auto-detected: [cyan]{target}[/cyan]"
-        else:
-            detect_info = "No local dodo found, using [dim]global[/dim]"
-
+        # Compact two-line banner
         console.print(
             Panel(
-                f"[bold]Active:[/bold] {target}\n"
-                f"[bold]Storage:[/bold] [dim]{storage_display}[/dim]\n"
-                f"[bold]Todos:[/bold] {pending} pending, {done} done\n\n"
-                f"[dim]{detect_info}[/dim]\n"
-                "[dim]Use --dodo <name> or cd into a dodo directory to switch.[/dim]",
+                f"[bold]{target}[/bold]                    {pending} pending, {done} done\n"
+                f"[dim]{storage_display}[/dim]",
                 title="dodo",
                 border_style="blue",
                 width=panel_width,
@@ -86,16 +84,19 @@ def interactive_menu() -> None:
         elif choice == 1:
             _dodos_list(ui, cfg)
         elif choice == 2:
-            interactive_config(project_id)
+            interactive_config(dodo_name)
             # Reload config and service in case settings changed
             from dodo.config import clear_config_cache
 
             clear_config_cache()
             cfg = Config.load()
-            # Re-detect project in case worktree_shared changed
-            project_id = detect_project(worktree_shared=cfg.worktree_shared)
-            target = project_id or "global"
-            svc = TodoService(cfg, project_id)
+            # Re-detect dodo
+            dodo_name, storage_path = resolve_dodo(cfg)
+            target = dodo_name or "global"
+            if storage_path:
+                svc = TodoService(cfg, project_id=None, storage_path=storage_path)
+            else:
+                svc = TodoService(cfg, project_id=dodo_name)
 
 
 def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
@@ -486,10 +487,11 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
     from dodo.backends.markdown import MarkdownBackend
     from dodo.backends.sqlite import SqliteBackend
     from dodo.project import detect_worktree_parent
+    from dodo.resolve import resolve_dodo
 
     # Detect current dodo (auto-detected)
-    current_project = detect_project(worktree_shared=cfg.worktree_shared)
-    current_name = current_project or "global"
+    current_name, _ = resolve_dodo(cfg)
+    current_name = current_name or "global"
 
     # Detect if in a worktree with a parent repo
     is_worktree, parent_root, parent_id = detect_worktree_parent()
