@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from dodo.adapters.utils import (
+from dodo.backends.utils import (
     format_todo_line,
     generate_todo_id,
     parse_todo_line,
@@ -24,7 +24,7 @@ class MarkdownFormat:
 class MarkdownBackend:
     """Markdown file backend.
 
-    Uses shared utilities from dodo.adapters.utils for parsing and formatting.
+    Uses shared utilities from dodo.backends.utils for parsing and formatting.
     """
 
     def __init__(self, file_path: Path, format: MarkdownFormat | None = None):
