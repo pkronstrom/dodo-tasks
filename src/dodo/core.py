@@ -51,6 +51,7 @@ class TodoService:
     def __init__(self, config: Config, project_id: str | None = None):
         self._config = config
         self._project_id = project_id
+        self._backend_name: str = ""  # Set by _create_backend
         self._backend = self._create_backend()
 
     def add(self, text: str) -> TodoItem:
@@ -87,19 +88,24 @@ class TodoService:
             return str(self._backend._path)
         return "N/A"
 
+    @property
+    def backend_name(self) -> str:
+        """Get the resolved backend name for this project."""
+        return self._backend_name
+
     def _create_backend(self) -> TodoBackend:
         from dodo.plugins import apply_hooks
 
         # Let plugins register their backends
         apply_hooks("register_backend", _backend_registry, self._config)
 
-        backend_name = self._resolve_backend()
+        self._backend_name = self._resolve_backend()
 
         # Check if backend is in registry
-        if backend_name in _backend_registry:
-            backend = self._instantiate_backend(backend_name)
+        if self._backend_name in _backend_registry:
+            backend = self._instantiate_backend(self._backend_name)
         else:
-            raise ValueError(f"Unknown backend: {backend_name}")
+            raise ValueError(f"Unknown backend: {self._backend_name}")
 
         # Allow plugins to extend/wrap the backend
         return apply_hooks("extend_backend", backend, self._config)
