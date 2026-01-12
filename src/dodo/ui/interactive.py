@@ -777,8 +777,10 @@ def _edit_in_editor(
 
 
 def _get_available_backends(enabled_plugins: set[str], registry: dict) -> list[str]:
-    """Get backends: markdown + enabled backend plugins."""
-    backends = ["markdown"]
+    """Get backends: core backends + enabled backend plugins."""
+    # Core backends (always available)
+    backends = ["sqlite", "markdown"]
+    # Plugin backends (require enabling)
     for name, info in registry.items():
         if name in enabled_plugins and "register_backend" in info.get("hooks", []):
             backends.append(name)
