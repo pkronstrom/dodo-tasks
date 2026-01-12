@@ -801,6 +801,9 @@ def _detect_other_backend_files(
 
     Returns list of (backend_name, todo_count) for backends with data.
     """
+    from dodo.backends.markdown import MarkdownBackend
+    from dodo.backends.sqlite import SqliteBackend
+
     results = []
     md_path, db_path = _get_storage_paths(cfg, project_id)
 
