@@ -20,7 +20,6 @@ class ConfigMeta:
 
     TOGGLES: dict[str, str] = {
         "worktree_shared": "Share todos across git worktrees",
-        "local_storage": "Store todos in project dir (vs centralized)",
         "timestamps_enabled": "Add timestamps to todo entries",
     }
 
@@ -42,7 +41,6 @@ class Config:
     DEFAULTS: dict[str, Any] = {
         # Toggles
         "worktree_shared": True,
-        "local_storage": False,
         "timestamps_enabled": True,
         # Settings
         "default_backend": "sqlite",

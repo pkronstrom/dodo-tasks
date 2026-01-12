@@ -51,7 +51,7 @@ def interactive_menu() -> None:
         console.clear()
         console.print(
             Panel(
-                f"[bold]Project:[/bold] {target}\n"
+                f"[bold]Dodo:[/bold] {target}\n"
                 f"[bold]Storage:[/bold] [dim]{storage_display}[/dim]\n"
                 f"[bold]Todos:[/bold] {pending} pending, {done} done",
                 title="dodo",
@@ -62,7 +62,7 @@ def interactive_menu() -> None:
 
         options = [
             "Todos",
-            "Projects",
+            "Dodos",
             "Config",
             "Exit",
         ]
@@ -459,7 +459,7 @@ def _interactive_switch(
         if all_projects:
             # Space before toggle
             opts.append(("_spacer", "", None, True))
-            toggle_label = "▼ Hide other projects" if show_all else "▶ Show all projects"
+            toggle_label = "▼ Hide other dodos" if show_all else "▶ Show all dodos"
             opts.append(("_toggle", toggle_label, None, False))
 
             if show_all:
@@ -494,7 +494,7 @@ def _interactive_switch(
 
     def render() -> None:
         sys.stdout.write("\033[H\033[J")  # Move to top and clear screen
-        lines = ["[dim]Select a project to switch to:[/dim]", ""]
+        lines = ["[dim]Select a dodo to switch to:[/dim]", ""]
         for i, (key, name, path, disabled) in enumerate(options):
             if key == "_sep":
                 lines.append(f"  [dim]{name}[/dim]")
@@ -524,7 +524,7 @@ def _interactive_switch(
         console.print(
             Panel(
                 content,
-                title="Projects",
+                title="Dodos",
                 border_style="blue",
                 width=min(80, console.width or 80),
             )
@@ -712,7 +712,7 @@ def _interactive_switch(
         return selected_name, selected_name
     elif selected_key == "custom":
         console.print()
-        name = ui.input("Project name:")
+        name = ui.input("Dodo name:")
         if name:
             cfg.set("worktree_shared", False)
             return name, name
@@ -857,7 +857,6 @@ def _build_settings_items(
 
     # Settings before backend
     pre_backend: list[tuple[str, str, str, list[str] | None, str | None]] = [
-        ("local_storage", "Local storage", "toggle", None, "store in project dir"),
         ("timestamps_enabled", "Timestamps", "toggle", None, "show times in list"),
     ]
     for key, label, kind, options, desc in pre_backend:
@@ -1291,7 +1290,6 @@ def interactive_config(project_id: str | None = None) -> None:
 def _general_config(cfg: Config) -> None:
     """General settings config menu."""
     items: list[tuple[str, str, str, list[str] | None]] = [
-        ("local_storage", "Store todos in project dir", "toggle", None),
         ("timestamps_enabled", "Add timestamps to todo entries", "toggle", None),
         ("default_backend", "Backend", "cycle", ["markdown", "sqlite", "obsidian"]),
         ("editor", "Editor (empty = $EDITOR)", "edit", None),
