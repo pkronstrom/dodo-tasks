@@ -20,6 +20,7 @@ dep_app = typer.Typer(
 
 def _get_graph_backend():
     """Get backend with graph wrapper (if available)."""
+    from dodo.backends.base import GraphCapable
     from dodo.config import Config
     from dodo.core import TodoService
     from dodo.project import detect_project
@@ -28,8 +29,8 @@ def _get_graph_backend():
     project_id = detect_project(worktree_shared=cfg.worktree_shared)
     svc = TodoService(cfg, project_id)
 
-    backend = svc._backend
-    if not hasattr(backend, "get_ready"):
+    backend = svc.backend
+    if not isinstance(backend, GraphCapable):
         console.print("[red]Error:[/red] Graph plugin requires SQLite backend")
         console.print("[dim]Set backend with: dodo config (then select sqlite)[/dim]")
         raise typer.Exit(1)
