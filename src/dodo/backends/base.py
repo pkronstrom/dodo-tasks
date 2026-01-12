@@ -1,4 +1,4 @@
-"""Base adapter protocol."""
+"""Base backend protocol."""
 
 from typing import Protocol, runtime_checkable
 
@@ -6,7 +6,7 @@ from dodo.models import Status, TodoItem
 
 
 @runtime_checkable
-class TodoAdapter(Protocol):
+class TodoBackend(Protocol):
     """Protocol for todo storage backends.
 
     Implement this to add new backends (sqlite, notion, etc.)
