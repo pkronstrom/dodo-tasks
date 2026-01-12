@@ -48,8 +48,8 @@ _BUILTIN_PLUGINS_DIR = Path(__file__).parent
 _KNOWN_HOOKS = [
     "register_commands",
     "register_config",
-    "register_adapter",
-    "extend_adapter",
+    "register_backend",
+    "extend_backend",
     "extend_formatter",
 ]
 
