@@ -29,24 +29,21 @@ dodo new ai-session --backend sqlite --local
 
 ## dodo destroy
 
-Remove dodo instances when they are no longer needed.
+Remove dodo instances when they are no longer needed. **Auto-detects** local vs global location.
 
 ```bash
-dodo destroy <name>                   # Remove dodo from ~/.config/dodo/<name>/
-dodo destroy <name> --local           # Remove local dodo from .dodo/<name>/
-dodo destroy --local                  # Remove default local dodo
+dodo destroy <name>                   # Auto-detects and removes (local or global)
+dodo destroy --local                  # Remove default local .dodo/ (no name)
 ```
 
 ### Examples
 
 ```bash
-# Remove a global named dodo
+# Remove a named dodo (auto-detects location)
 dodo destroy feature-auth
+dodo destroy project-tasks    # Finds .dodo/project-tasks/ or ~/.config/dodo/project-tasks/
 
-# Remove a local project dodo
-dodo destroy project-tasks --local
-
-# Clean up default local dodo
+# Clean up default local dodo (no name)
 dodo destroy --local
 ```
 
@@ -103,8 +100,8 @@ dodo list --dodo agent-session-123
 # Mark tasks complete as work progresses
 dodo done 1 --dodo agent-session-123
 
-# Cleanup when done
-dodo destroy agent-session-123 --local
+# Cleanup when done (auto-detects local)
+dodo destroy agent-session-123
 ```
 
 ### Why Use Named Dodos for AI Agents?
@@ -131,9 +128,9 @@ dodo add "Write tests" --dodo impl-agent
 dodo list --dodo research-agent
 dodo list --dodo impl-agent
 
-# Cleanup after agents complete
-dodo destroy research-agent --local
-dodo destroy impl-agent --local
+# Cleanup after agents complete (auto-detects local)
+dodo destroy research-agent
+dodo destroy impl-agent
 ```
 
 ## Backend Selection
