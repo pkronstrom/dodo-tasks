@@ -128,27 +128,41 @@ class SqliteBackend:
         return self.list()
 
     def import_all(self, items: list[TodoItem]) -> tuple[int, int]:
-        """Import todos. Returns (imported, skipped)."""
+        """Import todos. Returns (imported, skipped).
+
+        Skips duplicates by ID or by text+created_at to prevent
+        duplicate imports when backends have different IDs for same todos.
+        """
         imported, skipped = 0, 0
         with self._connect() as conn:
             for item in items:
-                # Check if exists
+                # Check if exists by ID
                 existing = conn.execute("SELECT 1 FROM todos WHERE id = ?", (item.id,)).fetchone()
                 if existing:
                     skipped += 1
-                else:
-                    conn.execute(
-                        "INSERT INTO todos (id, text, status, project, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?)",
-                        (
-                            item.id,
-                            item.text,
-                            item.status.value,
-                            item.project,
-                            item.created_at.isoformat(),
-                            item.completed_at.isoformat() if item.completed_at else None,
-                        ),
-                    )
-                    imported += 1
+                    continue
+
+                # Also check by text + created_at (catches different IDs, same content)
+                existing_by_content = conn.execute(
+                    "SELECT 1 FROM todos WHERE text = ? AND created_at = ?",
+                    (item.text, item.created_at.isoformat()),
+                ).fetchone()
+                if existing_by_content:
+                    skipped += 1
+                    continue
+
+                conn.execute(
+                    "INSERT INTO todos (id, text, status, project, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        item.id,
+                        item.text,
+                        item.status.value,
+                        item.project,
+                        item.created_at.isoformat(),
+                        item.completed_at.isoformat() if item.completed_at else None,
+                    ),
+                )
+                imported += 1
         return imported, skipped
 
     @contextmanager

@@ -140,12 +140,22 @@ class MarkdownBackend:
         return self._read_items()
 
     def import_all(self, items: list[TodoItem]) -> tuple[int, int]:
-        """Import todos. Returns (imported, skipped)."""
+        """Import todos. Returns (imported, skipped).
+
+        Skips duplicates by ID or by text+created_at to prevent
+        duplicate imports when backends have different IDs for same todos.
+        """
         with _file_lock(self._lock_path):
-            existing_ids = {i.id for i in self._read_items()}
+            existing = self._read_items()
+            existing_ids = {i.id for i in existing}
+            # Also track by content to catch different IDs, same todo
+            existing_content = {(i.text, i.created_at.isoformat()) for i in existing}
+
             imported, skipped = 0, 0
             for item in items:
                 if item.id in existing_ids:
+                    skipped += 1
+                elif (item.text, item.created_at.isoformat()) in existing_content:
                     skipped += 1
                 else:
                     self._append_item(item)
