@@ -49,11 +49,20 @@ def interactive_menu() -> None:
         panel_width = min(84, term_width)  # max 80 + 4 for borders
 
         console.clear()
+
+        # Build detection explanation
+        if project_id:
+            detect_info = f"Auto-detected: [cyan]{target}[/cyan]"
+        else:
+            detect_info = "No local dodo found, using [dim]global[/dim]"
+
         console.print(
             Panel(
-                f"[bold]Dodo:[/bold] {target}\n"
+                f"[bold]Active:[/bold] {target}\n"
                 f"[bold]Storage:[/bold] [dim]{storage_display}[/dim]\n"
-                f"[bold]Todos:[/bold] {pending} pending, {done} done",
+                f"[bold]Todos:[/bold] {pending} pending, {done} done\n\n"
+                f"[dim]{detect_info}[/dim]\n"
+                "[dim]Use --dodo <name> or cd into a dodo directory to switch.[/dim]",
                 title="dodo",
                 border_style="blue",
                 width=panel_width,
@@ -62,7 +71,6 @@ def interactive_menu() -> None:
 
         options = [
             "Todos",
-            "New dodo",
             "Dodos",
             "Config",
             "Exit",
@@ -70,16 +78,14 @@ def interactive_menu() -> None:
 
         choice = ui.select(options)
 
-        if choice is None or choice == 4:
+        if choice is None or choice == 3:
             console.clear()
             break
         elif choice == 0:
             _todos_loop(svc, target, cfg)
         elif choice == 1:
-            _new_dodo_menu(ui, cfg)
-        elif choice == 2:
             _dodos_list(ui, cfg)
-        elif choice == 3:
+        elif choice == 2:
             interactive_config(project_id)
             # Reload config and service in case settings changed
             from dodo.config import clear_config_cache
@@ -421,9 +427,9 @@ def _new_dodo_menu(ui: RichTerminalMenu, cfg: Config) -> None:
         git_display = str(git_root).replace(str(Path.home()), "~")
         options.append(("git", f"For git repo: {git_root.name}", f"Detected at {git_display}"))
 
-    # Build display options
-    display_options = [f"{label}  [dim]{desc}[/dim]" for _, label, desc in options]
-    display_options.append("[dim]Cancel[/dim]")
+    # Build display options (no Rich markup - simple_term_menu doesn't support it)
+    display_options = [f"{label}  ({desc})" for _, label, desc in options]
+    display_options.append("Cancel")
 
     console.clear()
     console.print(
@@ -587,9 +593,18 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
             toggle_marker = "[cyan]>[/cyan] " if cursor == len(build_display_items()) else "  "
             lines.append(f"{toggle_marker}[cyan]{toggle_label}[/cyan]")
 
+        # Add "New dodo" option
+        lines.append("")
+        new_marker = (
+            "[cyan]>[/cyan] "
+            if cursor == len(build_display_items()) + (1 if all_dodos else 0)
+            else "  "
+        )
+        lines.append(f"{new_marker}[green]+ New dodo[/green]")
+
         content = "\n".join(lines)
         content += (
-            "\n\n[dim]↑↓ navigate · enter view todos · l open folder · d delete · q back[/dim]"
+            "\n\n[dim]↑↓ navigate · enter view/create · l open folder · d delete · q back[/dim]"
         )
 
         console.print(
@@ -693,11 +708,16 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
             readchar.readkey()
             return False
 
+    show_new_dodo_menu = False
+
     with console.screen():
         while True:
             render()
             items = build_display_items()
-            max_cursor = len(items) + (1 if all_dodos else 0) - 1  # +1 for toggle if exists
+            # +1 for toggle if exists, +1 for "New dodo"
+            toggle_offset = 1 if all_dodos else 0
+            new_dodo_index = len(items) + toggle_offset
+            max_cursor = new_dodo_index  # New dodo is the last item
 
             try:
                 key = readchar.readkey()
@@ -711,8 +731,12 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
             elif key == "q":
                 return
             elif key in ("\r", "\n", " "):
+                # Check if on "New dodo"
+                if cursor == new_dodo_index:
+                    show_new_dodo_menu = True
+                    break
                 # Check if on toggle
-                if all_dodos and cursor == len(items):
+                elif all_dodos and cursor == len(items):
                     show_all = not show_all
                     # Adjust cursor if needed
                     if not show_all and cursor > len(dodos):
@@ -733,8 +757,13 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
                         ]
                     # Adjust cursor
                     items = build_display_items()
-                    if cursor >= len(items) + (1 if all_dodos else 0):
-                        cursor = max(0, len(items) + (1 if all_dodos else 0) - 1)
+                    new_max = len(items) + toggle_offset
+                    if cursor > new_max:
+                        cursor = new_max
+
+    # "New dodo" was selected - show the new dodo menu outside screen context
+    if show_new_dodo_menu:
+        _new_dodo_menu(ui, cfg)
 
 
 def _edit_in_editor(

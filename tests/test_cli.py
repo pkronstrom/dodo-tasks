@@ -235,21 +235,6 @@ class TestCliDestroy:
         assert not (tmp_path / ".dodo").exists()
 
 
-class TestCliInitDeprecation:
-    def test_init_shows_deprecation_warning(self, cli_env, tmp_path, monkeypatch):
-        """dodo init shows deprecation warning pointing to dodo new"""
-        # Create a fake git repo
-        git_dir = tmp_path / ".git"
-        git_dir.mkdir()
-        monkeypatch.chdir(tmp_path)
-
-        with patch("dodo.project.detect_project", return_value="test_abc123"):
-            result = runner.invoke(app, ["init"])
-
-        assert result.exit_code == 0
-        assert "deprecated" in result.stdout.lower() or "dodo new" in result.stdout
-
-
 class TestCliDodoFlag:
     def test_add_with_dodo_flag(self, cli_env):
         """dodo add --dodo <name> adds to specific dodo"""
@@ -277,3 +262,19 @@ class TestCliDodoFlag:
         result = runner.invoke(app, ["add", "Local task", "--dodo", "local-tasks"])
 
         assert result.exit_code == 0, f"Failed: {result.output}"
+
+    def test_single_named_dodo_auto_detected(self, cli_env, tmp_path, monkeypatch):
+        """Single named local dodo is auto-detected without --dodo flag."""
+        monkeypatch.chdir(tmp_path)
+        # Create a single named local dodo
+        runner.invoke(app, ["new", "my-session", "--local"])
+
+        # Add without --dodo - should auto-detect
+        result = runner.invoke(app, ["add", "Auto detected task"])
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "my-session" in result.stdout or "Auto detected task" in result.stdout
+
+        # List without --dodo - should also auto-detect
+        result = runner.invoke(app, ["list"])
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Auto detected task" in result.stdout
