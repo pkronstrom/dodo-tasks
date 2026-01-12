@@ -130,7 +130,7 @@ class TestAIDodoWorkflow:
         assert "Fetch data" in result.stdout
         assert "Process data" in result.stdout
 
-        # Destroy
-        result = runner.invoke(app, ["destroy", "agent-session-123", "--local"])
+        # Destroy (auto-detects local)
+        result = runner.invoke(app, ["destroy", "agent-session-123"])
         assert result.exit_code == 0, f"Failed to destroy dodo: {result.output}"
         assert not (tmp_path / ".dodo" / "agent-session-123").exists()

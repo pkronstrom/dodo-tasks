@@ -497,7 +497,9 @@ def new(
 @app.command()
 def destroy(
     name: Annotated[str | None, typer.Argument(help="Name of the dodo to destroy")] = None,
-    local: Annotated[bool, typer.Option("--local", help="Destroy from .dodo/ locally")] = False,
+    local: Annotated[
+        bool, typer.Option("--local", help="Destroy default .dodo/ (no name)")
+    ] = False,
 ):
     """Destroy a dodo and its data."""
     import shutil
@@ -505,19 +507,41 @@ def destroy(
 
     cfg = _get_config()
 
-    # Determine target directory
-    if local:
-        base = Path.cwd() / ".dodo"
-        if name:
-            target_dir = base / name
+    # No name: --local destroys default .dodo/, otherwise error
+    if not name:
+        if local:
+            target_dir = Path.cwd() / ".dodo"
         else:
-            target_dir = base
-    else:
-        if name:
-            target_dir = cfg.config_dir / name
-        else:
-            console.print("[red]Error:[/red] Specify a name or use --local")
+            console.print(
+                "[red]Error:[/red] Specify a dodo name, or use --local for default .dodo/"
+            )
             raise typer.Exit(1)
+    else:
+        # Name provided: auto-detect local vs global (same as --dodo flag)
+        # Check local first
+        local_path = Path.cwd() / ".dodo" / name
+        if local_path.exists():
+            target_dir = local_path
+        else:
+            # Check parent directories
+            found = False
+            for parent in Path.cwd().parents:
+                candidate = parent / ".dodo" / name
+                if candidate.exists():
+                    target_dir = candidate
+                    found = True
+                    break
+                if parent == Path.home() or parent == Path("/"):
+                    break
+
+            if not found:
+                # Check global
+                global_path = cfg.config_dir / name
+                if global_path.exists():
+                    target_dir = global_path
+                else:
+                    console.print(f"[red]Error:[/red] Dodo '{name}' not found")
+                    raise typer.Exit(1)
 
     if not target_dir.exists():
         location = str(target_dir).replace(str(Path.home()), "~")

@@ -205,12 +205,13 @@ class TestCliDestroy:
         assert not (config_dir / "temp-session").exists()
 
     def test_destroy_local_removes_local_dodo(self, cli_env, tmp_path, monkeypatch):
-        """dodo destroy <name> --local removes .dodo/<name>/"""
+        """dodo destroy <name> auto-detects and removes .dodo/<name>/"""
         monkeypatch.chdir(tmp_path)
         runner.invoke(app, ["new", "agent-456", "--local"])
         assert (tmp_path / ".dodo" / "agent-456").exists()
 
-        result = runner.invoke(app, ["destroy", "agent-456", "--local"])
+        # No --local needed - auto-detects
+        result = runner.invoke(app, ["destroy", "agent-456"])
 
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert not (tmp_path / ".dodo" / "agent-456").exists()
