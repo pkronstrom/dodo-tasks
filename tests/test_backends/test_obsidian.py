@@ -31,7 +31,7 @@ class TestObsidianBackendAdd:
 
 class TestObsidianBackendList:
     def test_list_parses_content(self, mock_client):
-        content = "- [ ] 2024-01-09 10:30 - First todo\n- [x] 2024-01-09 11:00 - Done todo\n"
+        content = "- [ ] 2024-01-09 10:30 [abc12345] - First todo\n- [x] 2024-01-09 11:00 [def67890] - Done todo\n"
         mock_client.get.return_value = MagicMock(status_code=200, text=content)
 
         backend = ObsidianBackend(api_key="test-key")
@@ -39,6 +39,7 @@ class TestObsidianBackendList:
 
         assert len(items) == 2
         assert items[0].text == "First todo"
+        assert items[0].id == "abc12345"
         assert items[1].status == Status.DONE
 
     def test_list_empty_file(self, mock_client):
@@ -52,7 +53,7 @@ class TestObsidianBackendList:
 
 class TestObsidianBackendUpdate:
     def test_update_puts_modified_content(self, mock_client):
-        content = "- [ ] 2024-01-09 10:30 - Test todo\n"
+        content = "- [ ] 2024-01-09 10:30 [abc12345] - Test todo\n"
         mock_client.get.return_value = MagicMock(status_code=200, text=content)
         mock_client.put.return_value = MagicMock(status_code=200)
 
@@ -70,7 +71,7 @@ class TestObsidianBackendUpdate:
 
 class TestObsidianBackendDelete:
     def test_delete_removes_line(self, mock_client):
-        content = "- [ ] 2024-01-09 10:30 - Todo 1\n- [ ] 2024-01-09 11:00 - Todo 2\n"
+        content = "- [ ] 2024-01-09 10:30 [abc12345] - Todo 1\n- [ ] 2024-01-09 11:00 [def67890] - Todo 2\n"
         mock_client.get.return_value = MagicMock(status_code=200, text=content)
         mock_client.put.return_value = MagicMock(status_code=200)
 
