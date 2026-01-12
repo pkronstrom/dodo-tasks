@@ -407,6 +407,47 @@ def info(
     console.print(f"[bold]Todos:[/bold] {len(items)} total ({pending} pending, {done} done)")
 
 
+@app.command()
+def backend(
+    name: Annotated[str | None, typer.Argument(help="Backend to set")] = None,
+    migrate: Annotated[
+        bool, typer.Option("--migrate", help="Migrate todos from current backend")
+    ] = False,
+    migrate_from: Annotated[
+        str | None, typer.Option("--migrate-from", help="Source backend for migration")
+    ] = None,
+):
+    """Show or set project backend."""
+    from dodo.project_config import ProjectConfig
+
+    cfg = _get_config()
+    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
+
+    if not project_id:
+        console.print("[red]Error:[/red] Not in a project")
+        raise typer.Exit(1)
+
+    # Get project config directory
+    project_dir = cfg.config_dir / "projects" / project_id
+
+    if name is None:
+        # Show current backend
+        config = ProjectConfig.load(project_dir)
+        current = config.backend if config else cfg.default_backend
+        console.print(f"[bold]Backend:[/bold] {current}")
+        return
+
+    # Set backend
+    if migrate:
+        # TODO: implement migration
+        console.print("[yellow]Migration not yet implemented[/yellow]")
+
+    project_dir.mkdir(parents=True, exist_ok=True)
+    config = ProjectConfig(backend=name)
+    config.save(project_dir)
+    console.print(f"[green]✓[/green] Backend set to: {name}")
+
+
 def _register_plugins_subapp() -> None:
     """Register the plugins subapp with the main app."""
     from dodo.cli_plugins import plugins_app
