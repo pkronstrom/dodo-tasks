@@ -400,7 +400,7 @@ def info(
     done = sum(1 for i in items if i.status == Status.DONE)
 
     console.print(f"[bold]Project:[/bold] {target}")
-    console.print(f"[bold]Backend:[/bold] {cfg.default_backend}")
+    console.print(f"[bold]Backend:[/bold] {svc.backend_name}")
     console.print(f"[bold]Storage:[/bold] {svc.storage_path}")
     console.print(f"[bold]Todos:[/bold] {len(items)} total ({pending} pending, {done} done)")
 
