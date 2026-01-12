@@ -93,7 +93,7 @@ class TodoService:
         # Let plugins register their backends
         apply_hooks("register_backend", _backend_registry, self._config)
 
-        backend_name = self._config.default_adapter
+        backend_name = self._resolve_backend()
 
         # Check if backend is in registry
         if backend_name in _backend_registry:
@@ -103,6 +103,52 @@ class TodoService:
 
         # Allow plugins to extend/wrap the backend
         return apply_hooks("extend_backend", backend, self._config)
+
+    def _resolve_backend(self) -> str:
+        """Resolve which backend to use for this project."""
+        from dodo.project_config import ProjectConfig
+
+        if not self._project_id:
+            return self._config.default_backend
+
+        # Get project config directory
+        project_dir = self._get_project_config_dir()
+
+        # Try loading existing config
+        config = ProjectConfig.load(project_dir)
+        if config:
+            return config.backend
+
+        # Auto-detect from existing files
+        detected = self._auto_detect_backend(project_dir)
+        if detected:
+            return detected
+
+        # Use global default
+        return self._config.default_backend
+
+    def _get_project_config_dir(self) -> Path:
+        """Get the directory where project config (dodo.json) lives."""
+        from dodo.project import detect_project_root
+
+        if self._config.local_storage:
+            root = detect_project_root(worktree_shared=self._config.worktree_shared)
+            if root:
+                return root / ".dodo"
+
+        return self._config.config_dir / "projects" / self._project_id
+
+    def _auto_detect_backend(self, project_dir: Path) -> str | None:
+        """Auto-detect backend from existing files."""
+        # Check for sqlite database
+        if (project_dir / "dodo.db").exists():
+            return "sqlite"
+        # Check for markdown file (could be in project_dir or parent for local_storage)
+        if (project_dir / "dodo.md").exists():
+            return "markdown"
+        if (project_dir.parent / "dodo.md").exists():
+            return "markdown"
+        return None
 
     def _instantiate_backend(self, backend_name: str) -> TodoBackend:
         """Create backend instance with appropriate arguments."""
