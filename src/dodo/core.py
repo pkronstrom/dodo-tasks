@@ -106,13 +106,17 @@ class TodoService:
 
     def _resolve_backend(self) -> str:
         """Resolve which backend to use for this project."""
-        from dodo.project_config import ProjectConfig
+        from dodo.project_config import ProjectConfig, get_project_config_dir
 
         if not self._project_id:
             return self._config.default_backend
 
         # Get project config directory
-        project_dir = self._get_project_config_dir()
+        project_dir = get_project_config_dir(
+            self._config, self._project_id, self._config.worktree_shared
+        )
+        if not project_dir:
+            return self._config.default_backend
 
         # Try loading existing config
         config = ProjectConfig.load(project_dir)
@@ -126,17 +130,6 @@ class TodoService:
 
         # Use global default
         return self._config.default_backend
-
-    def _get_project_config_dir(self) -> Path:
-        """Get the directory where project config (dodo.json) lives."""
-        from dodo.project import detect_project_root
-
-        if self._config.local_storage:
-            root = detect_project_root(worktree_shared=self._config.worktree_shared)
-            if root:
-                return root / ".dodo"
-
-        return self._config.config_dir / "projects" / self._project_id
 
     def _auto_detect_backend(self, project_dir: Path) -> str | None:
         """Auto-detect backend from existing files."""
