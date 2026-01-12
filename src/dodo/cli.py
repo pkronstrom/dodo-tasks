@@ -416,7 +416,7 @@ def backend(
     ] = None,
 ):
     """Show or set project backend."""
-    from dodo.project_config import ProjectConfig
+    from dodo.project_config import ProjectConfig, get_project_config_dir
 
     cfg = _get_config()
     project_id = _detect_project(worktree_shared=cfg.worktree_shared)
@@ -425,8 +425,11 @@ def backend(
         console.print("[red]Error:[/red] Not in a project")
         raise typer.Exit(1)
 
-    # Get project config directory
-    project_dir = cfg.config_dir / "projects" / project_id
+    # Get project config directory (respects local_storage setting)
+    project_dir = get_project_config_dir(cfg, project_id, cfg.worktree_shared)
+    if not project_dir:
+        console.print("[red]Error:[/red] Could not determine project config directory")
+        raise typer.Exit(1)
 
     if name is None:
         # Show current backend
