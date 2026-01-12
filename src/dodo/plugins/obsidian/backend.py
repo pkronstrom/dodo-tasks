@@ -4,7 +4,7 @@ from datetime import datetime
 
 import httpx
 
-from dodo.adapters.utils import (
+from dodo.backends.utils import (
     format_todo_line,
     generate_todo_id,
     parse_todo_line,

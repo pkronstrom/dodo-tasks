@@ -1,14 +1,13 @@
-"""Tests for shared adapter utilities."""
+"""Tests for shared backend utilities."""
 
 from datetime import datetime
 
-from dodo.adapters.utils import (
+from dodo.backends.utils import (
     TODO_LINE_PATTERN,
     format_todo_line,
     generate_todo_id,
     parse_todo_line,
 )
-
 from dodo.models import Status, TodoItem
 
 
