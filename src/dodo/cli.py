@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 import typer
@@ -40,6 +41,54 @@ def _detect_project(worktree_shared: bool = False) -> str | None:
     from dodo.project import detect_project
 
     return detect_project(worktree_shared=worktree_shared)
+
+
+def _resolve_dodo(
+    config: Config,
+    dodo_name: str | None = None,
+    local: bool = False,
+    global_: bool = False,
+) -> tuple[str | None, Path | None]:
+    """Resolve which dodo to use.
+
+    Returns:
+        (dodo_id, explicit_path) - explicit_path is set for named dodos
+    """
+    if global_:
+        return None, None
+
+    # Explicit dodo name provided
+    if dodo_name:
+        if local:
+            path = Path.cwd() / ".dodo" / dodo_name
+        else:
+            path = config.config_dir / dodo_name
+        return dodo_name, path
+
+    # Auto-detect: local first, then git-based
+    local_dodo = Path.cwd() / ".dodo"
+    if local_dodo.exists() and (local_dodo / "dodo.json").exists():
+        return "local", local_dodo
+
+    # Check parent directories for .dodo
+    for parent in Path.cwd().parents:
+        candidate = parent / ".dodo"
+        if candidate.exists() and (candidate / "dodo.json").exists():
+            return "local", candidate
+        # Stop at filesystem root or home
+        if parent == Path.home() or parent == Path("/"):
+            break
+
+    # Fall back to git-based detection
+    project_id = _detect_project(worktree_shared=config.worktree_shared)
+    return project_id, None
+
+
+def _get_service_with_path(config: Config, path: Path) -> TodoService:
+    """Create TodoService with explicit storage path."""
+    from dodo.core import TodoService
+
+    return TodoService(config, project_id=None, storage_path=path)
 
 
 # --- Plugin command routing ---
@@ -165,18 +214,21 @@ def main(ctx: typer.Context):
 def add(
     text: Annotated[str, typer.Argument(help="Todo text (use quotes)")],
     global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
+    local: Annotated[bool, typer.Option("--local", help="Use local .dodo/")] = False,
 ):
     """Add a todo item."""
     cfg = _get_config()
 
-    if global_:
-        target = "global"
-        project_id = None
-    else:
-        project_id = _detect_project(worktree_shared=cfg.worktree_shared)
-        target = project_id or "global"
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, local, global_)
 
-    svc = _get_service(cfg, project_id)
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
+        target = dodo_id or "local"
+    else:
+        svc = _get_service(cfg, dodo_id)
+        target = dodo_id or "global"
+
     item = svc.add(text)
 
     _save_last_action("add", item.id, target)
@@ -190,6 +242,8 @@ def add(
 def list_todos(
     project: Annotated[str | None, typer.Option("-p", "--project")] = None,
     global_: Annotated[bool, typer.Option("-g", "--global")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
+    local: Annotated[bool, typer.Option("--local", help="Use local .dodo/")] = False,
     done: Annotated[bool, typer.Option("--done", help="Show completed")] = False,
     all_: Annotated[bool, typer.Option("-a", "--all", help="Show all")] = False,
     format_: Annotated[str | None, typer.Option("-f", "--format", help="Output format")] = None,
@@ -200,14 +254,21 @@ def list_todos(
 
     cfg = _get_config()
 
-    if global_:
-        project_id = None
+    # Use --dodo flag if provided, otherwise fall back to existing behavior
+    if dodo or local:
+        dodo_id, explicit_path = _resolve_dodo(cfg, dodo, local, global_)
+        if explicit_path:
+            svc = _get_service_with_path(cfg, explicit_path)
+        else:
+            svc = _get_service(cfg, dodo_id)
+    elif global_:
+        svc = _get_service(cfg, None)
     else:
         project_id = _resolve_project(project) or _detect_project(
             worktree_shared=cfg.worktree_shared
         )
+        svc = _get_service(cfg, project_id)
 
-    svc = _get_service(cfg, project_id)
     status = None if all_ else (Status.DONE if done else Status.PENDING)
     items = svc.list(status=status)
 
