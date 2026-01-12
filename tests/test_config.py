@@ -14,13 +14,13 @@ class TestConfigMeta:
         assert "timestamps_enabled" in ConfigMeta.TOGGLES
 
     def test_settings_defined(self):
-        assert "default_adapter" in ConfigMeta.SETTINGS
+        assert "default_backend" in ConfigMeta.SETTINGS
 
 
 class TestConfigDefaults:
-    def test_default_adapter(self):
+    def test_default_backend(self):
         config = Config(Path("/tmp/dodo-test-nonexistent"))
-        assert config.default_adapter == "markdown"
+        assert config.default_backend == "sqlite"
 
     def test_default_toggles(self):
         config = Config(Path("/tmp/dodo-test-nonexistent"))
@@ -33,16 +33,16 @@ class TestConfigLoad:
         config_dir = tmp_path / "dodo"
         config_dir.mkdir()
         config_file = config_dir / "config.json"
-        config_file.write_text(json.dumps({"worktree_shared": False, "default_adapter": "sqlite"}))
+        config_file.write_text(json.dumps({"worktree_shared": False, "default_backend": "sqlite"}))
 
         config = Config.load(config_dir)
 
         assert config.worktree_shared is False
-        assert config.default_adapter == "sqlite"
+        assert config.default_backend == "sqlite"
 
     def test_load_nonexistent_uses_defaults(self, tmp_path: Path):
         config = Config.load(tmp_path / "nonexistent")
-        assert config.default_adapter == "markdown"
+        assert config.default_backend == "sqlite"
 
 
 class TestConfigEnvOverrides:
@@ -52,9 +52,9 @@ class TestConfigEnvOverrides:
         assert config.worktree_shared is False
 
     def test_env_overrides_string(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-        monkeypatch.setenv("DODO_DEFAULT_ADAPTER", "sqlite")
+        monkeypatch.setenv("DODO_DEFAULT_BACKEND", "sqlite")
         config = Config.load(tmp_path)
-        assert config.default_adapter == "sqlite"
+        assert config.default_backend == "sqlite"
 
 
 class TestConfigPersistence:

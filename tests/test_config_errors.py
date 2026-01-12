@@ -17,7 +17,7 @@ def test_corrupted_config_loads_defaults(tmp_path: Path):
     cfg = Config.load(config_dir)
 
     # Should load defaults instead of crashing
-    assert cfg.default_adapter == "markdown"
+    assert cfg.default_backend == "sqlite"
     assert cfg.worktree_shared is True
 
 
@@ -31,7 +31,7 @@ def test_empty_config_file_loads_defaults(tmp_path: Path):
     config_file.write_text("")
 
     cfg = Config.load(config_dir)
-    assert cfg.default_adapter == "markdown"
+    assert cfg.default_backend == "sqlite"
 
 
 def test_corrupted_registry_triggers_rescan(tmp_path: Path, monkeypatch):

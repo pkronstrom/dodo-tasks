@@ -357,7 +357,7 @@ def _get_project_storage_path(cfg: Config, project_id: str | None, worktree_shar
     """Get storage path for a project configuration."""
     from dodo.storage import get_storage_path
 
-    return get_storage_path(cfg, project_id, cfg.default_adapter, worktree_shared)
+    return get_storage_path(cfg, project_id, cfg.default_backend, worktree_shared)
 
 
 def _shorten_path(path: Path, config_dir: Path | None = None, max_len: int = 50) -> str:
@@ -601,14 +601,10 @@ def _interactive_switch(
         # Count todos for warning
         try:
             if str(path).endswith(".db"):
-                from dodo.plugins.sqlite.adapter import SqliteAdapter
-
-                adapter = SqliteAdapter(path)
+                backend = SqliteBackend(path)
             else:
-                from dodo.adapters.markdown import MarkdownAdapter
-
-                adapter = MarkdownAdapter(path)
-            count = len(adapter.list())
+                backend = MarkdownBackend(path)
+            count = len(backend.list())
         except (OSError, KeyError, ValueError):
             count = 0  # File read/parse error - treat as empty
 
@@ -780,13 +776,13 @@ def _edit_in_editor(
         os.unlink(tmp_path)
 
 
-def _get_available_adapters(enabled_plugins: set[str], registry: dict) -> list[str]:
-    """Get adapters: markdown + enabled adapter plugins."""
-    adapters = ["markdown"]
+def _get_available_backends(enabled_plugins: set[str], registry: dict) -> list[str]:
+    """Get backends: markdown + enabled backend plugins."""
+    backends = ["markdown"]
     for name, info in registry.items():
-        if name in enabled_plugins and "register_adapter" in info.get("hooks", []):
-            adapters.append(name)
-    return adapters
+        if name in enabled_plugins and "register_backend" in info.get("hooks", []):
+            backends.append(name)
+    return backends
 
 
 def _get_storage_paths(cfg: Config, project_id: str | None) -> tuple[Path, Path]:
@@ -798,37 +794,33 @@ def _get_storage_paths(cfg: Config, project_id: str | None) -> tuple[Path, Path]
     return md_path, db_path
 
 
-def _detect_other_adapter_files(
-    cfg: Config, current_adapter: str, project_id: str | None
+def _detect_other_backend_files(
+    cfg: Config, current_backend: str, project_id: str | None
 ) -> list[tuple[str, int]]:
-    """Detect other adapter storage files with todo counts.
+    """Detect other backend storage files with todo counts.
 
-    Returns list of (adapter_name, todo_count) for adapters with data.
+    Returns list of (backend_name, todo_count) for backends with data.
     """
     results = []
     md_path, db_path = _get_storage_paths(cfg, project_id)
 
     # Check markdown
-    if current_adapter != "markdown":
+    if current_backend != "markdown":
         if md_path.exists():
-            from dodo.adapters.markdown import MarkdownAdapter
-
             try:
-                adapter = MarkdownAdapter(md_path)
-                count = len(adapter.list())
+                backend = MarkdownBackend(md_path)
+                count = len(backend.list())
                 if count > 0:
                     results.append(("markdown", count))
             except (OSError, KeyError, ValueError):
                 pass  # File read/parse error - skip
 
     # Check sqlite
-    if current_adapter != "sqlite":
+    if current_backend != "sqlite":
         if db_path.exists():
-            from dodo.plugins.sqlite.adapter import SqliteAdapter
-
             try:
-                adapter = SqliteAdapter(db_path)
-                count = len(adapter.list())
+                backend = SqliteBackend(db_path)
+                count = len(backend.list())
                 if count > 0:
                     results.append(("sqlite", count))
             except (OSError, KeyError, ValueError):
@@ -851,9 +843,9 @@ def _build_settings_items(
     items: list[SettingsItem] = []
     pending: dict[str, object] = {}
 
-    # Load registry for adapter detection
+    # Load registry for backend detection
     registry = _load_registry()
-    available_adapters = _get_available_adapters(cfg.enabled_plugins, registry)
+    available_backends = _get_available_backends(cfg.enabled_plugins, registry)
 
     # General settings header
     items.append(("_header", "── General ──", "divider", None, None, None))
@@ -873,17 +865,17 @@ def _build_settings_items(
             pending[key] = val
 
     # Backend setting
-    items.append(("default_adapter", "Backend", "cycle", available_adapters, None, None))
-    pending["default_adapter"] = cfg.default_adapter
+    items.append(("default_backend", "Backend", "cycle", available_backends, None, None))
+    pending["default_backend"] = cfg.default_backend
 
     # Migrate options (right after backend)
-    other_adapters = _detect_other_adapter_files(cfg, cfg.default_adapter, project_id)
-    for adapter_name, count in other_adapters:
-        migrate_key = f"_migrate_{adapter_name}"
+    other_backends = _detect_other_backend_files(cfg, cfg.default_backend, project_id)
+    for backend_name, count in other_backends:
+        migrate_key = f"_migrate_{backend_name}"
         items.append(
-            (migrate_key, f"Migrate from {adapter_name}", "action", None, None, f"{count} todos")
+            (migrate_key, f"Migrate from {backend_name}", "action", None, None, f"{count} todos")
         )
-        pending[migrate_key] = adapter_name
+        pending[migrate_key] = backend_name
 
     # Editor (after migrate) - shows $EDITOR if not set
     items.append(("editor", "Editor", "edit", None, None, None))
@@ -929,38 +921,30 @@ def _build_settings_items(
 
 
 def _run_migration(
-    cfg: Config, source_adapter: str, target_adapter: str, project_id: str | None
+    cfg: Config, source_backend: str, target_backend: str, project_id: str | None
 ) -> str:
-    """Run migration from source to target adapter. Returns status message."""
+    """Run migration from source to target backend. Returns status message."""
     md_path, db_path = _get_storage_paths(cfg, project_id)
 
     # Debug: show paths
-    source_path = md_path if source_adapter == "markdown" else db_path
-    target_path = db_path if target_adapter == "sqlite" else md_path
+    source_path = md_path if source_backend == "markdown" else db_path
+    target_path = db_path if target_backend == "sqlite" else md_path
 
-    # Get source adapter instance
-    if source_adapter == "markdown":
-        from dodo.adapters.markdown import MarkdownAdapter
-
-        source = MarkdownAdapter(md_path)
-    elif source_adapter == "sqlite":
-        from dodo.plugins.sqlite.adapter import SqliteAdapter
-
-        source = SqliteAdapter(db_path)
+    # Get source backend instance
+    if source_backend == "markdown":
+        source = MarkdownBackend(md_path)
+    elif source_backend == "sqlite":
+        source = SqliteBackend(db_path)
     else:
-        return f"[red]Unknown source adapter: {source_adapter}[/red]"
+        return f"[red]Unknown source backend: {source_backend}[/red]"
 
-    # Get target adapter instance
-    if target_adapter == "markdown":
-        from dodo.adapters.markdown import MarkdownAdapter
-
-        target = MarkdownAdapter(md_path)
-    elif target_adapter == "sqlite":
-        from dodo.plugins.sqlite.adapter import SqliteAdapter
-
-        target = SqliteAdapter(db_path)
+    # Get target backend instance
+    if target_backend == "markdown":
+        target = MarkdownBackend(md_path)
+    elif target_backend == "sqlite":
+        target = SqliteBackend(db_path)
     else:
-        return f"[red]Unknown target adapter: {target_adapter}[/red]"
+        return f"[red]Unknown target backend: {target_backend}[/red]"
 
     # Export from source
     try:
@@ -1009,7 +993,7 @@ def _unified_settings_loop(
     pending: dict[str, object],
     project_id: str | None = None,
 ) -> None:
-    """Unified settings editor with divider support and dynamic adapter cycling."""
+    """Unified settings editor with divider support and dynamic backend cycling."""
     from dodo.cli_plugins import _load_registry
 
     cursor = 0
@@ -1122,9 +1106,9 @@ def _unified_settings_loop(
             current.add(plugin_name)
         else:
             current.discard(plugin_name)
-            # Fallback if this was the active adapter
-            if cfg.default_adapter == plugin_name:
-                cfg.set("default_adapter", "markdown")
+            # Fallback if this was the active backend
+            if cfg.default_backend == plugin_name:
+                cfg.set("default_backend", "markdown")
                 nonlocal status_msg
                 status_msg = "[yellow]Backend switched to markdown[/yellow]"
         cfg.set("enabled_plugins", ",".join(sorted(current)))
@@ -1134,36 +1118,36 @@ def _unified_settings_loop(
         if getattr(cfg, key, None) != val:
             cfg.set(key, val)
 
-    def rebuild_adapter_options() -> None:
-        """Rebuild adapter cycle options after plugin toggle."""
+    def rebuild_backend_options() -> None:
+        """Rebuild backend cycle options after plugin toggle."""
         registry = _load_registry()
-        available = _get_available_adapters(cfg.enabled_plugins, registry)
-        # Update the adapter item's options
+        available = _get_available_backends(cfg.enabled_plugins, registry)
+        # Update the backend item's options
         for i, item in enumerate(items):
-            if item[0] == "default_adapter":
+            if item[0] == "default_backend":
                 items[i] = (item[0], item[1], item[2], available, item[4], item[5])
                 break
 
     def rebuild_migrate_options() -> None:
-        """Rebuild migrate options after adapter change."""
+        """Rebuild migrate options after backend change."""
         nonlocal navigable_indices
 
-        # Find adapter index and editor index
-        adapter_idx = None
+        # Find backend index and editor index
+        backend_idx = None
         editor_idx = None
         for i, item in enumerate(items):
-            if item[0] == "default_adapter":
-                adapter_idx = i
+            if item[0] == "default_backend":
+                backend_idx = i
             elif item[0] == "editor":
                 editor_idx = i
                 break
 
-        if adapter_idx is None or editor_idx is None:
+        if backend_idx is None or editor_idx is None:
             return
 
-        # Remove existing migrate items (between adapter and editor)
+        # Remove existing migrate items (between backend and editor)
         to_remove = []
-        for i in range(adapter_idx + 1, editor_idx):
+        for i in range(backend_idx + 1, editor_idx):
             if items[i][0].startswith("_migrate_"):
                 to_remove.append(i)
         for i in reversed(to_remove):
@@ -1178,23 +1162,23 @@ def _unified_settings_loop(
                 break
 
         # Add new migrate options
-        current_adapter = str(pending["default_adapter"])
-        other_adapters = _detect_other_adapter_files(cfg, current_adapter, project_id)
+        current_backend = str(pending["default_backend"])
+        other_backends = _detect_other_backend_files(cfg, current_backend, project_id)
         insert_idx = editor_idx
-        for adapter_name, count in other_adapters:
-            migrate_key = f"_migrate_{adapter_name}"
+        for backend_name, count in other_backends:
+            migrate_key = f"_migrate_{backend_name}"
             items.insert(
                 insert_idx,
                 (
                     migrate_key,
-                    f"Migrate from {adapter_name}",
+                    f"Migrate from {backend_name}",
                     "action",
                     None,
                     None,
                     f"{count} todos",
                 ),
             )
-            pending[migrate_key] = adapter_name
+            pending[migrate_key] = backend_name
             insert_idx += 1
 
         # Rebuild navigable indices
@@ -1223,7 +1207,7 @@ def _unified_settings_loop(
                         # Plugin toggle - rebuild items to show/hide config vars
                         pending[item_key] = not pending[item_key]
                         save_plugin_toggle(plugin_name, bool(pending[item_key]))
-                        rebuild_adapter_options()
+                        rebuild_backend_options()
                         # Rebuild entire items list to show/hide plugin config vars
                         items[:], pending_new = _build_settings_items(cfg, project_id)
                         pending.clear()
@@ -1249,17 +1233,17 @@ def _unified_settings_loop(
                             idx = -1
                         pending[item_key] = options[(idx + 1) % len(options)]
                         save_item(item_key, pending[item_key])
-                        # If adapter changed, rebuild migrate options
-                        if item_key == "default_adapter":
+                        # If backend changed, rebuild migrate options
+                        if item_key == "default_backend":
                             rebuild_migrate_options()
                     elif kind == "edit":
                         edit_triggered = True
                         break
                     elif kind == "action" and item_key.startswith("_migrate_"):
                         # Run migration
-                        source_adapter = str(pending[item_key])
+                        source_backend = str(pending[item_key])
                         result = _run_migration(
-                            cfg, source_adapter, cfg.default_adapter, project_id
+                            cfg, source_backend, cfg.default_backend, project_id
                         )
                         status_msg = result
                         # Remove migrate row and rebuild navigable indices
@@ -1301,7 +1285,7 @@ def _general_config(cfg: Config) -> None:
     items: list[tuple[str, str, str, list[str] | None]] = [
         ("local_storage", "Store todos in project dir", "toggle", None),
         ("timestamps_enabled", "Add timestamps to todo entries", "toggle", None),
-        ("default_adapter", "Backend", "cycle", ["markdown", "sqlite", "obsidian"]),
+        ("default_backend", "Backend", "cycle", ["markdown", "sqlite", "obsidian"]),
         ("editor", "Editor (empty = $EDITOR)", "edit", None),
         ("ai_command", "AI command", "edit", None),
     ]
