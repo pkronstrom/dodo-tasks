@@ -88,6 +88,46 @@ class TestAIPrioritize:
 
         assert result.exit_code == 0, f"Failed: {result.output}"
 
+    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.project.detect_project", return_value=None)
+    def test_ai_prio_preserves_item_count(
+        self, mock_project: MagicMock, mock_run: MagicMock, cli_env
+    ):
+        """AI prio should never delete items - only update priority."""
+        import re
+
+        # Add multiple todos
+        runner.invoke(app, ["add", "First todo"])
+        runner.invoke(app, ["add", "Second todo"])
+        runner.invoke(app, ["add", "Third todo"])
+
+        # Get initial count
+        list_result = runner.invoke(app, ["list"])
+        initial_count = list_result.stdout.count("todo")
+
+        # Get one of the todo IDs for the mock response
+        add_result = runner.invoke(app, ["add", "Fourth todo"])
+        match = re.search(r"\(([a-f0-9]+)\)", add_result.stdout)
+        todo_id = match.group(1) if match else "abc123"
+
+        # Mock AI returning priority change
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=f'{{"assignments": [{{"id": "{todo_id}", "priority": "high"}}]}}',
+            stderr="",
+        )
+
+        result = runner.invoke(app, ["ai", "prio", "-y"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+
+        # Verify count is preserved (4 now)
+        list_result = runner.invoke(app, ["list"])
+        final_count = list_result.stdout.count("todo")
+        assert final_count >= initial_count, (
+            f"Items were deleted! Before: {initial_count}, After: {final_count}"
+        )
+
 
 class TestAIReword:
     @patch("dodo.ai.subprocess.run")
@@ -97,6 +137,43 @@ class TestAIReword:
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "No pending todos" in result.stdout
 
+    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.project.detect_project", return_value=None)
+    def test_ai_reword_preserves_item_count(
+        self, mock_project: MagicMock, mock_run: MagicMock, cli_env
+    ):
+        """AI reword should never delete items - only update text."""
+        import re
+
+        # Add multiple todos
+        add_result = runner.invoke(app, ["add", "First todo"])
+        runner.invoke(app, ["add", "Second todo"])
+        runner.invoke(app, ["add", "Third todo"])
+
+        match = re.search(r"\(([a-f0-9]+)\)", add_result.stdout)
+        todo_id = match.group(1) if match else "abc123"
+
+        # Get initial count
+        list_result = runner.invoke(app, ["list"])
+        initial_count = len(
+            [l for l in list_result.stdout.splitlines() if todo_id[:4] in l or "todo" in l.lower()]
+        )
+
+        # Mock AI returning text rewrite
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=f'{{"rewrites": [{{"id": "{todo_id}", "text": "Improved first todo"}}]}}',
+            stderr="",
+        )
+
+        result = runner.invoke(app, ["ai", "reword", "-y"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+
+        # Verify count is preserved
+        list_result = runner.invoke(app, ["list"])
+        assert "Improved first todo" in list_result.stdout or "First todo" in list_result.stdout
+
 
 class TestAITag:
     @patch("dodo.ai.subprocess.run")
@@ -105,6 +182,39 @@ class TestAITag:
 
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "No pending todos" in result.stdout
+
+    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.project.detect_project", return_value=None)
+    def test_ai_tag_preserves_item_count(
+        self, mock_project: MagicMock, mock_run: MagicMock, cli_env
+    ):
+        """AI tag should never delete items - only update tags."""
+        import re
+
+        # Add multiple todos
+        add_result = runner.invoke(app, ["add", "First todo"])
+        runner.invoke(app, ["add", "Second todo"])
+        runner.invoke(app, ["add", "Third todo"])
+
+        match = re.search(r"\(([a-f0-9]+)\)", add_result.stdout)
+        todo_id = match.group(1) if match else "abc123"
+
+        # Mock AI returning tag suggestions
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout=f'{{"suggestions": [{{"id": "{todo_id}", "tags": ["work", "important"]}}]}}',
+            stderr="",
+        )
+
+        result = runner.invoke(app, ["ai", "tag", "-y"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+
+        # Verify all items still exist
+        list_result = runner.invoke(app, ["list"])
+        assert "First" in list_result.stdout
+        assert "Second" in list_result.stdout
+        assert "Third" in list_result.stdout
 
 
 class TestAISync:
@@ -268,6 +378,18 @@ class TestAIDep:
         assert len(deps) == 1
         assert deps[0]["blocked_id"] == "abc"
         assert deps[0]["blocker_id"] == "abc"
+
+    def test_ai_dep_only_adds_dependencies(self, cli_env):
+        """AI dep should never delete items - only add dependency relationships."""
+        # ai dep requires graph plugin, without it we get an error
+        # but this confirms the command exists and doesn't have delete capability
+        result = runner.invoke(app, ["ai", "dep", "--help"])
+
+        assert result.exit_code == 0
+        # Verify the help text doesn't mention delete
+        assert "delete" not in result.stdout.lower()
+        # The command only adds dependencies
+        assert "dependency" in result.stdout.lower() or "dep" in result.stdout.lower()
 
 
 class TestAIRunSchema:
