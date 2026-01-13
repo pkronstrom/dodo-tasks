@@ -27,13 +27,6 @@ def get_project_config_dir(
     if not project_id:
         return None
 
-    if config.local_storage:
-        from dodo.project import detect_project_root
-
-        root = detect_project_root(worktree_shared=worktree_shared)
-        if root:
-            return root / ".dodo"
-
     return config.config_dir / "projects" / project_id
 
 

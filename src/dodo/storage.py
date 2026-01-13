@@ -3,7 +3,6 @@
 from pathlib import Path
 
 from dodo.config import Config
-from dodo.project import detect_project_root
 
 
 def get_storage_path(
@@ -29,14 +28,6 @@ def get_storage_path(
         "sqlite": "dodo.db",
     }
     filename = extensions.get(backend, f"dodo.{backend}")
-
-    # Local storage in project directory
-    if config.local_storage and project_id:
-        root = detect_project_root(worktree_shared=worktree_shared)
-        if root:
-            if backend == "sqlite":
-                return root / ".dodo" / filename
-            return root / filename
 
     # Centralized storage
     if project_id:
