@@ -178,8 +178,15 @@ def add(
     text: Annotated[str, typer.Argument(help="Todo text (use quotes)")],
     global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
     dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
+    priority: Annotated[
+        str | None,
+        typer.Option("--priority", "-P", help="Priority: critical/high/normal/low/someday"),
+    ] = None,
+    tags: Annotated[str | None, typer.Option("--tags", "-t", help="Comma-separated tags")] = None,
 ):
     """Add a todo item."""
+    from dodo.models import Priority
+
     cfg = _get_config()
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
 
@@ -190,7 +197,23 @@ def add(
         svc = _get_service(cfg, dodo_id)
         target = dodo_id or "global"
 
-    item = svc.add(text)
+    # Parse priority
+    parsed_priority = None
+    if priority:
+        try:
+            parsed_priority = Priority(priority.lower())
+        except ValueError:
+            console.print(
+                f"[red]Error:[/red] Invalid priority '{priority}'. Use: critical/high/normal/low/someday"
+            )
+            raise typer.Exit(1)
+
+    # Parse tags
+    parsed_tags = None
+    if tags:
+        parsed_tags = [t.strip() for t in tags.split(",") if t.strip()]
+
+    item = svc.add(text, priority=parsed_priority, tags=parsed_tags)
 
     _save_last_action("add", item.id, target)
 
@@ -207,6 +230,9 @@ def list_todos(
     done: Annotated[bool, typer.Option("--done", help="Show completed")] = False,
     all_: Annotated[bool, typer.Option("-a", "--all", help="Show all")] = False,
     format_: Annotated[str | None, typer.Option("-f", "--format", help="Output format")] = None,
+    sort: Annotated[
+        str | None, typer.Option("--sort", "-s", help="Sort by: priority, created, text")
+    ] = None,
 ):
     """List todos."""
     from dodo.formatters import get_formatter
@@ -224,6 +250,20 @@ def list_todos(
 
     status = None if all_ else (Status.DONE if done else Status.PENDING)
     items = svc.list(status=status)
+
+    # Apply sorting
+    if sort:
+        if sort == "priority":
+            # Sort by priority (highest first), items without priority go last
+            items = sorted(
+                items,
+                key=lambda x: (x.priority.sort_order if x.priority else 0),
+                reverse=True,
+            )
+        elif sort == "created":
+            items = sorted(items, key=lambda x: x.created_at)
+        elif sort == "text":
+            items = sorted(items, key=lambda x: x.text.lower())
 
     format_str = format_ or cfg.default_format
     try:
