@@ -122,6 +122,21 @@ class Config:
             return self.DEFAULTS[name]
         raise AttributeError(f"Config has no attribute '{name}'")
 
+    def get_plugin_config(self, plugin_name: str, key: str, default: Any = None) -> Any:
+        """Get config value for a plugin from nested plugins.<name> structure."""
+        plugins = self._data.get("plugins", {})
+        plugin_config = plugins.get(plugin_name, {})
+        return plugin_config.get(key, default)
+
+    def set_plugin_config(self, plugin_name: str, key: str, value: Any) -> None:
+        """Set config value for a plugin in nested plugins.<name> structure."""
+        if "plugins" not in self._data:
+            self._data["plugins"] = {}
+        if plugin_name not in self._data["plugins"]:
+            self._data["plugins"][plugin_name] = {}
+        self._data["plugins"][plugin_name][key] = value
+        self._save()
+
     @property
     def enabled_plugins(self) -> set[str]:
         """Get set of enabled plugin names."""
