@@ -1,5 +1,6 @@
 """SQLite backend."""
 
+import json
 import sqlite3
 import uuid
 from collections.abc import Iterator
@@ -7,7 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from dodo.models import Status, TodoItem
+from dodo.models import Priority, Status, TodoItem
 
 
 class SqliteBackend:
@@ -20,10 +21,13 @@ class SqliteBackend:
             status TEXT NOT NULL DEFAULT 'pending',
             project TEXT,
             created_at TEXT NOT NULL,
-            completed_at TEXT
+            completed_at TEXT,
+            priority TEXT,
+            tags TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_project ON todos(project);
         CREATE INDEX IF NOT EXISTS idx_status ON todos(status);
+        CREATE INDEX IF NOT EXISTS idx_priority ON todos(priority);
     """
 
     def __init__(self, db_path: Path):
@@ -41,18 +45,34 @@ class SqliteBackend:
             self._conn.close()
             self._conn = None
 
-    def add(self, text: str, project: str | None = None) -> TodoItem:
+    def add(
+        self,
+        text: str,
+        project: str | None = None,
+        priority: Priority | None = None,
+        tags: list[str] | None = None,
+    ) -> TodoItem:
         item = TodoItem(
             id=uuid.uuid4().hex[:8],
             text=text,
             status=Status.PENDING,
             created_at=datetime.now(),
             project=project,
+            priority=priority,
+            tags=tags,
         )
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO todos (id, text, status, project, created_at) VALUES (?, ?, ?, ?, ?)",
-                (item.id, item.text, item.status.value, item.project, item.created_at.isoformat()),
+                "INSERT INTO todos (id, text, status, project, created_at, priority, tags) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    item.id,
+                    item.text,
+                    item.status.value,
+                    item.project,
+                    item.created_at.isoformat(),
+                    item.priority.value if item.priority else None,
+                    json.dumps(item.tags) if item.tags else None,
+                ),
             )
         return item
 
@@ -61,7 +81,7 @@ class SqliteBackend:
         project: str | None = None,
         status: Status | None = None,
     ) -> list[TodoItem]:
-        query = "SELECT id, text, status, project, created_at, completed_at FROM todos WHERE 1=1"
+        query = "SELECT id, text, status, project, created_at, completed_at, priority, tags FROM todos WHERE 1=1"
         params: list[str] = []
 
         if project:
@@ -80,7 +100,7 @@ class SqliteBackend:
 
     def get(self, id: str) -> TodoItem | None:
         query = """
-            SELECT id, text, status, project, created_at, completed_at
+            SELECT id, text, status, project, created_at, completed_at, priority, tags
             FROM todos WHERE id = ?
         """
         with self._connect() as conn:
@@ -108,6 +128,34 @@ class SqliteBackend:
             cursor = conn.execute(
                 "UPDATE todos SET text = ? WHERE id = ?",
                 (text, id),
+            )
+            if cursor.rowcount == 0:
+                raise KeyError(f"Todo not found: {id}")
+
+        item = self.get(id)
+        if not item:
+            raise KeyError(f"Todo not found: {id}")
+        return item
+
+    def update_priority(self, id: str, priority: Priority | None) -> TodoItem:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE todos SET priority = ? WHERE id = ?",
+                (priority.value if priority else None, id),
+            )
+            if cursor.rowcount == 0:
+                raise KeyError(f"Todo not found: {id}")
+
+        item = self.get(id)
+        if not item:
+            raise KeyError(f"Todo not found: {id}")
+        return item
+
+    def update_tags(self, id: str, tags: list[str] | None) -> TodoItem:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE todos SET tags = ? WHERE id = ?",
+                (json.dumps(tags) if tags else None, id),
             )
             if cursor.rowcount == 0:
                 raise KeyError(f"Todo not found: {id}")
@@ -152,7 +200,7 @@ class SqliteBackend:
                     continue
 
                 conn.execute(
-                    "INSERT INTO todos (id, text, status, project, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO todos (id, text, status, project, created_at, completed_at, priority, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         item.id,
                         item.text,
@@ -160,6 +208,8 @@ class SqliteBackend:
                         item.project,
                         item.created_at.isoformat(),
                         item.completed_at.isoformat() if item.completed_at else None,
+                        item.priority.value if item.priority else None,
+                        json.dumps(item.tags) if item.tags else None,
                     ),
                 )
                 imported += 1
@@ -186,9 +236,22 @@ class SqliteBackend:
     def _ensure_schema(self) -> None:
         with self._connect() as conn:
             conn.executescript(self.SCHEMA)
+            self._run_migrations(conn)
+
+    def _run_migrations(self, conn: sqlite3.Connection) -> None:
+        """Run any pending migrations."""
+        # Check if priority column exists
+        cursor = conn.execute("PRAGMA table_info(todos)")
+        columns = {row[1] for row in cursor.fetchall()}
+
+        if "priority" not in columns:
+            # Run migration - split statements since ALTER TABLE can't be batched
+            conn.execute("ALTER TABLE todos ADD COLUMN priority TEXT")
+            conn.execute("ALTER TABLE todos ADD COLUMN tags TEXT")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_priority ON todos(priority)")
 
     def _row_to_item(self, row: tuple) -> TodoItem:
-        id, text, status, project, created_at, completed_at = row
+        id, text, status, project, created_at, completed_at, priority, tags = row
         return TodoItem(
             id=id,
             text=text,
@@ -196,4 +259,6 @@ class SqliteBackend:
             project=project,
             created_at=datetime.fromisoformat(created_at),
             completed_at=datetime.fromisoformat(completed_at) if completed_at else None,
+            priority=Priority(priority) if priority else None,
+            tags=json.loads(tags) if tags else None,
         )
