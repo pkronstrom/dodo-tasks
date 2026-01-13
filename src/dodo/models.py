@@ -12,6 +12,27 @@ class Status(Enum):
     DONE = "done"
 
 
+class Priority(Enum):
+    """Todo priority levels."""
+
+    CRITICAL = "critical"
+    HIGH = "high"
+    NORMAL = "normal"
+    LOW = "low"
+    SOMEDAY = "someday"
+
+    @property
+    def sort_order(self) -> int:
+        """Higher number = higher priority for sorting."""
+        return {
+            Priority.CRITICAL: 5,
+            Priority.HIGH: 4,
+            Priority.NORMAL: 3,
+            Priority.LOW: 2,
+            Priority.SOMEDAY: 1,
+        }[self]
+
+
 @dataclass(frozen=True)
 class TodoItem:
     """Immutable todo item."""
