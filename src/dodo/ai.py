@@ -192,6 +192,15 @@ DEP_SCHEMA = json.dumps(
 )
 
 
+def _escape_single_quotes(s: str) -> str:
+    """Escape single quotes for shell single-quoted strings.
+
+    In shell, to include a literal ' inside '...', you do: '...'\\''...'
+    (end quote, escaped single quote, start new quote)
+    """
+    return s.replace("'", "'\"'\"'")
+
+
 def build_command(
     template: str,
     prompt: str,
@@ -202,10 +211,11 @@ def build_command(
 
     Returns a list of arguments suitable for subprocess.run without shell=True.
     """
+    # Escape single quotes in values to prevent shlex parse errors
     cmd_str = (
-        template.replace("{{prompt}}", prompt)
-        .replace("{{system}}", system)
-        .replace("{{schema}}", schema)
+        template.replace("{{prompt}}", _escape_single_quotes(prompt))
+        .replace("{{system}}", _escape_single_quotes(system))
+        .replace("{{schema}}", _escape_single_quotes(schema))
     )
     return shlex.split(cmd_str)
 
