@@ -113,6 +113,26 @@ class TestCliList:
         second_pos = result.stdout.find("Second")
         assert first_pos < second_pos, f"Expected first before second: {result.stdout}"
 
+    def test_list_filter_by_priority(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "High pri", "--priority", "high"])
+            runner.invoke(app, ["add", "Low pri", "--priority", "low"])
+            result = runner.invoke(app, ["list", "--filter-priority", "high"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "High pri" in result.stdout
+        assert "Low pri" not in result.stdout
+
+    def test_list_filter_by_tag(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "Backend task", "--tags", "backend"])
+            runner.invoke(app, ["add", "Frontend task", "--tags", "frontend"])
+            result = runner.invoke(app, ["list", "--filter-tag", "backend"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Backend task" in result.stdout
+        assert "Frontend task" not in result.stdout
+
 
 class TestCliDone:
     def test_done_marks_complete(self, cli_env):

@@ -233,10 +233,14 @@ def list_todos(
     sort: Annotated[
         str | None, typer.Option("--sort", "-s", help="Sort by: priority, created, text")
     ] = None,
+    filter_priority: Annotated[
+        str | None, typer.Option("--filter-priority", help="Filter by priority")
+    ] = None,
+    filter_tag: Annotated[str | None, typer.Option("--filter-tag", help="Filter by tag")] = None,
 ):
     """List todos."""
     from dodo.formatters import get_formatter
-    from dodo.models import Status
+    from dodo.models import Priority, Status
 
     cfg = _get_config()
 
@@ -250,6 +254,18 @@ def list_todos(
 
     status = None if all_ else (Status.DONE if done else Status.PENDING)
     items = svc.list(status=status)
+
+    # Apply filtering
+    if filter_priority:
+        try:
+            target_priority = Priority(filter_priority.lower())
+            items = [i for i in items if i.priority == target_priority]
+        except ValueError:
+            console.print(f"[red]Error:[/red] Invalid priority '{filter_priority}'")
+            raise typer.Exit(1)
+
+    if filter_tag:
+        items = [i for i in items if i.tags and filter_tag in i.tags]
 
     # Apply sorting
     if sort:
