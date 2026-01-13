@@ -36,8 +36,14 @@ class GraphWrapper:
 
     # Delegate standard backend methods
 
-    def add(self, text: str, project: str | None = None) -> TodoItem:
-        return self._backend.add(text, project)
+    def add(
+        self,
+        text: str,
+        project: str | None = None,
+        priority: Priority | None = None,
+        tags: list[str] | None = None,
+    ) -> TodoItem:
+        return self._backend.add(text, project=project, priority=priority, tags=tags)
 
     def list(
         self,
@@ -62,6 +68,12 @@ class GraphWrapper:
 
     def update_text(self, id: str, text: str) -> TodoItem:
         return self._backend.update_text(id, text)
+
+    def update_priority(self, id: str, priority: Priority | None) -> TodoItem:
+        return self._backend.update_priority(id, priority)
+
+    def update_tags(self, id: str, tags: list[str] | None) -> TodoItem:
+        return self._backend.update_tags(id, tags)
 
     def delete(self, id: str) -> None:
         # Also clean up dependencies
