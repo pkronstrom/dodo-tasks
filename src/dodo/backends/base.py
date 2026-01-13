@@ -12,7 +12,13 @@ class TodoBackend(Protocol):
     Implement this to add new backends (sqlite, notion, etc.)
     """
 
-    def add(self, text: str, project: str | None = None) -> TodoItem:
+    def add(
+        self,
+        text: str,
+        project: str | None = None,
+        priority: "Priority | None" = None,
+        tags: list[str] | None = None,
+    ) -> TodoItem:
         """Create a new todo item."""
         ...
 
@@ -34,6 +40,14 @@ class TodoBackend(Protocol):
 
     def update_text(self, id: str, text: str) -> TodoItem:
         """Update todo text."""
+        ...
+
+    def update_priority(self, id: str, priority: "Priority | None") -> TodoItem:
+        """Update todo priority."""
+        ...
+
+    def update_tags(self, id: str, tags: list[str] | None) -> TodoItem:
+        """Update todo tags."""
         ...
 
     def delete(self, id: str) -> None:
