@@ -133,14 +133,28 @@ RUN_SCHEMA = json.dumps(
                             "items": {"type": "string"},
                             "description": "IDs of todos this one depends on (blockers)",
                         },
+                        "reason": {
+                            "type": "string",
+                            "description": "Brief explanation of why this change is needed",
+                        },
                     },
-                    "required": ["id"],
+                    "required": ["id", "reason"],
                 },
             },
             "delete": {
                 "type": "array",
-                "description": "IDs of todos to delete",
-                "items": {"type": "string"},
+                "description": "Todos to delete - ONLY when user explicitly requests",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "reason": {
+                            "type": "string",
+                            "description": "Why this should be deleted (must cite user request)",
+                        },
+                    },
+                    "required": ["id", "reason"],
+                },
             },
             "create": {
                 "type": "array",
@@ -154,8 +168,12 @@ RUN_SCHEMA = json.dumps(
                             "enum": ["critical", "high", "normal", "low", "someday", None],
                         },
                         "tags": {"type": ["array", "null"], "items": {"type": "string"}},
+                        "reason": {
+                            "type": "string",
+                            "description": "Why this new todo should be created",
+                        },
                     },
-                    "required": ["text"],
+                    "required": ["text", "reason"],
                 },
             },
         },
@@ -206,6 +224,7 @@ def build_command(
     prompt: str,
     system: str,
     schema: str,
+    model: str = "haiku",
 ) -> list[str]:
     """Build command arguments from template.
 
@@ -216,6 +235,7 @@ def build_command(
         template.replace("{{prompt}}", _escape_single_quotes(prompt))
         .replace("{{system}}", _escape_single_quotes(system))
         .replace("{{schema}}", _escape_single_quotes(schema))
+        .replace("{{model}}", model)
     )
     return shlex.split(cmd_str)
 
@@ -277,15 +297,17 @@ def run_ai(
     system_prompt: str,
     piped_content: str | None = None,
     schema: str | None = None,
+    model: str = "haiku",
 ) -> list[str]:
     """Run AI command and return list of todo items.
 
     Args:
         user_input: User's text input
-        command: Command template with {{prompt}}, {{system}}, {{schema}}
+        command: Command template with {{prompt}}, {{system}}, {{schema}}, {{model}}
         system_prompt: System prompt for the AI
         piped_content: Optional piped stdin content
         schema: Optional JSON schema (defaults to array of strings)
+        model: AI model to use (e.g., haiku, sonnet, opus)
 
     Returns:
         List of todo item strings, or empty list on error
@@ -301,6 +323,7 @@ def run_ai(
         prompt=full_prompt,
         system=system_prompt,
         schema=schema or DEFAULT_SCHEMA,
+        model=model,
     )
 
     output = _execute_ai_command(cmd_args)
@@ -323,15 +346,17 @@ def run_ai_structured(
     user_prompt: str,
     schema: str,
     result_key: str,
+    model: str = "haiku",
 ) -> list[dict]:
     """Run AI command and return structured result.
 
     Args:
-        command: Command template with {{prompt}}, {{system}}, {{schema}}
+        command: Command template with {{prompt}}, {{system}}, {{schema}}, {{model}}
         system_prompt: System prompt for the AI
         user_prompt: User's input prompt
         schema: JSON schema for output validation
         result_key: Key to extract from result (e.g., "tasks", "assignments")
+        model: AI model to use (e.g., haiku, sonnet, opus)
 
     Returns:
         List of dicts from AI output, or empty list on error
@@ -341,6 +366,7 @@ def run_ai_structured(
         prompt=user_prompt,
         system=system_prompt,
         schema=schema,
+        model=model,
     )
 
     output = _execute_ai_command(cmd_args)
@@ -405,6 +431,7 @@ def run_ai_add(
     system_prompt: str,
     existing_tags: list[str] | None = None,
     piped_content: str | None = None,
+    model: str = "haiku",
 ) -> list[dict]:
     """Run AI command for adding todos. Returns list of {text, priority, tags}."""
     prompt = system_prompt.format(existing_tags=existing_tags or [])
@@ -421,6 +448,7 @@ def run_ai_add(
         prompt=full_input,
         system=prompt,
         schema=ADD_SCHEMA,
+        model=model,
     )
 
     output = _execute_ai_command(cmd_args)
@@ -438,6 +466,7 @@ def run_ai_prioritize(
     todos: list[dict],
     command: str,
     system_prompt: str,
+    model: str = "haiku",
 ) -> list[dict]:
     """Run AI to suggest priority changes. Returns list of {id, priority, reason}."""
     todos_text = "\n".join(
@@ -451,6 +480,7 @@ def run_ai_prioritize(
         user_prompt="Analyze and suggest priority changes",
         schema=PRIORITIZE_SCHEMA,
         result_key="assignments",
+        model=model,
     )
 
 
@@ -459,6 +489,7 @@ def run_ai_tag(
     command: str,
     system_prompt: str,
     existing_tags: list[str] | None = None,
+    model: str = "haiku",
 ) -> list[dict]:
     """Run AI to suggest tags. Returns list of {id, tags}."""
     todos_text = "\n".join(
@@ -472,6 +503,7 @@ def run_ai_tag(
         user_prompt="Suggest tags for these todos",
         schema=TAG_SCHEMA,
         result_key="suggestions",
+        model=model,
     )
 
 
@@ -479,6 +511,7 @@ def run_ai_reword(
     todos: list[dict],
     command: str,
     system_prompt: str,
+    model: str = "haiku",
 ) -> list[dict]:
     """Run AI to suggest rewording. Returns list of {id, text}."""
     todos_text = "\n".join(f"- [{t['id']}] {t['text']}" for t in todos)
@@ -490,6 +523,7 @@ def run_ai_reword(
         user_prompt="Improve these todo descriptions",
         schema=REWORD_SCHEMA,
         result_key="rewrites",
+        model=model,
     )
 
 
@@ -537,10 +571,11 @@ Return dependencies as pairs: blocked_id depends on blocker_id.
 """
 
 
-def _extract_ai_run_result(output: str) -> tuple[list[dict], list[str], list[dict]]:
+def _extract_ai_run_result(output: str) -> tuple[list[dict], list[dict], list[dict]]:
     """Extract todos, delete list, and create list from AI run output.
 
-    Returns (modified_todos, delete_ids, create_todos) tuple.
+    Returns (modified_todos, delete_items, create_todos) tuple.
+    Delete items are dicts with 'id' and 'reason'.
     """
     try:
         data = json.loads(output)
@@ -558,9 +593,18 @@ def _extract_ai_run_result(output: str) -> tuple[list[dict], list[str], list[dic
         delete = data.get("delete", [])
         create = data.get("create", [])
 
+        # Handle both old format (list of strings) and new format (list of objects)
+        delete_items = []
+        for d in delete:
+            if isinstance(d, str):
+                # Old format: just ID
+                delete_items.append({"id": d, "reason": ""})
+            elif isinstance(d, dict) and d.get("id"):
+                delete_items.append(d)
+
         return (
             [t for t in todos if isinstance(t, dict) and t.get("id")],
-            [d for d in delete if isinstance(d, str)],
+            delete_items,
             [c for c in create if isinstance(c, dict) and c.get("text")],
         )
 
@@ -575,10 +619,12 @@ def run_ai_run(
     command: str,
     system_prompt: str,
     piped_content: str | None = None,
-) -> tuple[list[dict], list[str], list[dict]]:
+    model: str = "sonnet",
+) -> tuple[list[dict], list[dict], list[dict]]:
     """Run AI with user instruction on todos.
 
-    Returns (modified_todos, delete_ids, create_todos) tuple.
+    Returns (modified_todos, delete_items, create_todos) tuple.
+    Delete items are dicts with 'id' and 'reason'.
     """
     todos_text = "\n".join(
         f"- [{t['id']}] {t['text']} "
@@ -601,6 +647,7 @@ def run_ai_run(
         prompt=full_instruction,
         system=prompt,
         schema=RUN_SCHEMA,
+        model=model,
     )
 
     output = _execute_ai_command(cmd_args)
@@ -614,6 +661,7 @@ def run_ai_dep(
     todos: list[dict],
     command: str,
     system_prompt: str,
+    model: str = "haiku",
 ) -> list[dict]:
     """Run AI to detect dependencies. Returns list of {blocked_id, blocker_id}."""
     todos_text = "\n".join(f"- [{t['id']}] {t['text']}" for t in todos)
@@ -625,4 +673,5 @@ def run_ai_dep(
         user_prompt="Analyze and suggest dependencies",
         schema=DEP_SCHEMA,
         result_key="dependencies",
+        model=model,
     )

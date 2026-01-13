@@ -451,6 +451,26 @@ class TestAIRunSchema:
         assert "priority" in create_items
         assert "tags" in create_items
 
+    def test_run_schema_requires_reasons(self):
+        """RUN_SCHEMA should require reason fields for changes."""
+        import json
+
+        from dodo.ai import RUN_SCHEMA
+
+        schema = json.loads(RUN_SCHEMA)
+
+        # Todos require reason
+        todo_required = schema["properties"]["todos"]["items"]["required"]
+        assert "reason" in todo_required
+
+        # Delete items require reason
+        delete_required = schema["properties"]["delete"]["items"]["required"]
+        assert "reason" in delete_required
+
+        # Create items require reason
+        create_required = schema["properties"]["create"]["items"]["required"]
+        assert "reason" in create_required
+
 
 class TestAIRunCreate:
     @patch("dodo.ai.subprocess.run")

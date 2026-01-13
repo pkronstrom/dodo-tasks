@@ -62,6 +62,7 @@ def ai_add(
         command=cfg.ai_command,
         system_prompt=prompt,
         existing_tags=list(existing_tags),
+        model=cfg.ai_model,
     )
 
     if not tasks:
@@ -131,6 +132,7 @@ def ai_prioritize(
         todos=todos_data,
         command=cfg.ai_command,
         system_prompt=prompt,
+        model=cfg.ai_model,
     )
 
     if not assignments:
@@ -200,6 +202,7 @@ def ai_reword(
         todos=todos_data,
         command=cfg.ai_command,
         system_prompt=prompt,
+        model=cfg.ai_model,
     )
 
     if not rewrites:
@@ -271,6 +274,7 @@ def ai_tag(
         command=cfg.ai_command,
         system_prompt=prompt,
         existing_tags=list(existing_tags),
+        model=cfg.ai_model,
     )
 
     if not suggestions:
@@ -371,6 +375,7 @@ def ai_run(
         command=cfg.ai_run_command,
         system_prompt=prompt,
         piped_content=piped,
+        model=cfg.ai_run_model,
     )
 
     if not modified and not to_delete and not to_create:
@@ -392,6 +397,10 @@ def ai_run(
         current = current_by_id[item_id]
         text_preview = current["text"][:40] + ("..." if len(current["text"]) > 40 else "")
         console.print(f'  [dim]{item_id}[/dim]: "{text_preview}"')
+
+        # Show reason if provided
+        if mod.get("reason"):
+            console.print(f"    [italic cyan]Reason: {mod['reason']}[/italic cyan]")
 
         # Show field changes
         if "text" in mod and mod["text"] != current["text"]:
@@ -426,10 +435,15 @@ def ai_run(
 
     if to_delete:
         console.print(f"\n[bold]Delete ({len(to_delete)}):[/bold]")
-        for del_id in to_delete:
+        for del_item in to_delete:
+            del_id = del_item["id"] if isinstance(del_item, dict) else del_item
             item = items_by_id.get(del_id)
             if item:
                 console.print(f'  [red]x[/red] [dim]{del_id}[/dim]: "{item.text}"')
+                # Show reason for deletion
+                reason = del_item.get("reason", "") if isinstance(del_item, dict) else ""
+                if reason:
+                    console.print(f"    [italic cyan]Reason: {reason}[/italic cyan]")
 
     if to_create:
         console.print(f"\n[bold]Create ({len(to_create)}):[/bold]")
@@ -439,6 +453,9 @@ def ai_run(
                 " " + " ".join(f"#{t}" for t in new_todo["tags"]) if new_todo.get("tags") else ""
             )
             console.print(f"  [green]+[/green] {new_todo['text']}{priority_str}{tags_str}")
+            # Show reason for creation
+            if new_todo.get("reason"):
+                console.print(f"    [italic cyan]Reason: {new_todo['reason']}[/italic cyan]")
 
     # Confirm
     if not yes:
@@ -475,7 +492,8 @@ def ai_run(
         except (ValueError, KeyError) as e:
             console.print(f"[red]Failed to update {item_id}: {e}[/red]")
 
-    for del_id in to_delete:
+    for del_item in to_delete:
+        del_id = del_item["id"] if isinstance(del_item, dict) else del_item
         try:
             svc.delete(del_id)
             applied += 1
@@ -542,6 +560,7 @@ def ai_dep(
         todos=todos_data,
         command=cfg.ai_command,
         system_prompt=prompt,
+        model=cfg.ai_model,
     )
 
     if not suggestions:
