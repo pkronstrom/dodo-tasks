@@ -43,6 +43,8 @@ class GraphFormatter:
             return self._format_table(items)
         elif formatter_name == "tsv":
             return self._format_tsv(items)
+        elif formatter_name == "csv":
+            return self._format_csv(items)
         else:
             # For other formatters (jsonl uses to_dict which includes blocked_by)
             return self._formatter.format(items)
@@ -84,9 +86,24 @@ class GraphFormatter:
 
     def _format_tsv(self, items: list[TodoItem]) -> str:
         """Format as TSV with blocked_by column."""
-        lines = []
+        lines = ["id\tstatus\ttext\tblocked_by"]
         for item in items:
             blocked = getattr(item, "blocked_by", None) or []
             blocked_str = ", ".join(b[:8] for b in blocked)
             lines.append(f"{item.id}\t{item.status.value}\t{item.text}\t{blocked_str}")
+        return "\n".join(lines)
+
+    def _format_csv(self, items: list[TodoItem]) -> str:
+        """Format as CSV with blocked_by column."""
+        lines = ["id,status,text,blocked_by"]
+        for item in items:
+            blocked = getattr(item, "blocked_by", None) or []
+            blocked_str = ", ".join(b[:8] for b in blocked)
+            # Escape text and blocked_by fields
+            text = item.text.replace('"', '""')
+            if "," in text or '"' in text or "\n" in text:
+                text = f'"{text}"'
+            if "," in blocked_str:
+                blocked_str = f'"{blocked_str}"'
+            lines.append(f"{item.id},{item.status.value},{text},{blocked_str}")
         return "\n".join(lines)
