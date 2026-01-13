@@ -12,7 +12,6 @@ from rich.panel import Panel
 from dodo.config import Config
 from dodo.core import TodoService
 from dodo.models import Status, TodoItem, UndoAction
-from dodo.project import detect_project
 
 from .panel_builder import calculate_visible_range, format_scroll_indicator
 from .rich_menu import RichTerminalMenu
@@ -29,10 +28,18 @@ console = Console()
 
 def interactive_menu() -> None:
     """Main interactive menu when running bare 'dodo'."""
+    from dodo.resolve import resolve_dodo
+
     cfg = Config.load()
-    project_id = detect_project(worktree_shared=cfg.worktree_shared)
-    target = project_id or "global"
-    svc = TodoService(cfg, project_id)
+    dodo_name, storage_path = resolve_dodo(cfg)
+    target = dodo_name or "global"
+
+    # Create service with explicit path if resolved
+    if storage_path:
+        svc = TodoService(cfg, project_id=None, storage_path=storage_path)
+    else:
+        svc = TodoService(cfg, project_id=dodo_name)
+
     ui = RichTerminalMenu()
 
     while True:
@@ -41,19 +48,19 @@ def interactive_menu() -> None:
         done = sum(1 for i in items if i.status == Status.DONE)
 
         # Get storage path for display
-        storage_path = _get_project_storage_path(cfg, project_id, cfg.worktree_shared)
-        storage_display = _shorten_path(storage_path, cfg.config_dir)
+        storage_display = _shorten_path(Path(svc.storage_path), cfg.config_dir)
 
         # Adaptive panel width
         term_width = console.width or DEFAULT_PANEL_WIDTH
         panel_width = min(84, term_width)  # max 80 + 4 for borders
 
         console.clear()
+
+        # Compact two-line banner
         console.print(
             Panel(
-                f"[bold]Project:[/bold] {target}\n"
-                f"[bold]Storage:[/bold] [dim]{storage_display}[/dim]\n"
-                f"[bold]Todos:[/bold] {pending} pending, {done} done",
+                f"[bold]{target}[/bold]                    {pending} pending, {done} done\n"
+                f"[dim]{storage_display}[/dim]",
                 title="dodo",
                 border_style="blue",
                 width=panel_width,
@@ -62,7 +69,7 @@ def interactive_menu() -> None:
 
         options = [
             "Todos",
-            "Projects",
+            "Dodos",
             "Config",
             "Exit",
         ]
@@ -75,19 +82,21 @@ def interactive_menu() -> None:
         elif choice == 0:
             _todos_loop(svc, target, cfg)
         elif choice == 1:
-            project_id, target = _interactive_switch(ui, target, cfg)
-            svc = TodoService(cfg, project_id)
+            _dodos_list(ui, cfg)
         elif choice == 2:
-            interactive_config(project_id)
+            interactive_config(dodo_name)
             # Reload config and service in case settings changed
             from dodo.config import clear_config_cache
 
             clear_config_cache()
             cfg = Config.load()
-            # Re-detect project in case worktree_shared changed
-            project_id = detect_project(worktree_shared=cfg.worktree_shared)
-            target = project_id or "global"
-            svc = TodoService(cfg, project_id)
+            # Re-detect dodo
+            dodo_name, storage_path = resolve_dodo(cfg)
+            target = dodo_name or "global"
+            if storage_path:
+                svc = TodoService(cfg, project_id=None, storage_path=storage_path)
+            else:
+                svc = TodoService(cfg, project_id=dodo_name)
 
 
 def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
@@ -418,176 +427,271 @@ def _shorten_path(path: Path, config_dir: Path | None = None, max_len: int = 50)
     return s
 
 
-def _interactive_switch(
-    ui: RichTerminalMenu, current_target: str, cfg: Config
-) -> tuple[str | None, str]:
+def _new_dodo_menu(ui: RichTerminalMenu, cfg: Config) -> None:
+    """Menu for creating a new dodo with location choices."""
+    import subprocess
+
+    from dodo.project import detect_project_root
+
+    # Determine available options based on context
+    options: list[tuple[str, str, str]] = []  # (key, label, description)
+
+    # Option 1: Default location in ~/.config/dodo/
+    config_dir_display = str(cfg.config_dir).replace(str(Path.home()), "~")
+    options.append(("default", "Default location", f"In {config_dir_display}/"))
+
+    # Option 2: Local in .dodo/ of current directory
+    cwd = Path.cwd()
+    cwd_display = str(cwd).replace(str(Path.home()), "~")
+    options.append(("local", "Local to this directory", f"In {cwd_display}/.dodo/"))
+
+    # Option 3: For git repo (if in a git repo)
+    git_root = detect_project_root(worktree_shared=False)
+    if git_root:
+        git_display = str(git_root).replace(str(Path.home()), "~")
+        options.append(("git", f"For git repo: {git_root.name}", f"Detected at {git_display}"))
+
+    # Build display options (no Rich markup - simple_term_menu doesn't support it)
+    display_options = [f"{label}  ({desc})" for _, label, desc in options]
+    display_options.append("Cancel")
+
+    console.clear()
+    console.print(
+        Panel(
+            "[bold]Create a new dodo[/bold]\n\nChoose where to create the dodo:",
+            title="New Dodo",
+            border_style="blue",
+            width=min(70, console.width or 70),
+        )
+    )
+
+    choice = ui.select(display_options)
+
+    if choice is None or choice >= len(options):
+        return  # Cancelled
+
+    key, _, _ = options[choice]
+
+    # Get name for the dodo
+    console.print()
+    name = ui.input("Dodo name (leave empty for default):")
+
+    # Build the dodo new command arguments
+    args = ["dodo", "new"]
+    if name:
+        args.append(name)
+    if key == "local":
+        args.append("--local")
+    elif key == "git":
+        # Git-based dodo uses default location (centralized)
+        pass  # No special flag needed, auto-detect will work
+
+    # Run the command
+    try:
+        result = subprocess.run(args, capture_output=True, text=True)
+        console.print()
+        if result.returncode == 0:
+            console.print(f"[green]{result.stdout.strip()}[/green]")
+        else:
+            console.print(f"[red]{result.stderr.strip() or result.stdout.strip()}[/red]")
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+
+    console.print("\n[dim]Press any key to continue...[/dim]")
     import readchar
 
-    from dodo.project import detect_worktree_parent
+    readchar.readkey()
 
-    # Always detect worktree's own project (without sharing)
-    worktree_project = detect_project(worktree_shared=False)
-    worktree_name = worktree_project or "global"
+
+def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
+    """Read-only list of detected dodos with stats."""
+    import readchar
+
+    from dodo.backends.markdown import MarkdownBackend
+    from dodo.backends.sqlite import SqliteBackend
+    from dodo.project import detect_worktree_parent
+    from dodo.resolve import resolve_dodo
+
+    # Detect current dodo (auto-detected)
+    current_name, current_path = resolve_dodo(cfg)
+    current_name = current_name or "global"
+    # For git-based detection, current_name is the project_id; for local, we have current_path
 
     # Detect if in a worktree with a parent repo
     is_worktree, parent_root, parent_id = detect_worktree_parent()
-    parent_name = parent_root.name if parent_root else None
 
-    # Get current storage path
-    # Build local options: (key, name, path_display, disabled) - relevant to current working dir
-    local_options: list[tuple[str, str, str | Path | None, bool]] = []
-    added_projects: set[str] = set()
+    def count_todos_in_dir(storage_dir: Path) -> int:
+        """Get todo count from a storage directory (contains dodo.db or dodo.md)."""
+        try:
+            db_path = storage_dir / "dodo.db"
+            md_path = storage_dir / "dodo.md"
+            if db_path.exists():
+                return len(SqliteBackend(db_path).list())
+            elif md_path.exists():
+                return len(MarkdownBackend(md_path).list())
+            return 0
+        except (OSError, KeyError, ValueError):
+            return 0
+
+    def get_todo_count(project_id: str | None, worktree_shared: bool = False) -> int:
+        """Get todo count for a project."""
+        try:
+            path = _get_project_storage_path(cfg, project_id, worktree_shared)
+            if not path.exists():
+                # Try alternate extension
+                if str(path).endswith(".db"):
+                    alt_path = path.with_suffix(".md")
+                else:
+                    alt_path = path.with_suffix(".db")
+                if alt_path.exists():
+                    path = alt_path
+                else:
+                    return 0
+            if str(path).endswith(".db"):
+                backend = SqliteBackend(path)
+            else:
+                backend = MarkdownBackend(path)
+            return len(backend.list())
+        except (OSError, KeyError, ValueError):
+            return 0
+
+    # Build list of dodos: (key, name, path, count, is_current)
+    dodos: list[tuple[str, str, Path | None, int, bool]] = []
+    added_names: set[str] = set()
 
     # Always show global
     global_path = _get_project_storage_path(cfg, None, False)
-    local_options.append(("global", "global", global_path, current_target == "global"))
-    added_projects.add("global")
+    global_count = get_todo_count(None)
+    dodos.append(("global", "global", global_path, global_count, current_name == "global"))
+    added_names.add("global")
 
-    # Show worktree's own project if not global
-    if worktree_name != "global":
-        wt_path = _get_project_storage_path(cfg, worktree_project, False)
-        local_options.append(("worktree", worktree_name, wt_path, worktree_name == current_target))
-        added_projects.add(worktree_name)
+    # Current auto-detected dodo (if not global)
+    if current_name != "global" and current_name not in added_names:
+        if current_path:
+            # Local dodo - use explicit storage directory
+            curr_storage = current_path / f"dodo.{cfg.default_backend[:2]}"  # .db or .md
+            curr_count = count_todos_in_dir(current_path)
+        else:
+            # Git-based dodo - use project_id
+            curr_storage = _get_project_storage_path(cfg, current_name, cfg.worktree_shared)
+            curr_count = get_todo_count(current_name, cfg.worktree_shared)
+        dodos.append(("current", current_name, curr_storage, curr_count, True))
+        added_names.add(current_name)
 
-    # Show parent's project if in worktree
-    if is_worktree and parent_id:
+    # Parent's project if in worktree
+    if is_worktree and parent_id and parent_id not in added_names:
         parent_path = _get_project_storage_path(cfg, parent_id, True)
-        local_options.append(("parent", parent_name, parent_path, parent_name == current_target))
-        added_projects.add(parent_name)
+        parent_count = get_todo_count(parent_id, True)
+        parent_display = parent_root.name if parent_root else parent_id
+        dodos.append(("parent", parent_display, parent_path, parent_count, False))
+        added_names.add(parent_id)
 
-    # Build all-projects list (other projects from config, not already shown)
-    all_projects: list[tuple[str, str, str | Path | None, bool]] = []
+    # All other dodos from config dir
+    all_dodos: list[tuple[str, str, Path | None, int, bool]] = []
     projects_dir = cfg.config_dir / "projects"
     if projects_dir.exists():
         for proj_dir in sorted(projects_dir.iterdir()):
             if proj_dir.is_dir():
                 proj_name = proj_dir.name
-                if proj_name not in added_projects:
+                if proj_name not in added_names:
                     proj_path = _get_project_storage_path(cfg, proj_name, False)
-                    is_current = proj_name == current_target
-                    all_projects.append(("existing", proj_name, proj_path, is_current))
-                    added_projects.add(proj_name)
+                    proj_count = get_todo_count(proj_name)
+                    all_dodos.append(("other", proj_name, proj_path, proj_count, False))
+                    added_names.add(proj_name)
 
-    # State: whether to show all projects
+    # State for toggling visibility of all dodos
     show_all = False
+    cursor = 0
 
-    def build_options() -> list[tuple[str, str, str | Path | None, bool]]:
-        """Build current options list based on show_all state."""
-        opts = list(local_options)
-
-        # New project option (before show all)
-        opts.append(("custom", "New", None, False))
-
-        # Toggle option for showing all projects (only if there are other projects)
-        if all_projects:
-            # Space before toggle
-            opts.append(("_spacer", "", None, True))
-            toggle_label = "▼ Hide other projects" if show_all else "▶ Show all projects"
-            opts.append(("_toggle", toggle_label, None, False))
-
-            if show_all:
-                # Separator
-                opts.append(("_sep", "─" * 30, None, True))
-                # All other projects
-                opts.extend(all_projects)
-
-        return opts
-
-    options = build_options()
-
-    # Find first non-disabled option for initial cursor
-    cursor = next(
-        (
-            i
-            for i, (k, _, _, disabled) in enumerate(options)
-            if not disabled and k not in ("_sep", "_spacer")
-        ),
-        0,
-    )
-
-    def find_next_enabled(current: int, direction: int) -> int:
-        """Find next non-disabled, non-separator option."""
-        n = len(options)
-        for _ in range(n):
-            current = (current + direction) % n
-            key, _, _, disabled = options[current]
-            if not disabled and key not in ("_sep", "_spacer"):
-                return current
-        return current
+    def build_display_items() -> list[tuple[str, str, Path | None, int, bool]]:
+        """Build current display list based on show_all state."""
+        items = list(dodos)
+        if show_all and all_dodos:
+            items.extend(all_dodos)
+        return items
 
     def render() -> None:
-        sys.stdout.write("\033[H\033[J")  # Move to top and clear screen
-        lines = ["[dim]Select a project to switch to:[/dim]", ""]
-        for i, (key, name, path, disabled) in enumerate(options):
-            if key == "_sep":
-                lines.append(f"  [dim]{name}[/dim]")
-                continue
-            if key == "_spacer":
-                lines.append("")
-                continue
+        items = build_display_items()
+        sys.stdout.write("\033[H\033[J")  # Clear screen
+        lines = ["[bold]Detected Dodos[/bold]", ""]
+        lines.append("[dim]The active dodo is auto-detected based on your current directory.[/dim]")
+        lines.append("")
 
+        for i, (key, name, path, count, is_current) in enumerate(items):
             marker = "[cyan]>[/cyan] " if i == cursor else "  "
             path_str = f"  [dim]{_shorten_path(path, cfg.config_dir)}[/dim]" if path else ""
+            count_str = f"[dim]({count} todos)[/dim]"
 
-            if key == "_toggle":
-                lines.append(f"{marker}[cyan]{name}[/cyan]")
-            elif disabled:
-                # Current item - show as greyed with (current) label
-                lines.append(f"{marker}[dim]{name}{path_str} (current)[/dim]")
-            elif key == "custom":
-                lines.append(f"{marker}[dark_orange]{name}[/dark_orange]{path_str}")
+            if is_current:
+                lines.append(
+                    f"{marker}[bold cyan]{name}[/bold cyan] {count_str} [cyan](active)[/cyan]"
+                )
             else:
-                lines.append(f"{marker}[bold]{name}[/bold]{path_str}")
+                lines.append(f"{marker}{name} {count_str}{path_str}")
+
+        # Show toggle if there are other dodos
+        if all_dodos:
+            lines.append("")
+            toggle_label = (
+                "▼ Hide other dodos" if show_all else f"▶ Show {len(all_dodos)} more dodos"
+            )
+            toggle_marker = "[cyan]>[/cyan] " if cursor == len(build_display_items()) else "  "
+            lines.append(f"{toggle_marker}[cyan]{toggle_label}[/cyan]")
+
+        # Add "New dodo" option
+        lines.append("")
+        new_marker = (
+            "[cyan]>[/cyan] "
+            if cursor == len(build_display_items()) + (1 if all_dodos else 0)
+            else "  "
+        )
+        lines.append(f"{new_marker}[green]+ New dodo[/green]")
 
         content = "\n".join(lines)
         content += (
-            "\n\n[dim]↑↓ navigate · enter switch · o manage · l open · d delete · q cancel[/dim]"
+            "\n\n[dim]↑↓ navigate · enter view/create · l open folder · d delete · q back[/dim]"
         )
 
         console.print(
             Panel(
                 content,
-                title="Projects",
+                title="Dodos",
                 border_style="blue",
                 width=min(80, console.width or 80),
             )
         )
 
-    def get_project_id_for_option(opt_key: str, opt_name: str) -> str | None:
-        """Get project_id for a menu option."""
-        if opt_key == "global":
+    def get_project_id_for_item(key: str, name: str) -> str | None:
+        """Get project_id for display item."""
+        if key == "global":
             return None
-        elif opt_key == "worktree":
-            return worktree_project
-        elif opt_key == "parent":
+        elif key == "current":
+            # For local dodos, current_name is used (current_path handled separately)
+            return None if current_path else current_name
+        elif key == "parent":
             return parent_id
-        elif opt_key == "existing":
-            return opt_name
-        return None
+        else:
+            return name
 
-    def get_storage_path_for_option(opt_key: str, opt_name: str) -> Path | None:
-        """Get storage path for a menu option."""
-        proj_id = get_project_id_for_option(opt_key, opt_name)
-        ws = opt_key == "parent"  # worktree_shared only for parent
-        return _get_project_storage_path(cfg, proj_id, ws)
-
-    def handle_manage_todos(opt_key: str, opt_name: str) -> None:
-        """Open todo list for selected project (temporary view)."""
-        if opt_key in ("custom", "_toggle", "_sep", "_spacer"):
-            return
-        proj_id = get_project_id_for_option(opt_key, opt_name)
-        temp_svc = TodoService(cfg, proj_id)
-        display_name = opt_name if opt_name else "global"
+    def handle_view_todos(key: str, name: str) -> None:
+        """View todos for selected dodo."""
+        # Handle local dodos with explicit path
+        if key == "current" and current_path:
+            temp_svc = TodoService(cfg, project_id=None, storage_path=current_path)
+        else:
+            proj_id = get_project_id_for_item(key, name)
+            temp_svc = TodoService(cfg, proj_id)
+        display_name = name if name else "global"
         _todos_loop(temp_svc, display_name, cfg)
 
-    def handle_open_location(opt_key: str, opt_name: str) -> None:
+    def handle_open_location(key: str, name: str) -> None:
         """Open storage folder in file manager."""
-        if opt_key in ("custom", "_toggle", "_sep", "_spacer"):
-            return
         import subprocess
         import sys as sys_module
 
-        path = get_storage_path_for_option(opt_key, opt_name)
+        proj_id = get_project_id_for_item(key, name)
+        ws = key == "parent"
+        path = _get_project_storage_path(cfg, proj_id, ws)
         if path:
             folder = path.parent
             folder.mkdir(parents=True, exist_ok=True)
@@ -596,32 +700,29 @@ def _interactive_switch(
             else:
                 subprocess.Popen(["xdg-open", folder])
 
-    def handle_delete_project(opt_key: str, opt_name: str) -> bool:
-        """Delete project with confirmation. Returns True if deleted."""
-        if opt_key in ("custom", "_toggle", "_sep", "_spacer"):
-            return False
+    def handle_delete(key: str, name: str) -> bool:
+        """Delete dodo with confirmation."""
+        proj_id = get_project_id_for_item(key, name)
+        ws = key == "parent"
+        path = _get_project_storage_path(cfg, proj_id, ws)
 
-        path = get_storage_path_for_option(opt_key, opt_name)
-        if not path:
-            return False
-
-        # Check for both .db and .md (backend might have changed)
-        if not path.exists():
-            # Try the other file type
-            if str(path).endswith(".db"):
+        if not path or not path.exists():
+            # Try alternate extension
+            if path and str(path).endswith(".db"):
                 alt_path = path.with_suffix(".md")
-            else:
+            elif path:
                 alt_path = path.with_suffix(".db")
-            if alt_path.exists():
+            else:
+                alt_path = None
+            if alt_path and alt_path.exists():
                 path = alt_path
             else:
-                display_name = opt_name if opt_name else "global"
-                sys.stdout.write(f"\n  No storage file for {display_name}\n")
+                sys.stdout.write(f"\n  No storage file for {name}\n")
                 sys.stdout.flush()
                 readchar.readkey()
                 return False
 
-        # Count todos for warning
+        # Count todos
         try:
             if str(path).endswith(".db"):
                 backend = SqliteBackend(path)
@@ -629,12 +730,10 @@ def _interactive_switch(
                 backend = MarkdownBackend(path)
             count = len(backend.list())
         except (OSError, KeyError, ValueError):
-            count = 0  # File read/parse error - treat as empty
+            count = 0
 
-        # Show confirmation
-        display_name = opt_name if opt_name else "global"
         count_str = f"{count} todos" if count > 0 else "empty"
-        sys.stdout.write(f'\n  Delete "{display_name}" ({count_str})? (y/n) ')
+        sys.stdout.write(f'\n  Delete "{name}" ({count_str})? (y/n) ')
         sys.stdout.flush()
 
         try:
@@ -645,103 +744,75 @@ def _interactive_switch(
         if confirm.lower() != "y":
             return False
 
-        # Delete the file
         try:
             path.unlink()
+            # Clean up empty folder
+            folder = path.parent
+            if folder.exists() and not any(folder.iterdir()):
+                folder.rmdir()
+            return True
         except OSError as e:
             sys.stdout.write(f"\n  Error: {e}\n")
             sys.stdout.flush()
             readchar.readkey()
             return False
 
-        # Delete folder if empty
-        folder = path.parent
-        try:
-            if folder.exists() and not any(folder.iterdir()):
-                folder.rmdir()
-        except OSError:
-            pass  # Ignore errors cleaning up folder
-
-        return True
+    show_new_dodo_menu = False
 
     with console.screen():
         while True:
             render()
+            items = build_display_items()
+            # +1 for toggle if exists, +1 for "New dodo"
+            toggle_offset = 1 if all_dodos else 0
+            new_dodo_index = len(items) + toggle_offset
+            max_cursor = new_dodo_index  # New dodo is the last item
+
             try:
                 key = readchar.readkey()
             except KeyboardInterrupt:
-                return None if current_target == "global" else current_target, current_target
+                return
 
             if key in (readchar.key.UP, "k"):
-                cursor = find_next_enabled(cursor, -1)
+                cursor = max_cursor if cursor == 0 else cursor - 1
             elif key in (readchar.key.DOWN, "j"):
-                cursor = find_next_enabled(cursor, 1)
+                cursor = 0 if cursor >= max_cursor else cursor + 1
             elif key == "q":
-                return None if current_target == "global" else current_target, current_target
-            elif key == "o":
-                # Manage todos for selected project
-                opt_key, opt_name, _, _ = options[cursor]
-                handle_manage_todos(opt_key, opt_name)
-            elif key == "l":
-                # Open storage location
-                opt_key, opt_name, _, _ = options[cursor]
-                handle_open_location(opt_key, opt_name)
-            elif key == "d":
-                # Delete project
-                opt_key, opt_name, _, _ = options[cursor]
-                if handle_delete_project(opt_key, opt_name):
-                    # Rebuild all_projects by rescanning (excluding local_options)
-                    local_names = {n for _, n, _, _ in local_options}
-                    all_projects.clear()
-                    if projects_dir.exists():
-                        for proj_dir in sorted(projects_dir.iterdir()):
-                            if proj_dir.is_dir():
-                                proj_name = proj_dir.name
-                                if proj_name not in local_names:
-                                    proj_path = _get_project_storage_path(cfg, proj_name, False)
-                                    is_curr = proj_name == current_target
-                                    all_projects.append(("existing", proj_name, proj_path, is_curr))
-                    # Rebuild options (preserves show_all state)
-                    options = build_options()
-                    if cursor >= len(options):
-                        cursor = max(0, len(options) - 1)
-                    cursor = find_next_enabled(cursor, 0) if options else 0
+                return
             elif key in ("\r", "\n", " "):
-                selected_key = options[cursor][0]
-                if selected_key == "_toggle":
-                    # Toggle show_all and rebuild options
-                    show_all = not show_all
-                    options = build_options()
-                    # Keep cursor at toggle position
-                    cursor = next(
-                        (i for i, (k, _, _, _) in enumerate(options) if k == "_toggle"), cursor
-                    )
-                else:
+                # Check if on "New dodo"
+                if cursor == new_dodo_index:
+                    show_new_dodo_menu = True
                     break
+                # Check if on toggle
+                elif all_dodos and cursor == len(items):
+                    show_all = not show_all
+                    # Adjust cursor if needed
+                    if not show_all and cursor > len(dodos):
+                        cursor = len(dodos)
+                elif cursor < len(items):
+                    item_key, item_name, _, _, _ = items[cursor]
+                    handle_view_todos(item_key, item_name)
+            elif key == "l" and cursor < len(items):
+                item_key, item_name, _, _, _ = items[cursor]
+                handle_open_location(item_key, item_name)
+            elif key == "d" and cursor < len(items):
+                item_key, item_name, _, _, _ = items[cursor]
+                if handle_delete(item_key, item_name):
+                    # Rebuild list
+                    if item_key == "other":
+                        all_dodos[:] = [
+                            (k, n, p, c, cur) for k, n, p, c, cur in all_dodos if n != item_name
+                        ]
+                    # Adjust cursor
+                    items = build_display_items()
+                    new_max = len(items) + toggle_offset
+                    if cursor > new_max:
+                        cursor = new_max
 
-    selected_key, selected_name, _, _ = options[cursor]
-
-    if selected_key == "global":
-        cfg.set("worktree_shared", False)
-        return None, "global"
-    elif selected_key == "worktree":
-        cfg.set("worktree_shared", False)
-        return worktree_project, worktree_name
-    elif selected_key == "parent":
-        cfg.set("worktree_shared", True)
-        return parent_id, parent_name
-    elif selected_key == "existing":
-        cfg.set("worktree_shared", False)
-        return selected_name, selected_name
-    elif selected_key == "custom":
-        console.print()
-        name = ui.input("Project name:")
-        if name:
-            cfg.set("worktree_shared", False)
-            return name, name
-        return None if current_target == "global" else current_target, current_target
-
-    return None, "global"
+    # "New dodo" was selected - show the new dodo menu outside screen context
+    if show_new_dodo_menu:
+        _new_dodo_menu(ui, cfg)
 
 
 def _edit_in_editor(
@@ -880,7 +951,6 @@ def _build_settings_items(
 
     # Settings before backend
     pre_backend: list[tuple[str, str, str, list[str] | None, str | None]] = [
-        ("local_storage", "Local storage", "toggle", None, "store in project dir"),
         ("timestamps_enabled", "Timestamps", "toggle", None, "show times in list"),
     ]
     for key, label, kind, options, desc in pre_backend:
@@ -1314,7 +1384,6 @@ def interactive_config(project_id: str | None = None) -> None:
 def _general_config(cfg: Config) -> None:
     """General settings config menu."""
     items: list[tuple[str, str, str, list[str] | None]] = [
-        ("local_storage", "Store todos in project dir", "toggle", None),
         ("timestamps_enabled", "Add timestamps to todo entries", "toggle", None),
         ("default_backend", "Backend", "cycle", ["markdown", "sqlite", "obsidian"]),
         ("editor", "Editor (empty = $EDITOR)", "edit", None),

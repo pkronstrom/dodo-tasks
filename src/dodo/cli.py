@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 import typer
@@ -40,6 +41,24 @@ def _detect_project(worktree_shared: bool = False) -> str | None:
     from dodo.project import detect_project
 
     return detect_project(worktree_shared=worktree_shared)
+
+
+def _resolve_dodo(
+    config: Config,
+    dodo_name: str | None = None,
+    global_: bool = False,
+) -> tuple[str | None, Path | None]:
+    """Resolve which dodo to use. Wrapper for shared resolve_dodo."""
+    from dodo.resolve import resolve_dodo
+
+    return resolve_dodo(config, dodo_name, global_)
+
+
+def _get_service_with_path(config: Config, path: Path) -> TodoService:
+    """Create TodoService with explicit storage path."""
+    from dodo.core import TodoService
+
+    return TodoService(config, project_id=None, storage_path=path)
 
 
 # --- Plugin command routing ---
@@ -158,12 +177,18 @@ def main(ctx: typer.Context):
 def add(
     text: Annotated[str, typer.Argument(help="Todo text (use quotes)")],
     global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
 ):
     """Add a todo item."""
-    from dodo.cli_context import get_service_context
+    cfg = _get_config()
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
 
-    cfg, project_id, svc = get_service_context(global_=global_)
-    target = project_id or "global"
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
+        target = dodo_id or "local"
+    else:
+        svc = _get_service(cfg, dodo_id)
+        target = dodo_id or "global"
 
     item = svc.add(text)
 
@@ -178,6 +203,7 @@ def add(
 def list_todos(
     project: Annotated[str | None, typer.Option("-p", "--project")] = None,
     global_: Annotated[bool, typer.Option("-g", "--global")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
     done: Annotated[bool, typer.Option("--done", help="Show completed")] = False,
     all_: Annotated[bool, typer.Option("-a", "--all", help="Show all")] = False,
     format_: Annotated[str | None, typer.Option("-f", "--format", help="Output format")] = None,
@@ -188,14 +214,14 @@ def list_todos(
 
     cfg = _get_config()
 
-    if global_:
-        project_id = None
-    else:
-        project_id = _resolve_project(project) or _detect_project(
-            worktree_shared=cfg.worktree_shared
-        )
+    # Auto-detect dodo (respects --dodo flag, --global flag, or auto-detection)
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
 
-    svc = _get_service(cfg, project_id)
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
+    else:
+        svc = _get_service(cfg, dodo_id)
+
     status = None if all_ else (Status.DONE if done else Status.PENDING)
     items = svc.list(status=status)
 
@@ -320,21 +346,123 @@ def ai(
 
 
 @app.command()
-def init(
-    local: Annotated[bool, typer.Option("--local", help="Store todos in project dir")] = False,
+def new(
+    name: Annotated[str | None, typer.Argument(help="Name for the dodo")] = None,
+    local: Annotated[bool, typer.Option("--local", help="Create in .dodo/ locally")] = False,
+    backend: Annotated[
+        str | None, typer.Option("--backend", "-b", help="Backend (sqlite|markdown)")
+    ] = None,
 ):
-    """Initialize dodo for current project."""
-    cfg = _get_config()
-    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
+    """Create a new dodo."""
+    from pathlib import Path
 
-    if not project_id:
-        console.print("[red]Error:[/red] Not in a git repository")
+    from dodo.project_config import ProjectConfig
+
+    cfg = _get_config()
+    backend_name = backend or cfg.default_backend
+
+    # Determine target directory
+    if local:
+        # Local storage in .dodo/
+        base = Path.cwd() / ".dodo"
+        if name:
+            target_dir = base / name
+        else:
+            target_dir = base
+    else:
+        # Centralized in ~/.config/dodo/
+        if name:
+            target_dir = cfg.config_dir / name
+        else:
+            target_dir = cfg.config_dir
+
+    # Check if already exists
+    config_file = target_dir / "dodo.json"
+    db_file = target_dir / "dodo.db"
+    md_file = target_dir / "dodo.md"
+
+    if config_file.exists() or db_file.exists() or md_file.exists():
+        location = str(target_dir).replace(str(Path.home()), "~")
+        console.print(f"[yellow]Dodo already exists in {location}[/yellow]")
+        console.print("  Hint: Use [bold]dodo new <name>[/bold] to create a named dodo")
+        return
+
+    # Create directory and config
+    target_dir.mkdir(parents=True, exist_ok=True)
+    project_config = ProjectConfig(backend=backend_name)
+    project_config.save(target_dir)
+
+    # Initialize empty backend file
+    if backend_name == "sqlite":
+        from dodo.backends.sqlite import SqliteBackend
+
+        SqliteBackend(target_dir / "dodo.db")
+    elif backend_name == "markdown":
+        (target_dir / "dodo.md").write_text("")
+
+    location = str(target_dir).replace(str(Path.home()), "~")
+    console.print(f"[green]✓[/green] Created dodo in {location}")
+
+
+@app.command()
+def destroy(
+    name: Annotated[str | None, typer.Argument(help="Name of the dodo to destroy")] = None,
+    local: Annotated[
+        bool, typer.Option("--local", help="Destroy default .dodo/ (no name)")
+    ] = False,
+):
+    """Destroy a dodo and its data."""
+    import shutil
+    from pathlib import Path
+
+    cfg = _get_config()
+
+    # No name: --local destroys default .dodo/, otherwise error
+    if not name:
+        if local:
+            target_dir = Path.cwd() / ".dodo"
+        else:
+            console.print(
+                "[red]Error:[/red] Specify a dodo name, or use --local for default .dodo/"
+            )
+            raise typer.Exit(1)
+    else:
+        # Name provided: auto-detect local vs global (same as --dodo flag)
+        # Check local first
+        local_path = Path.cwd() / ".dodo" / name
+        if local_path.exists():
+            target_dir = local_path
+        else:
+            # Check parent directories
+            found = False
+            for parent in Path.cwd().parents:
+                candidate = parent / ".dodo" / name
+                if candidate.exists():
+                    target_dir = candidate
+                    found = True
+                    break
+                if parent == Path.home() or parent == Path("/"):
+                    break
+
+            if not found:
+                # Check global
+                global_path = cfg.config_dir / name
+                if global_path.exists():
+                    target_dir = global_path
+                else:
+                    console.print(f"[red]Error:[/red] Dodo '{name}' not found")
+                    raise typer.Exit(1)
+
+    if not target_dir.exists():
+        location = str(target_dir).replace(str(Path.home()), "~")
+        console.print(f"[red]Error:[/red] Dodo not found at {location}")
         raise typer.Exit(1)
 
-    if local:
-        cfg.set("local_storage", True)
+    # Remove the directory
+    shutil.rmtree(target_dir)
 
-    console.print(f"[green]✓[/green] Initialized project: {project_id}")
+    location = str(target_dir).replace(str(Path.home()), "~")
+    console.print(f"[green]✓[/green] Destroyed dodo at {location}")
 
 
 @app.command()
@@ -398,7 +526,7 @@ def info(
     pending = sum(1 for i in items if i.status == Status.PENDING)
     done = sum(1 for i in items if i.status == Status.DONE)
 
-    console.print(f"[bold]Project:[/bold] {target}")
+    console.print(f"[bold]Dodo:[/bold] {target}")
     console.print(f"[bold]Backend:[/bold] {svc.backend_name}")
     console.print(f"[bold]Storage:[/bold] {svc.storage_path}")
     console.print(f"[bold]Todos:[/bold] {len(items)} total ({pending} pending, {done} done)")
@@ -421,7 +549,7 @@ def backend(
     project_id = _detect_project(worktree_shared=cfg.worktree_shared)
 
     if not project_id:
-        console.print("[red]Error:[/red] Not in a project")
+        console.print("[red]Error:[/red] No dodo found")
         raise typer.Exit(1)
 
     # Get project config directory (respects local_storage setting)
@@ -518,7 +646,7 @@ def _resolve_project(partial: str | None) -> str | None:
     if len(matches) == 1:
         return matches[0]
     elif len(matches) > 1:
-        console.print(f"[yellow]Ambiguous project '{partial}'. Matches:[/yellow]")
+        console.print(f"[yellow]Ambiguous dodo '{partial}'. Matches:[/yellow]")
         for m in matches:
             console.print(f"  - {m}")
         raise typer.Exit(1)

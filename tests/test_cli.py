@@ -164,3 +164,149 @@ class TestGetServiceContext:
         cfg, project_id, svc = get_service_context(global_=True)
 
         assert project_id is None
+
+
+class TestCliNew:
+    def test_new_creates_default_dodo(self, cli_env):
+        """dodo new creates default dodo in ~/.config/dodo/"""
+        result = runner.invoke(app, ["new"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Created dodo" in result.stdout
+        # Check file was created
+        config_dir = cli_env
+        assert (config_dir / "dodo.db").exists() or (config_dir / "dodo.md").exists()
+
+    def test_new_creates_named_dodo(self, cli_env):
+        """dodo new <name> creates named dodo in ~/.config/dodo/<name>/"""
+        result = runner.invoke(app, ["new", "my-session"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "my-session" in result.stdout
+        config_dir = cli_env
+        assert (config_dir / "my-session").is_dir()
+
+    def test_new_local_creates_in_cwd(self, cli_env, tmp_path, monkeypatch):
+        """dodo new --local creates .dodo/ in current directory"""
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["new", "--local"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert ".dodo" in result.stdout
+        assert (tmp_path / ".dodo").is_dir()
+
+    def test_new_named_local_creates_subdir(self, cli_env, tmp_path, monkeypatch):
+        """dodo new <name> --local creates .dodo/<name>/"""
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, ["new", "agent-123", "--local"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert (tmp_path / ".dodo" / "agent-123").is_dir()
+
+    def test_new_with_backend(self, cli_env):
+        """dodo new --backend sqlite uses specified backend"""
+        result = runner.invoke(app, ["new", "test-proj", "--backend", "sqlite"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        config_dir = cli_env
+        assert (config_dir / "test-proj" / "dodo.db").exists()
+
+    def test_new_idempotent_shows_hint(self, cli_env):
+        """dodo new when dodo exists shows hint to use name"""
+        runner.invoke(app, ["new"])
+        result = runner.invoke(app, ["new"])
+
+        assert result.exit_code == 0
+        assert "already exists" in result.stdout.lower()
+        assert "dodo new <name>" in result.stdout
+
+
+class TestCliDestroy:
+    def test_destroy_removes_named_dodo(self, cli_env):
+        """dodo destroy <name> removes the dodo"""
+        # Create first
+        runner.invoke(app, ["new", "temp-session"])
+        config_dir = cli_env
+        assert (config_dir / "temp-session").exists()
+
+        # Destroy
+        result = runner.invoke(app, ["destroy", "temp-session"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Removed" in result.stdout or "Destroyed" in result.stdout
+        assert not (config_dir / "temp-session").exists()
+
+    def test_destroy_local_removes_local_dodo(self, cli_env, tmp_path, monkeypatch):
+        """dodo destroy <name> auto-detects and removes .dodo/<name>/"""
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(app, ["new", "agent-456", "--local"])
+        assert (tmp_path / ".dodo" / "agent-456").exists()
+
+        # No --local needed - auto-detects
+        result = runner.invoke(app, ["destroy", "agent-456"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert not (tmp_path / ".dodo" / "agent-456").exists()
+
+    def test_destroy_nonexistent_errors(self, cli_env):
+        """dodo destroy <name> errors if dodo doesn't exist"""
+        result = runner.invoke(app, ["destroy", "nonexistent"])
+
+        assert result.exit_code == 1
+        assert "not found" in result.stdout.lower()
+
+    def test_destroy_default_local(self, cli_env, tmp_path, monkeypatch):
+        """dodo destroy --local removes default .dodo/"""
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(app, ["new", "--local"])
+        assert (tmp_path / ".dodo").exists()
+
+        result = runner.invoke(app, ["destroy", "--local"])
+
+        assert result.exit_code == 0
+        assert not (tmp_path / ".dodo").exists()
+
+
+class TestCliDodoFlag:
+    def test_add_with_dodo_flag(self, cli_env):
+        """dodo add --dodo <name> adds to specific dodo"""
+        runner.invoke(app, ["new", "my-tasks"])
+        result = runner.invoke(app, ["add", "Test task", "--dodo", "my-tasks"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Test task" in result.stdout
+
+    def test_list_with_dodo_flag(self, cli_env):
+        """dodo list --dodo <name> lists from specific dodo"""
+        runner.invoke(app, ["new", "my-tasks"])
+        runner.invoke(app, ["add", "Task in my-tasks", "--dodo", "my-tasks"])
+
+        result = runner.invoke(app, ["list", "--dodo", "my-tasks"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Task in my-tasks" in result.stdout
+
+    def test_dodo_flag_local(self, cli_env, tmp_path, monkeypatch):
+        """dodo add --dodo <name> auto-detects local .dodo/<name>/"""
+        monkeypatch.chdir(tmp_path)
+        runner.invoke(app, ["new", "local-tasks", "--local"])
+        # --dodo auto-detects local vs global - no --local needed
+        result = runner.invoke(app, ["add", "Local task", "--dodo", "local-tasks"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+
+    def test_single_named_dodo_auto_detected(self, cli_env, tmp_path, monkeypatch):
+        """Single named local dodo is auto-detected without --dodo flag."""
+        monkeypatch.chdir(tmp_path)
+        # Create a single named local dodo
+        runner.invoke(app, ["new", "my-session", "--local"])
+
+        # Add without --dodo - should auto-detect
+        result = runner.invoke(app, ["add", "Auto detected task"])
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "my-session" in result.stdout or "Auto detected task" in result.stdout
+
+        # List without --dodo - should also auto-detect
+        result = runner.invoke(app, ["list"])
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Auto detected task" in result.stdout

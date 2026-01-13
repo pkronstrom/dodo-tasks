@@ -159,3 +159,20 @@ class TestBackendInstantiation:
 
         # Cleanup
         del _backend_registry["simple"]
+
+
+class TestTodoServiceExplicitPath:
+    def test_service_with_explicit_path(self, tmp_path):
+        """TodoService can use an explicit storage path."""
+        from dodo.config import Config
+        from dodo.core import TodoService
+
+        dodo_path = tmp_path / "my-dodo"
+        dodo_path.mkdir()
+
+        config = Config(config_dir=tmp_path / ".config" / "dodo")
+        svc = TodoService(config, project_id=None, storage_path=dodo_path)
+
+        item = svc.add("Test task")
+        assert item.text == "Test task"
+        assert (dodo_path / "dodo.db").exists()

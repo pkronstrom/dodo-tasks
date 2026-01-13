@@ -48,9 +48,15 @@ _register_builtin_backends()
 class TodoService:
     """Main service - routes to appropriate backend."""
 
-    def __init__(self, config: Config, project_id: str | None = None):
+    def __init__(
+        self,
+        config: Config,
+        project_id: str | None = None,
+        storage_path: Path | None = None,
+    ):
         self._config = config
         self._project_id = project_id
+        self._storage_path = storage_path  # Explicit override
         self._backend_name: str = ""  # Set by _create_backend
         self._backend = self._create_backend()
 
@@ -198,6 +204,8 @@ class TodoService:
                 return backend_cls()
 
     def _get_markdown_path(self) -> Path:
+        if self._storage_path:
+            return self._storage_path / "dodo.md"
         from dodo.storage import get_storage_path
 
         return get_storage_path(
@@ -208,6 +216,8 @@ class TodoService:
         )
 
     def _get_sqlite_path(self) -> Path:
+        if self._storage_path:
+            return self._storage_path / "dodo.db"
         from dodo.storage import get_storage_path
 
         return get_storage_path(
