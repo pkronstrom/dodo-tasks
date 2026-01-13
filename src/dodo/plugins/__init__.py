@@ -47,6 +47,7 @@ _BUILTIN_PLUGINS_DIR = Path(__file__).parent
 # Known hooks that plugins can implement
 _KNOWN_HOOKS = [
     "register_commands",
+    "register_root_commands",  # Added: for top-level CLI commands
     "register_config",
     "register_backend",
     "extend_backend",
