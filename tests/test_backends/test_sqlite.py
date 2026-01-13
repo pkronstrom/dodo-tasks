@@ -91,3 +91,52 @@ class TestSqliteBackendGet:
     def test_get_nonexistent(self, tmp_path: Path):
         backend = SqliteBackend(tmp_path / "dodo.db")
         assert backend.get("nonexistent") is None
+
+
+class TestSqliteBackendPriorityTags:
+    def test_add_with_priority(self, tmp_path: Path):
+        from dodo.models import Priority
+
+        backend = SqliteBackend(tmp_path / "dodo.db")
+
+        item = backend.add("Test", priority=Priority.HIGH)
+
+        assert item.priority == Priority.HIGH
+        # Verify persisted
+        retrieved = backend.get(item.id)
+        assert retrieved.priority == Priority.HIGH
+
+    def test_add_with_tags(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+
+        item = backend.add("Test", tags=["backend", "api"])
+
+        assert item.tags == ["backend", "api"]
+        retrieved = backend.get(item.id)
+        assert retrieved.tags == ["backend", "api"]
+
+    def test_add_defaults_none(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+
+        item = backend.add("Test")
+
+        assert item.priority is None
+        assert item.tags is None
+
+    def test_update_priority(self, tmp_path: Path):
+        from dodo.models import Priority
+
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        item = backend.add("Test")
+
+        updated = backend.update_priority(item.id, Priority.CRITICAL)
+
+        assert updated.priority == Priority.CRITICAL
+
+    def test_update_tags(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        item = backend.add("Test")
+
+        updated = backend.update_tags(item.id, ["new-tag"])
+
+        assert updated.tags == ["new-tag"]
