@@ -391,6 +391,37 @@ class TestAIDep:
         # The command only adds dependencies
         assert "dependency" in result.stdout.lower() or "dep" in result.stdout.lower()
 
+    def test_ai_dep_preserves_existing_dependencies(self, tmp_path, monkeypatch):
+        """AI dep should only add new deps, not remove existing ones."""
+        from dodo.backends.sqlite import SqliteBackend
+        from dodo.plugins.graph.wrapper import GraphWrapper
+
+        # Set up environment with graph plugin
+        db_path = tmp_path / ".config" / "dodo" / "dodo.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        backend = SqliteBackend(db_path)
+        wrapper = GraphWrapper(backend)
+
+        # Create todos and existing dependency
+        t1 = wrapper.add("Task 1")
+        t2 = wrapper.add("Task 2")
+        t3 = wrapper.add("Task 3")
+
+        # Add existing dependency: t1 blocks t2
+        wrapper.add_dependency(t1.id, t2.id)
+
+        # Verify existing dependency
+        assert t1.id in wrapper.get_blockers(t2.id)
+
+        # Now simulate what ai dep does - only add new dependency
+        # (AI only suggests t2 blocks t3, doesn't mention t1->t2)
+        wrapper.add_dependency(t2.id, t3.id)
+
+        # Original dependency should still exist
+        assert t1.id in wrapper.get_blockers(t2.id)
+        # New dependency should be added
+        assert t2.id in wrapper.get_blockers(t3.id)
+
 
 class TestAIRunSchema:
     def test_run_schema_excludes_cancelled_status(self):
