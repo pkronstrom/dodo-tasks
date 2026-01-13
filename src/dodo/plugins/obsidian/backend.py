@@ -46,7 +46,13 @@ class ObsidianBackend:
     def __exit__(self, *args):
         self.close()
 
-    def add(self, text: str, project: str | None = None) -> TodoItem:
+    def add(
+        self,
+        text: str,
+        project: str | None = None,
+        priority: Priority | None = None,
+        tags: list[str] | None = None,
+    ) -> TodoItem:
         timestamp = datetime.now()
         item = TodoItem(
             id=generate_todo_id(text, timestamp),
@@ -54,6 +60,8 @@ class ObsidianBackend:
             status=Status.PENDING,
             created_at=timestamp,
             project=project,
+            priority=priority,
+            tags=tags,
         )
 
         line = format_todo_line(item)
@@ -90,6 +98,8 @@ class ObsidianBackend:
                     created_at=item.created_at,
                     completed_at=datetime.now() if status == Status.DONE else None,
                     project=item.project,
+                    priority=item.priority,
+                    tags=item.tags,
                 )
                 lines[idx] = format_todo_line(updated_item)
                 break
@@ -109,12 +119,68 @@ class ObsidianBackend:
             item = parse_todo_line(line)
             if item and item.id == id:
                 updated_item = TodoItem(
-                    id=item.id,  # Keep original ID stable on text edit
+                    id=item.id,
                     text=text,
                     status=item.status,
                     created_at=item.created_at,
                     completed_at=item.completed_at,
                     project=item.project,
+                    priority=item.priority,
+                    tags=item.tags,
+                )
+                lines[idx] = format_todo_line(updated_item)
+                break
+
+        if not updated_item:
+            raise KeyError(f"Todo not found: {id}")
+
+        self._write_note("\n".join(lines))
+        return updated_item
+
+    def update_priority(self, id: str, priority: Priority | None) -> TodoItem:
+        content = self._read_note()
+        lines = content.splitlines()
+        updated_item = None
+
+        for idx, line in enumerate(lines):
+            item = parse_todo_line(line)
+            if item and item.id == id:
+                updated_item = TodoItem(
+                    id=item.id,
+                    text=item.text,
+                    status=item.status,
+                    created_at=item.created_at,
+                    completed_at=item.completed_at,
+                    project=item.project,
+                    priority=priority,
+                    tags=item.tags,
+                )
+                lines[idx] = format_todo_line(updated_item)
+                break
+
+        if not updated_item:
+            raise KeyError(f"Todo not found: {id}")
+
+        self._write_note("\n".join(lines))
+        return updated_item
+
+    def update_tags(self, id: str, tags: list[str] | None) -> TodoItem:
+        content = self._read_note()
+        lines = content.splitlines()
+        updated_item = None
+
+        for idx, line in enumerate(lines):
+            item = parse_todo_line(line)
+            if item and item.id == id:
+                updated_item = TodoItem(
+                    id=item.id,
+                    text=item.text,
+                    status=item.status,
+                    created_at=item.created_at,
+                    completed_at=item.completed_at,
+                    project=item.project,
+                    priority=item.priority,
+                    tags=tags,
                 )
                 lines[idx] = format_todo_line(updated_item)
                 break
