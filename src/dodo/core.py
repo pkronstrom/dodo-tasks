@@ -187,9 +187,13 @@ class TodoService:
             return backend_cls(self._get_sqlite_path())
         elif backend_name == "obsidian":
             return backend_cls(
-                api_url=self._config.obsidian_api_url,
-                api_key=self._config.obsidian_api_key,
-                vault_path=self._config.obsidian_vault_path,
+                api_url=self._config.get_plugin_config(
+                    "obsidian", "api_url", "https://localhost:27124"
+                ),
+                api_key=self._config.get_plugin_config("obsidian", "api_key", ""),
+                vault_path=self._config.get_plugin_config(
+                    "obsidian", "vault_path", "dodo/todos.md"
+                ),
             )
         else:
             # For plugin backends, check constructor signature

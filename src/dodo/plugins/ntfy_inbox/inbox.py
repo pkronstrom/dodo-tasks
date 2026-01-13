@@ -17,13 +17,13 @@ def inbox() -> None:
 
     cfg = Config.load()
 
-    topic = cfg.ntfy_topic
+    topic = cfg.get_plugin_config("ntfy_inbox", "topic", "")
     if not topic:
-        console.print("[red]Error:[/red] ntfy_topic not configured")
+        console.print("[red]Error:[/red] ntfy_inbox topic not configured")
         console.print("[dim]Set it with: dodo config[/dim]")
         raise SystemExit(1)
 
-    server = cfg.ntfy_server.rstrip("/")
+    server = cfg.get_plugin_config("ntfy_inbox", "server", "https://ntfy.sh").rstrip("/")
 
     console.print(f"[dim]Listening for todos on {server}/{topic}...[/dim]")
     console.print("[dim]Send messages to add todos. Use 'ai:' prefix for AI processing.[/dim]")
@@ -103,17 +103,28 @@ def _process_message(msg: dict) -> None:
         proj_info = f" [cyan][{project}][/cyan]" if project else ""
 
         if use_ai:
-            # Use AI module directly
-            from dodo.ai import run_ai
+            # Try to use AI plugin if enabled
+            if "ai" in cfg.enabled_plugins:
+                from dodo.plugins.ai.engine import run_ai
+                from dodo.plugins.ai.prompts import DEFAULT_SYS_PROMPT
 
-            todo_texts = run_ai(
-                user_input=text,
-                piped_content=None,
-                command=cfg.ai_command,
-                system_prompt=cfg.ai_sys_prompt,
-            )
-            for todo_text in todo_texts:
-                item = svc.add(todo_text)
+                ai_command = cfg.get_plugin_config(
+                    "ai",
+                    "command",
+                    "claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model {{model}} --tools ''",
+                )
+                todo_texts = run_ai(
+                    user_input=text,
+                    piped_content=None,
+                    command=ai_command,
+                    system_prompt=DEFAULT_SYS_PROMPT,
+                )
+                for todo_text in todo_texts:
+                    item = svc.add(todo_text)
+                    console.print(f"[green]Added:[/green] {item.text}{proj_info}")
+            else:
+                console.print("[yellow]AI plugin not enabled, adding as-is[/yellow]")
+                item = svc.add(text)
                 console.print(f"[green]Added:[/green] {item.text}{proj_info}")
         else:
             item = svc.add(text)

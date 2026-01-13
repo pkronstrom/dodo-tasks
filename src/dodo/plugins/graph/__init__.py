@@ -55,7 +55,7 @@ def register_config() -> list[ConfigVar]:
     """Declare config variables for this plugin."""
     return [
         ConfigVar(
-            "graph_tree_view",
+            "tree_view",
             "false",
             label="Tree view",
             kind="toggle",
