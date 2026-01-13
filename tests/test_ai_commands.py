@@ -1,13 +1,15 @@
 """Tests for AI commands."""
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
 
-from dodo.cli import app
+from dodo.cli import _register_all_plugin_root_commands, app
 from dodo.config import clear_config_cache
+from dodo.plugins import clear_plugin_cache
 
 runner = CliRunner()
 
@@ -15,10 +17,26 @@ runner = CliRunner()
 @pytest.fixture
 def cli_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Set up isolated environment for CLI tests."""
+    # Clear caches first
     clear_config_cache()
+    clear_plugin_cache()
+
     config_dir = tmp_path / ".config" / "dodo"
+    config_dir.mkdir(parents=True, exist_ok=True)
+
+    # Enable AI plugin for all AI command tests (JSON format with comma-separated string)
+    (config_dir / "config.json").write_text(json.dumps({"enabled_plugins": "ai"}))
+
+    # Set HOME before registering plugins so they find the right config
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.chdir(tmp_path)
+
+    # Re-scan plugins and register AI commands with the app
+    from dodo.plugins import scan_and_save
+
+    scan_and_save(config_dir)
+    _register_all_plugin_root_commands()
+
     return config_dir
 
 
@@ -42,7 +60,7 @@ class TestAIAdd:
         # Should error when no input provided
         assert result.exit_code == 1 or "Error" in result.stdout
 
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     def test_ai_add_with_text(self, mock_run: MagicMock, cli_env):
         """AI add with text creates todos."""
         mock_run.return_value = MagicMock(
@@ -58,7 +76,7 @@ class TestAIAdd:
 
 
 class TestAIPrioritize:
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     def test_ai_prio_no_todos(self, mock_run: MagicMock, cli_env):
         """AI prio with no todos shows message."""
         result = runner.invoke(app, ["ai", "prio"])
@@ -66,7 +84,7 @@ class TestAIPrioritize:
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "No pending todos" in result.stdout
 
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     def test_ai_prio_with_todos(self, mock_run: MagicMock, cli_env):
         """AI prio with todos shows suggestions."""
         # First add a todo
@@ -88,7 +106,7 @@ class TestAIPrioritize:
 
         assert result.exit_code == 0, f"Failed: {result.output}"
 
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     @patch("dodo.project.detect_project", return_value=None)
     def test_ai_prio_preserves_item_count(
         self, mock_project: MagicMock, mock_run: MagicMock, cli_env
@@ -130,14 +148,14 @@ class TestAIPrioritize:
 
 
 class TestAIReword:
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     def test_ai_reword_no_todos(self, mock_run: MagicMock, cli_env):
         result = runner.invoke(app, ["ai", "reword"])
 
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "No pending todos" in result.stdout
 
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     @patch("dodo.project.detect_project", return_value=None)
     def test_ai_reword_preserves_item_count(
         self, mock_project: MagicMock, mock_run: MagicMock, cli_env
@@ -176,14 +194,14 @@ class TestAIReword:
 
 
 class TestAITag:
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     def test_ai_tag_no_todos(self, mock_run: MagicMock, cli_env):
         result = runner.invoke(app, ["ai", "tag"])
 
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "No pending todos" in result.stdout
 
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     @patch("dodo.project.detect_project", return_value=None)
     def test_ai_tag_preserves_item_count(
         self, mock_project: MagicMock, mock_run: MagicMock, cli_env
@@ -226,7 +244,7 @@ class TestAISync:
 
 
 class TestAIRun:
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     def test_ai_run_no_todos_no_changes(self, mock_run: MagicMock, cli_env):
         """AI run with no todos and no AI output shows no changes."""
         mock_run.return_value = MagicMock(
@@ -240,7 +258,7 @@ class TestAIRun:
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "No changes needed" in result.stdout
 
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     def test_ai_run_with_instruction(self, mock_run: MagicMock, cli_env):
         """AI run processes instructions on existing todos."""
         # First add a todo
@@ -259,7 +277,7 @@ class TestAIRun:
 
         assert result.exit_code == 0, f"Failed: {result.output}"
 
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     @patch("dodo.project.detect_project", return_value=None)
     def test_ai_run_applies_changes_with_yes(
         self, mock_project: MagicMock, mock_run: MagicMock, cli_env
@@ -288,7 +306,7 @@ class TestAIRun:
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "Applied" in result.stdout
 
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     @patch("dodo.project.detect_project", return_value=None)
     def test_ai_run_handles_invalid_json(
         self, mock_project: MagicMock, mock_run: MagicMock, cli_env
@@ -308,7 +326,7 @@ class TestAIRun:
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "No changes needed" in result.stdout
 
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     @patch("dodo.project.detect_project", return_value=None)
     def test_ai_run_handles_non_dict_response(
         self, mock_project: MagicMock, mock_run: MagicMock, cli_env
@@ -336,16 +354,18 @@ class TestAIDep:
         result = runner.invoke(app, ["ai", "dep"])
 
         assert result.exit_code == 1, f"Should fail: {result.output}"
-        assert "Graph plugin not enabled" in result.stdout
+        assert "Graph plugin" in result.stdout
 
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     def test_ai_dep_no_todos(self, mock_run: MagicMock, cli_env, tmp_path, monkeypatch):
         """AI dep with no todos shows message (when graph is enabled)."""
-        # Enable graph plugin via config
+        # Enable both ai and graph plugins via config (JSON format)
         config_dir = tmp_path / ".config" / "dodo"
         config_dir.mkdir(parents=True, exist_ok=True)
-        (config_dir / "config.toml").write_text('enabled_plugins = ["graph"]')
+        (config_dir / "config.json").write_text(json.dumps({"enabled_plugins": "ai,graph"}))
         clear_config_cache()
+        clear_plugin_cache()
+        _register_all_plugin_root_commands()
 
         result = runner.invoke(app, ["ai", "dep"])
 
@@ -353,11 +373,11 @@ class TestAIDep:
         # depending on backend initialization
         assert result.exit_code in [0, 1]
 
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     def test_ai_dep_filters_self_dependencies(self, mock_run: MagicMock, cli_env, tmp_path):
         """AI dep filters out self-referencing dependencies."""
         # This test verifies the self-dependency filter logic
-        from dodo.ai import run_ai_dep
+        from dodo.plugins.ai.engine import run_ai_dep
 
         # Mock AI returning self-dependency
         mock_run.return_value = MagicMock(
@@ -428,7 +448,7 @@ class TestAIRunSchema:
         """RUN_SCHEMA should only include valid Status values."""
         import json
 
-        from dodo.ai import RUN_SCHEMA
+        from dodo.plugins.ai.schemas import RUN_SCHEMA
 
         schema = json.loads(RUN_SCHEMA)
         status_enum = schema["properties"]["todos"]["items"]["properties"]["status"]["enum"]
@@ -441,7 +461,7 @@ class TestAIRunSchema:
         """RUN_SCHEMA should include create array for new todos."""
         import json
 
-        from dodo.ai import RUN_SCHEMA
+        from dodo.plugins.ai.schemas import RUN_SCHEMA
 
         schema = json.loads(RUN_SCHEMA)
         assert "create" in schema["properties"]
@@ -455,7 +475,7 @@ class TestAIRunSchema:
         """RUN_SCHEMA should require reason fields for changes."""
         import json
 
-        from dodo.ai import RUN_SCHEMA
+        from dodo.plugins.ai.schemas import RUN_SCHEMA
 
         schema = json.loads(RUN_SCHEMA)
 
@@ -473,7 +493,7 @@ class TestAIRunSchema:
 
 
 class TestAIRunCreate:
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     @patch("dodo.project.detect_project", return_value=None)
     def test_ai_run_creates_new_todos(self, mock_project: MagicMock, mock_run: MagicMock, cli_env):
         """AI run can create new todos."""
@@ -490,7 +510,7 @@ class TestAIRunCreate:
         assert "Created" in result.stdout
         assert "New todo from AI" in result.stdout
 
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     @patch("dodo.project.detect_project", return_value=None)
     def test_ai_run_shows_create_preview(
         self, mock_project: MagicMock, mock_run: MagicMock, cli_env

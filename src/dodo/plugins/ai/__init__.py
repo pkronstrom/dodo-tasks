@@ -24,6 +24,12 @@ if TYPE_CHECKING:
 # Commands this plugin registers at root level
 COMMANDS = ["ai"]
 
+# Default config values (single source of truth)
+DEFAULT_COMMAND = "claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model {{model}} --tools ''"
+DEFAULT_RUN_COMMAND = "claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model {{model}} --tools 'Read,Glob,Grep,WebSearch,Bash(git log:*,git status:*,git diff:*,git show:*,git blame:*,git branch:*)'"
+DEFAULT_MODEL = "sonnet"
+MODEL_OPTIONS = ["haiku", "sonnet", "opus"]
+
 
 @dataclass
 class ConfigVar:
@@ -46,24 +52,30 @@ def register_config() -> list[ConfigVar]:
     return [
         ConfigVar(
             "command",
-            "claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model {{model}} --tools ''",
+            DEFAULT_COMMAND,
             label="AI Command",
             description="Command template for AI operations",
         ),
         ConfigVar(
+            "run_command",
+            DEFAULT_RUN_COMMAND,
+            label="AI Run Command",
+            description="Command template for ai run (with tools)",
+        ),
+        ConfigVar(
             "model",
-            "sonnet",
+            DEFAULT_MODEL,
             label="AI Model",
             kind="cycle",
-            options=["haiku", "sonnet", "opus"],
+            options=MODEL_OPTIONS,
             description="Model for basic AI commands",
         ),
         ConfigVar(
             "run_model",
-            "sonnet",
+            DEFAULT_MODEL,
             label="AI Run Model",
             kind="cycle",
-            options=["haiku", "sonnet", "opus"],
+            options=MODEL_OPTIONS,
             description="Model for ai run command",
         ),
     ]

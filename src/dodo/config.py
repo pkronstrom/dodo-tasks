@@ -95,9 +95,23 @@ class Config:
         raise AttributeError(f"Config has no attribute '{name}'")
 
     def get_plugin_config(self, plugin_name: str, key: str, default: Any = None) -> Any:
-        """Get config value for a plugin from nested plugins.<name> structure."""
+        """Get config value for a plugin from nested plugins.<name> structure.
+
+        Handles both dash and underscore variants for backwards compatibility
+        (e.g., ntfy-inbox and ntfy_inbox are treated as equivalent).
+        """
         plugins = self._data.get("plugins", {})
         plugin_config = plugins.get(plugin_name, {})
+
+        # Fallback: try alternate naming (dash <-> underscore)
+        if not plugin_config:
+            alt_name = (
+                plugin_name.replace("-", "_")
+                if "-" in plugin_name
+                else plugin_name.replace("_", "-")
+            )
+            plugin_config = plugins.get(alt_name, {})
+
         return plugin_config.get(key, default)
 
     def set_plugin_config(self, plugin_name: str, key: str, value: Any) -> None:

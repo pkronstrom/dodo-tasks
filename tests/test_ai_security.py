@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from dodo.ai import run_ai
+from dodo.plugins.ai.engine import run_ai
 
 
 def test_ai_command_uses_argument_list():
@@ -11,7 +11,7 @@ def test_ai_command_uses_argument_list():
     mock_result.returncode = 0
     mock_result.stdout = '{"tasks": ["test todo"]}'
 
-    with patch("subprocess.run", return_value=mock_result) as mock_run:
+    with patch("dodo.plugins.ai.engine.subprocess.run", return_value=mock_result) as mock_run:
         run_ai(
             user_input="test",
             command="echo '{{prompt}}'",
