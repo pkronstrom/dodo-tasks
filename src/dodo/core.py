@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from dodo.config import Config
-from dodo.models import Status, TodoItem
+from dodo.models import Priority, Status, TodoItem
 
 if TYPE_CHECKING:
     from dodo.backends.base import TodoBackend

@@ -64,6 +64,10 @@ class Config:
             'If input is one task, return ["task"]. If multiple, split into separate items. '
             "Keep each item under 100 chars."
         ),
+        "ai_add_prompt": "",  # Empty = use default from ai.py
+        "ai_prioritize_prompt": "",
+        "ai_tag_prompt": "",
+        "ai_reword_prompt": "",
         "obsidian_api_url": "https://localhost:27124",
         "obsidian_api_key": "",
         "obsidian_vault_path": "dodo/todos.md",
