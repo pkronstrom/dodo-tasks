@@ -14,6 +14,7 @@ from dodo.models import Priority, Status, TodoItem
 class SqliteBackend:
     """SQLite backend - better for querying/filtering large lists."""
 
+    # Base schema - columns added by migrations for existing DBs
     SCHEMA = """
         CREATE TABLE IF NOT EXISTS todos (
             id TEXT PRIMARY KEY,
@@ -27,7 +28,6 @@ class SqliteBackend:
         );
         CREATE INDEX IF NOT EXISTS idx_project ON todos(project);
         CREATE INDEX IF NOT EXISTS idx_status ON todos(status);
-        CREATE INDEX IF NOT EXISTS idx_priority ON todos(priority);
     """
 
     def __init__(self, db_path: Path):
@@ -237,6 +237,8 @@ class SqliteBackend:
         with self._connect() as conn:
             conn.executescript(self.SCHEMA)
             self._run_migrations(conn)
+            # Create priority index after migrations ensure column exists
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_priority ON todos(priority)")
 
     def _run_migrations(self, conn: sqlite3.Connection) -> None:
         """Run any pending migrations."""
