@@ -3,6 +3,11 @@
 import json
 import shlex
 import subprocess
+import sys
+from typing import Any
+
+# Constants - can be overridden via config
+AI_COMMAND_TIMEOUT = 60  # seconds
 
 DEFAULT_SCHEMA = json.dumps(
     {
@@ -115,14 +120,63 @@ def build_command(
 
     Returns a list of arguments suitable for subprocess.run without shell=True.
     """
-    # Substitute placeholders
     cmd_str = (
         template.replace("{{prompt}}", prompt)
         .replace("{{system}}", system)
         .replace("{{schema}}", schema)
     )
-    # Parse into argument list (handles quoting properly)
     return shlex.split(cmd_str)
+
+
+def _execute_ai_command(cmd_args: list[str], timeout: int = AI_COMMAND_TIMEOUT) -> str | None:
+    """Execute AI command and return stdout, or None on error.
+
+    Handles subprocess execution, timeout, and error logging.
+    """
+    try:
+        result = subprocess.run(
+            cmd_args,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+
+        if result.returncode != 0:
+            print(f"AI command failed (exit {result.returncode})", file=sys.stderr)
+            if result.stderr:
+                print(result.stderr, file=sys.stderr)
+            return None
+
+        return result.stdout.strip()
+
+    except subprocess.TimeoutExpired:
+        print("AI command timed out", file=sys.stderr)
+        return None
+
+
+def _extract_ai_result(output: str, result_key: str) -> list[Any] | None:
+    """Extract result list from AI JSON output.
+
+    Handles both direct output and claude's structured_output wrapper.
+    Returns None on parse error.
+    """
+    try:
+        data = json.loads(output)
+
+        # Extract from structured_output (claude --output-format json)
+        if isinstance(data, dict) and "structured_output" in data:
+            return data["structured_output"].get(result_key, [])
+        elif isinstance(data, dict) and result_key in data:
+            return data[result_key]
+        elif isinstance(data, list):
+            return data
+        else:
+            print(f"Unexpected output format. Raw: {output[:500]}", file=sys.stderr)
+            return None
+
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"Failed to parse AI output: {e}", file=sys.stderr)
+        return None
 
 
 def run_ai(
@@ -144,12 +198,9 @@ def run_ai(
     Returns:
         List of todo item strings, or empty list on error
     """
-    # Build the full prompt
     prompt_parts = []
-
     if piped_content:
         prompt_parts.append(f"[Piped input]:\n{piped_content}\n\n[User request]:")
-
     prompt_parts.append(user_input)
     full_prompt = "\n".join(prompt_parts)
 
@@ -160,53 +211,18 @@ def run_ai(
         schema=schema or DEFAULT_SCHEMA,
     )
 
-    try:
-        result = subprocess.run(
-            cmd_args,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-
-        if result.returncode != 0:
-            import sys
-
-            print(f"AI command failed (exit {result.returncode})", file=sys.stderr)
-            if result.stderr:
-                print(result.stderr, file=sys.stderr)
-            return []
-
-        # Parse JSON output
-        output = result.stdout.strip()
-        data = json.loads(output)
-
-        # Extract tasks from structured_output (claude --output-format json)
-        if isinstance(data, dict) and "structured_output" in data:
-            tasks = data["structured_output"].get("tasks", [])
-        elif isinstance(data, dict) and "tasks" in data:
-            tasks = data["tasks"]
-        elif isinstance(data, list):
-            tasks = data
-        else:
-            print(f"Unexpected output format. Raw: {output[:500]}", file=sys.stderr)
-            return []
-
-        todos = [str(item) for item in tasks if item]
-        if not todos:
-            print(f"AI returned empty list. Raw output: {output[:500]}", file=sys.stderr)
-        return todos
-
-    except subprocess.TimeoutExpired:
-        import sys
-
-        print("AI command timed out", file=sys.stderr)
+    output = _execute_ai_command(cmd_args)
+    if output is None:
         return []
-    except (json.JSONDecodeError, ValueError) as e:
-        import sys
 
-        print(f"Failed to parse AI output: {e}", file=sys.stderr)
-        print(f"Raw output: {result.stdout[:500]}", file=sys.stderr)
+    tasks = _extract_ai_result(output, "tasks")
+    if tasks is None:
         return []
+
+    todos = [str(item) for item in tasks if item]
+    if not todos:
+        print(f"AI returned empty list. Raw output: {output[:500]}", file=sys.stderr)
+    return todos
 
 
 def run_ai_structured(
@@ -235,48 +251,15 @@ def run_ai_structured(
         schema=schema,
     )
 
-    try:
-        result = subprocess.run(
-            cmd_args,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-
-        if result.returncode != 0:
-            import sys
-
-            print(f"AI command failed (exit {result.returncode})", file=sys.stderr)
-            if result.stderr:
-                print(result.stderr, file=sys.stderr)
-            return []
-
-        output = result.stdout.strip()
-        data = json.loads(output)
-
-        # Extract from structured_output (claude --output-format json)
-        if isinstance(data, dict) and "structured_output" in data:
-            items = data["structured_output"].get(result_key, [])
-        elif isinstance(data, dict) and result_key in data:
-            items = data[result_key]
-        elif isinstance(data, list):
-            items = data
-        else:
-            print(f"Unexpected output format. Raw: {output[:500]}", file=sys.stderr)
-            return []
-
-        return [item for item in items if isinstance(item, dict)]
-
-    except subprocess.TimeoutExpired:
-        import sys
-
-        print("AI command timed out", file=sys.stderr)
+    output = _execute_ai_command(cmd_args)
+    if output is None:
         return []
-    except (json.JSONDecodeError, ValueError) as e:
-        import sys
 
-        print(f"Failed to parse AI output: {e}", file=sys.stderr)
+    items = _extract_ai_result(output, result_key)
+    if items is None:
         return []
+
+    return [item for item in items if isinstance(item, dict)]
 
 
 # Default prompts for AI operations
@@ -347,48 +330,15 @@ def run_ai_add(
         schema=ADD_SCHEMA,
     )
 
-    try:
-        result = subprocess.run(
-            cmd_args,
-            capture_output=True,
-            text=True,
-            timeout=60,
-        )
-
-        if result.returncode != 0:
-            import sys
-
-            print(f"AI command failed (exit {result.returncode})", file=sys.stderr)
-            if result.stderr:
-                print(result.stderr, file=sys.stderr)
-            return []
-
-        output = result.stdout.strip()
-        data = json.loads(output)
-
-        # Extract from structured_output (claude --output-format json)
-        if isinstance(data, dict) and "structured_output" in data:
-            tasks = data["structured_output"].get("tasks", [])
-        elif isinstance(data, dict) and "tasks" in data:
-            tasks = data["tasks"]
-        elif isinstance(data, list):
-            tasks = data
-        else:
-            print(f"Unexpected output format. Raw: {output[:500]}", file=sys.stderr)
-            return []
-
-        return [task for task in tasks if isinstance(task, dict) and task.get("text")]
-
-    except subprocess.TimeoutExpired:
-        import sys
-
-        print("AI command timed out", file=sys.stderr)
+    output = _execute_ai_command(cmd_args)
+    if output is None:
         return []
-    except (json.JSONDecodeError, ValueError) as e:
-        import sys
 
-        print(f"Failed to parse AI output: {e}", file=sys.stderr)
+    tasks = _extract_ai_result(output, "tasks")
+    if tasks is None:
         return []
+
+    return [task for task in tasks if isinstance(task, dict) and task.get("text")]
 
 
 def run_ai_prioritize(
@@ -397,7 +347,6 @@ def run_ai_prioritize(
     system_prompt: str,
 ) -> list[dict]:
     """Run AI to suggest priority changes. Returns list of {id, priority, reason}."""
-    # Format todos for prompt
     todos_text = "\n".join(
         f"- [{t['id']}] {t['text']} (current: {t.get('priority', 'none')})" for t in todos
     )

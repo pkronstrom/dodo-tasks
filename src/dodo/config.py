@@ -68,6 +68,7 @@ class Config:
         "ai_prioritize_prompt": "",
         "ai_tag_prompt": "",
         "ai_reword_prompt": "",
+        "ai_timeout": 60,  # AI command timeout in seconds
         "obsidian_api_url": "https://localhost:27124",
         "obsidian_api_key": "",
         "obsidian_vault_path": "dodo/todos.md",
