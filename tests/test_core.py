@@ -83,3 +83,79 @@ class TestTodoServiceBackendSelection:
 
         # SQLite creates .db file, not .md
         assert (tmp_path / "config" / "dodo.db").exists()
+
+
+class TestBackendInstantiation:
+    def test_backend_typeerror_not_masked(self, tmp_path, monkeypatch):
+        """Real TypeErrors in backend constructors should propagate, not be masked."""
+        from dodo.config import clear_config_cache
+        from dodo.core import _backend_registry
+
+        clear_config_cache()
+
+        # Track how many times __init__ is called
+        call_count = {"value": 0}
+
+        # Backend that accepts config/project_id with defaults,
+        # but has a bug that causes TypeError when config is provided
+        class BrokenBackend:
+            def __init__(self, config=None, project_id=None):
+                call_count["value"] += 1
+                if config is not None:
+                    # Simulate a real bug: wrong type concatenation
+                    x = "string"
+                    result = x + 5  # TypeError!
+                self.items = []
+
+            def add(self, text, project=None):
+                pass
+
+            def list(self, project=None, status=None):
+                return []
+
+        # Register it
+        _backend_registry["broken"] = BrokenBackend
+        monkeypatch.setenv("DODO_DEFAULT_BACKEND", "broken")
+
+        config = Config.load(tmp_path / "config")
+
+        # Should raise TypeError, not silently fall back to no-args construction
+        with pytest.raises(TypeError):
+            TodoService(config, project_id=None)
+
+        # If test fails (no exception), it means TypeError was masked
+        # and __init__ was called twice (once with config, once without)
+
+        # Cleanup
+        del _backend_registry["broken"]
+
+    def test_backend_with_no_args_works(self, tmp_path, monkeypatch):
+        """Backends that take no args should still work."""
+        from dodo.config import clear_config_cache
+        from dodo.core import _backend_registry
+
+        clear_config_cache()
+
+        # Create a simple backend that needs no args
+        class SimpleBackend:
+            def __init__(self):
+                self.items = []
+
+            def add(self, text, project=None):
+                pass
+
+            def list(self, project=None, status=None):
+                return []
+
+        # Register it
+        _backend_registry["simple"] = SimpleBackend
+        monkeypatch.setenv("DODO_DEFAULT_BACKEND", "simple")
+
+        config = Config.load(tmp_path / "config")
+
+        # Should work fine
+        svc = TodoService(config, project_id=None)
+        assert svc.backend_name == "simple"
+
+        # Cleanup
+        del _backend_registry["simple"]

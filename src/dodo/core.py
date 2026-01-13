@@ -156,6 +156,8 @@ class TodoService:
 
     def _instantiate_backend(self, backend_name: str) -> TodoBackend:
         """Create backend instance with appropriate arguments."""
+        import inspect
+
         backend_ref = _backend_registry[backend_name]
         backend_cls = _resolve_backend_class(backend_ref)
 
@@ -171,12 +173,28 @@ class TodoService:
                 vault_path=self._config.obsidian_vault_path,
             )
         else:
-            # For unknown plugin backends, try calling with config
-            # Plugins should handle their own initialization
-            try:
+            # For plugin backends, check constructor signature
+            sig = inspect.signature(backend_cls.__init__)
+            params = list(sig.parameters.keys())
+
+            # Try config+project_id pattern (preferred for plugins)
+            if "config" in params and "project_id" in params:
                 return backend_cls(config=self._config, project_id=self._project_id)
-            except TypeError:
-                # Fall back to no-args construction
+            elif "config" in params:
+                return backend_cls(config=self._config)
+            elif "path" in params:
+                # Generic path-based backend
+                from dodo.storage import get_storage_path
+
+                path = get_storage_path(
+                    self._config,
+                    self._project_id,
+                    backend_name,
+                    self._config.worktree_shared,
+                )
+                return backend_cls(path=path)
+            else:
+                # No-args construction
                 return backend_cls()
 
     def _get_markdown_path(self) -> Path:
