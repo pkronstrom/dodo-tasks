@@ -109,6 +109,72 @@ REWORD_SCHEMA = json.dumps(
     }
 )
 
+# Schema for ai run (bulk modifications)
+RUN_SCHEMA = json.dumps(
+    {
+        "type": "object",
+        "properties": {
+            "todos": {
+                "type": "array",
+                "description": "Only include todos that changed, with changed fields + id",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "text": {"type": "string"},
+                        "status": {"enum": ["pending", "done", "cancelled"]},
+                        "priority": {
+                            "type": ["string", "null"],
+                            "enum": ["critical", "high", "normal", "low", "someday", None],
+                        },
+                        "tags": {"type": "array", "items": {"type": "string"}},
+                        "dependencies": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "IDs of todos this one depends on (blockers)",
+                        },
+                    },
+                    "required": ["id"],
+                },
+            },
+            "delete": {
+                "type": "array",
+                "description": "IDs of todos to delete",
+                "items": {"type": "string"},
+            },
+        },
+        "required": ["todos", "delete"],
+    }
+)
+
+# Schema for ai dep (dependency detection)
+DEP_SCHEMA = json.dumps(
+    {
+        "type": "object",
+        "properties": {
+            "dependencies": {
+                "type": "array",
+                "description": "List of dependency relationships to add",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "blocked_id": {
+                            "type": "string",
+                            "description": "ID of todo that is blocked (depends on another)",
+                        },
+                        "blocker_id": {
+                            "type": "string",
+                            "description": "ID of todo that blocks (must be done first)",
+                        },
+                    },
+                    "required": ["blocked_id", "blocker_id"],
+                },
+            }
+        },
+        "required": ["dependencies"],
+    }
+)
+
 
 def build_command(
     template: str,
@@ -263,13 +329,14 @@ def run_ai_structured(
 
 
 # Default prompts for AI operations
-DEFAULT_ADD_PROMPT = """Convert user input into a JSON array of todo objects.
+DEFAULT_ADD_PROMPT = """Create todo items from user input. The tasks array must NEVER be empty.
+CRITICAL: Even single words like "test" or "foo" become todos with that exact text.
 For each task:
-- Write clear, concise text (imperative mood: "Fix X", "Add Y")
-- Infer priority only if clearly indicated (urgent/critical/blocking = critical, nice-to-have/someday = low/someday). Default to null.
-- Infer tags from context (technology, area, type). Use existing tags when relevant: {existing_tags}
+- Text: Use the input directly. Apply imperative mood if possible ("Fix X", "Add Y").
+- Priority: Only set if explicitly indicated. Default to null.
+- Tags: Infer from context. Use existing tags when relevant: {existing_tags}
 
-Output ONLY the JSON object with tasks array, nothing else.
+Output ONLY the JSON object with tasks array. Never ask questions or add commentary.
 """
 
 DEFAULT_PRIORITIZE_PROMPT = """Analyze these pending todos and suggest priority levels.
@@ -397,4 +464,114 @@ def run_ai_reword(
         user_prompt="Improve these todo descriptions",
         schema=REWORD_SCHEMA,
         result_key="rewrites",
+    )
+
+
+DEFAULT_RUN_PROMPT = """You are a todo list assistant. Execute the user instruction on these todos.
+Return ONLY todos that need changes. Do not include unchanged todos.
+For deletions, add the ID to the delete array.
+
+Available fields to modify:
+- text: The todo description
+- status: pending, done, or cancelled
+- priority: critical, high, normal, low, someday, or null
+- tags: Array of tag strings (lowercase, hyphens for multi-word)
+- dependencies: Array of IDs this todo depends on (blockers)
+
+Current todos:
+{todos}
+
+User instruction: {instruction}
+"""
+
+DEFAULT_DEP_PROMPT = """Analyze these todos and detect logical dependencies.
+A dependency means one task should be completed before another can start.
+Only suggest dependencies where the relationship is clear and meaningful.
+
+Look for:
+- Sequential tasks (step 1 before step 2)
+- Prerequisites (need X before Y)
+- Blocking relationships (cannot do Y until X is done)
+
+Current todos:
+{todos}
+
+Return dependencies as pairs: blocked_id depends on blocker_id.
+"""
+
+
+def _extract_ai_run_result(output: str) -> tuple[list[dict], list[str]]:
+    """Extract todos and delete list from AI run output.
+
+    Returns (todos, delete_ids) tuple.
+    """
+    try:
+        data = json.loads(output)
+
+        # Handle structured_output wrapper
+        if isinstance(data, dict) and "structured_output" in data:
+            data = data["structured_output"]
+
+        todos = data.get("todos", [])
+        delete = data.get("delete", [])
+
+        return (
+            [t for t in todos if isinstance(t, dict) and t.get("id")],
+            [d for d in delete if isinstance(d, str)],
+        )
+
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"Failed to parse AI output: {e}", file=sys.stderr)
+        return ([], [])
+
+
+def run_ai_run(
+    todos: list[dict],
+    instruction: str,
+    command: str,
+    system_prompt: str,
+) -> tuple[list[dict], list[str]]:
+    """Run AI with user instruction on todos.
+
+    Returns (modified_todos, delete_ids) tuple.
+    """
+    todos_text = "\n".join(
+        f"- [{t['id']}] {t['text']} "
+        f"(status: {t.get('status', 'pending')}, "
+        f"priority: {t.get('priority', 'none')}, "
+        f"tags: {t.get('tags', [])}, "
+        f"deps: {t.get('dependencies', [])})"
+        for t in todos
+    )
+    prompt = system_prompt.format(todos=todos_text, instruction=instruction)
+
+    cmd_args = build_command(
+        template=command,
+        prompt=instruction,
+        system=prompt,
+        schema=RUN_SCHEMA,
+    )
+
+    output = _execute_ai_command(cmd_args)
+    if output is None:
+        return ([], [])
+
+    return _extract_ai_run_result(output)
+
+
+def run_ai_dep(
+    todos: list[dict],
+    command: str,
+    system_prompt: str,
+) -> list[dict]:
+    """Run AI to detect dependencies. Returns list of {blocked_id, blocker_id}."""
+    todos_text = "\n".join(f"- [{t['id']}] {t['text']}" for t in todos)
+    prompt = system_prompt.format(todos=todos_text)
+
+    return run_ai_structured(
+        command=command,
+        system_prompt=prompt,
+        user_prompt="Analyze and suggest dependencies",
+        schema=DEP_SCHEMA,
+        result_key="dependencies",
     )
