@@ -73,3 +73,28 @@ def test_get_available_backends_includes_core():
     backends = _get_available_backends(set(), {})
     assert "sqlite" in backends
     assert "markdown" in backends
+
+
+def test_get_project_storage_path_uses_resolved_backend(tmp_path, monkeypatch):
+    """_get_project_storage_path should use project's backend, not default."""
+    from dodo.config import Config, clear_config_cache
+
+    clear_config_cache()
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    # Set up config with sqlite as default
+    cfg = Config.load()
+    cfg.set("default_backend", "sqlite")
+
+    # Create project config with markdown backend
+    project_id = "test-project"
+    project_dir = cfg.config_dir / "projects" / project_id
+    project_dir.mkdir(parents=True)
+    (project_dir / "dodo.json").write_text('{"backend": "markdown"}')
+
+    from dodo.ui.interactive import _get_project_storage_path
+
+    # Should return markdown path, not sqlite
+    path = _get_project_storage_path(cfg, project_id, worktree_shared=False)
+
+    assert path.suffix == ".md", f"Expected .md but got {path}"

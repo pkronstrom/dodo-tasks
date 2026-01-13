@@ -353,11 +353,34 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
         break  # Normal exit
 
 
-def _get_project_storage_path(cfg: Config, project_id: str | None, worktree_shared: bool) -> Path:
-    """Get storage path for a project configuration."""
+def _get_project_storage_path(
+    cfg: Config, project_id: str | None, worktree_shared: bool, backend: str | None = None
+) -> Path:
+    """Get storage path for a project configuration.
+
+    Args:
+        cfg: Config instance
+        project_id: Project ID or None for global
+        worktree_shared: Whether worktrees share storage
+        backend: Explicit backend name, or None to resolve from project config
+    """
     from dodo.storage import get_storage_path
 
-    return get_storage_path(cfg, project_id, cfg.default_backend, worktree_shared)
+    if backend is None:
+        # Resolve backend from project config or use default
+        from dodo.project_config import ProjectConfig, get_project_config_dir
+
+        if project_id:
+            project_dir = get_project_config_dir(cfg, project_id, worktree_shared)
+            if project_dir:
+                project_cfg = ProjectConfig.load(project_dir)
+                if project_cfg:
+                    backend = project_cfg.backend
+
+        if backend is None:
+            backend = cfg.default_backend
+
+    return get_storage_path(cfg, project_id, backend, worktree_shared)
 
 
 def _shorten_path(path: Path, config_dir: Path | None = None, max_len: int = 50) -> str:
