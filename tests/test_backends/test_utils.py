@@ -117,3 +117,86 @@ def test_parse_todo_line_invalid():
     assert parse_todo_line("# Header") is None
     assert parse_todo_line("Regular text") is None
     assert parse_todo_line("") is None
+
+
+class TestParseTodoLinePriorityTags:
+    def test_parse_with_priority(self):
+        from dodo.models import Priority
+
+        line = "- [ ] 2024-01-15 10:30 [abc12345] - Fix bug !critical"
+        item = parse_todo_line(line)
+
+        assert item is not None
+        assert item.text == "Fix bug"
+        assert item.priority == Priority.CRITICAL
+
+    def test_parse_with_tags(self):
+        line = "- [ ] 2024-01-15 10:30 [abc12345] - Fix bug #backend #urgent"
+        item = parse_todo_line(line)
+
+        assert item is not None
+        assert item.text == "Fix bug"
+        assert item.tags == ["backend", "urgent"]
+
+    def test_parse_with_priority_and_tags(self):
+        from dodo.models import Priority
+
+        line = "- [ ] 2024-01-15 10:30 [abc12345] - Fix bug !high #backend #api"
+        item = parse_todo_line(line)
+
+        assert item is not None
+        assert item.text == "Fix bug"
+        assert item.priority == Priority.HIGH
+        assert item.tags == ["backend", "api"]
+
+    def test_parse_no_priority_or_tags(self):
+        line = "- [ ] 2024-01-15 10:30 [abc12345] - Fix bug"
+        item = parse_todo_line(line)
+
+        assert item is not None
+        assert item.text == "Fix bug"
+        assert item.priority is None
+        assert item.tags is None
+
+
+class TestFormatTodoLinePriorityTags:
+    def test_format_with_priority(self):
+        from dodo.models import Priority
+
+        item = TodoItem(
+            id="abc12345",
+            text="Fix bug",
+            status=Status.PENDING,
+            created_at=datetime(2024, 1, 15, 10, 30),
+            priority=Priority.CRITICAL,
+        )
+        line = format_todo_line(item)
+
+        assert line == "- [ ] 2024-01-15 10:30 [abc12345] - Fix bug !critical"
+
+    def test_format_with_tags(self):
+        item = TodoItem(
+            id="abc12345",
+            text="Fix bug",
+            status=Status.PENDING,
+            created_at=datetime(2024, 1, 15, 10, 30),
+            tags=["backend", "api"],
+        )
+        line = format_todo_line(item)
+
+        assert line == "- [ ] 2024-01-15 10:30 [abc12345] - Fix bug #backend #api"
+
+    def test_format_with_priority_and_tags(self):
+        from dodo.models import Priority
+
+        item = TodoItem(
+            id="abc12345",
+            text="Fix bug",
+            status=Status.PENDING,
+            created_at=datetime(2024, 1, 15, 10, 30),
+            priority=Priority.HIGH,
+            tags=["backend"],
+        )
+        line = format_todo_line(item)
+
+        assert line == "- [ ] 2024-01-15 10:30 [abc12345] - Fix bug !high #backend"
