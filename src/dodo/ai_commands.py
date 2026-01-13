@@ -323,22 +323,24 @@ def ai_run(
     global_: Annotated[bool, typer.Option("-g", "--global", help="Use global")] = False,
     dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo")] = None,
 ):
-    """Execute natural language instructions on todos."""
+    """Execute natural language instructions on todos with tool access."""
     from dodo.ai import DEFAULT_RUN_PROMPT, run_ai_run
     from dodo.cli_context import get_service_context
     from dodo.models import Priority, Status
 
-    cfg, project_id, svc = get_service_context(global_=global_)
+    # Read piped input if available
+    piped = None
+    if not sys.stdin.isatty():
+        piped = sys.stdin.read()
 
-    # Get all todos with their current state
-    items = svc.list()
-    if not items:
-        console.print("[yellow]No todos to modify[/yellow]")
-        return
+    cfg, project_id, svc = get_service_context(global_=global_)
 
     # Check if graph plugin is available
     backend = svc.backend
     has_graph = hasattr(backend, "add_dependency")
+
+    # Get all todos with their current state (can be empty - we can create new ones)
+    items = svc.list()
 
     # Build todo data including dependencies if available
     todos_data = []
@@ -363,14 +365,15 @@ def ai_run(
         )
 
     _print_waiting("Processing instruction")
-    modified, to_delete = run_ai_run(
+    modified, to_delete, to_create = run_ai_run(
         todos=todos_data,
         instruction=instruction,
-        command=cfg.ai_command,
+        command=cfg.ai_run_command,
         system_prompt=prompt,
+        piped_content=piped,
     )
 
-    if not modified and not to_delete:
+    if not modified and not to_delete and not to_create:
         console.print("[green]No changes needed[/green]")
         return
 
@@ -379,7 +382,7 @@ def ai_run(
     items_by_id = {item.id: item for item in items}
 
     # Show diff
-    total_changes = len(modified) + len(to_delete)
+    total_changes = len(modified) + len(to_delete) + len(to_create)
     console.print(f"\n[bold]Proposed changes ({total_changes}):[/bold]")
 
     for mod in modified:
@@ -387,7 +390,6 @@ def ai_run(
         if item_id not in current_by_id:
             continue
         current = current_by_id[item_id]
-        item = items_by_id.get(item_id)
         text_preview = current["text"][:40] + ("..." if len(current["text"]) > 40 else "")
         console.print(f'  [dim]{item_id}[/dim]: "{text_preview}"')
 
@@ -428,6 +430,15 @@ def ai_run(
             item = items_by_id.get(del_id)
             if item:
                 console.print(f'  [red]x[/red] [dim]{del_id}[/dim]: "{item.text}"')
+
+    if to_create:
+        console.print(f"\n[bold]Create ({len(to_create)}):[/bold]")
+        for new_todo in to_create:
+            priority_str = f" !{new_todo['priority']}" if new_todo.get("priority") else ""
+            tags_str = (
+                " " + " ".join(f"#{t}" for t in new_todo["tags"]) if new_todo.get("tags") else ""
+            )
+            console.print(f"  [green]+[/green] {new_todo['text']}{priority_str}{tags_str}")
 
     # Confirm
     if not yes:
@@ -470,6 +481,24 @@ def ai_run(
             applied += 1
         except KeyError as e:
             console.print(f"[red]Failed to delete {del_id}: {e}[/red]")
+
+    for new_todo in to_create:
+        try:
+            priority = None
+            if new_todo.get("priority"):
+                try:
+                    priority = Priority(new_todo["priority"])
+                except ValueError:
+                    pass
+            item = svc.add(
+                text=new_todo["text"],
+                priority=priority,
+                tags=new_todo.get("tags"),
+            )
+            console.print(f"  [green]+[/green] Created: {item.text} [dim]({item.id})[/dim]")
+            applied += 1
+        except Exception as e:
+            console.print(f"[red]Failed to create todo: {e}[/red]")
 
     console.print(f"[green]+[/green] Applied {applied} changes")
 

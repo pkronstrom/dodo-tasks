@@ -58,6 +58,7 @@ class Config:
         "default_format": "table",
         "editor": "",  # Empty = use $EDITOR or vim
         "ai_command": "claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model haiku --tools ''",
+        "ai_run_command": "claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model sonnet --tools 'Read,Glob,Grep,WebSearch,Bash(git log:*,git status:*,git diff:*,git show:*,git blame:*,git branch:*)'",
         "ai_sys_prompt": (
             "Convert user input into a JSON array of todo strings. "
             "NEVER ask questions or add commentary. Output ONLY the JSON array, nothing else. "
