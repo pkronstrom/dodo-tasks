@@ -532,16 +532,9 @@ You can use tools to read files, search code, check git history, and search the 
 
 For existing todos:
 - Modify: Include in "todos" array with id and changed fields only
-- Delete: The delete array should almost ALWAYS be empty. Only populate it when the user
-  EXPLICITLY uses words like "delete", "remove", "clean up duplicates", or "get rid of".
-
-  NEVER DELETE FOR THESE REASONS:
-  - You think items are duplicates (unless user says "delete duplicates")
-  - Items seem old, redundant, or unclear
-  - You want to "fix" or "clean up" the list
-  - Items have "less metadata" than others
-
-  "Fix inconsistencies" means FIX them (modify), not DELETE them.
+- Delete: ONLY when user EXPLICITLY requests deletion (e.g., "delete", "remove", "clean up duplicates")
+  NEVER delete items just because they seem redundant, old, or unclear.
+  When in doubt, keep the item.
 
 For new todos:
 - Create: Add to "create" array with text (required), priority and tags (optional)
@@ -553,8 +546,8 @@ Available fields:
 - tags: Array of tag strings (lowercase, hyphens for multi-word)
 - dependencies: Array of IDs this todo depends on (blockers)
 
-IMPORTANT: Be extremely conservative with deletions. When in doubt, keep items.
-The user's data is precious - never delete unless they explicitly ask.
+IMPORTANT: Be conservative. Only make changes directly requested by the instruction.
+Do not "clean up" or "improve" items unless explicitly asked.
 
 Current todos:
 {todos}
