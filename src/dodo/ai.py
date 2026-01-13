@@ -498,7 +498,9 @@ You can use tools to read files, search code, check git history, and search the 
 
 For existing todos:
 - Modify: Include in "todos" array with id and changed fields only
-- Delete: Add ID to "delete" array
+- Delete: ONLY when user EXPLICITLY requests deletion (e.g., "delete", "remove", "clean up duplicates")
+  NEVER delete items just because they seem redundant, old, or unclear.
+  When in doubt, keep the item.
 
 For new todos:
 - Create: Add to "create" array with text (required), priority and tags (optional)
@@ -509,6 +511,9 @@ Available fields:
 - priority: critical, high, normal, low, someday, or null
 - tags: Array of tag strings (lowercase, hyphens for multi-word)
 - dependencies: Array of IDs this todo depends on (blockers)
+
+IMPORTANT: Be conservative. Only make changes directly requested by the instruction.
+Do not "clean up" or "improve" items unless explicitly asked.
 
 Current todos:
 {todos}
