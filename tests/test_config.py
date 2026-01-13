@@ -84,6 +84,28 @@ class TestConfigPersistence:
             assert isinstance(value, bool)
 
 
+class TestConfigDefaultDir:
+    def test_get_default_dir_returns_path(self):
+        """Config.get_default_dir() should return default config directory."""
+        from dodo.config import get_default_config_dir
+
+        result = get_default_config_dir()
+
+        assert isinstance(result, Path)
+        assert result == Path.home() / ".config" / "dodo"
+
+    def test_get_default_dir_respects_env_var(self, tmp_path, monkeypatch):
+        """get_default_config_dir() should respect DODO_CONFIG_DIR env var."""
+        from dodo.config import get_default_config_dir
+
+        custom_dir = tmp_path / "custom-dodo"
+        monkeypatch.setenv("DODO_CONFIG_DIR", str(custom_dir))
+
+        result = get_default_config_dir()
+
+        assert result == custom_dir
+
+
 class TestConfigCaching:
     def test_config_load_caches_result(self, tmp_path, monkeypatch):
         """Config.load() should return cached instance on repeated calls."""

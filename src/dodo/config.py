@@ -15,6 +15,17 @@ def clear_config_cache() -> None:
     _config_cache = None
 
 
+def get_default_config_dir() -> Path:
+    """Get default config directory, respecting DODO_CONFIG_DIR env var.
+
+    This is the single source of truth for config directory resolution.
+    """
+    config_dir = os.environ.get("DODO_CONFIG_DIR")
+    if config_dir:
+        return Path(config_dir)
+    return Path.home() / ".config" / "dodo"
+
+
 class ConfigMeta:
     """Schema definition - separate from runtime state."""
 
@@ -66,7 +77,7 @@ class Config:
     }
 
     def __init__(self, config_dir: Path | None = None):
-        self._config_dir = config_dir or Path.home() / ".config" / "dodo"
+        self._config_dir = config_dir or get_default_config_dir()
         self._config_file = self._config_dir / "config.json"
         self._data: dict[str, Any] = {}
 
