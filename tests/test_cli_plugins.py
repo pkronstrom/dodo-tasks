@@ -44,3 +44,10 @@ def test_auto_scan_when_registry_missing(tmp_path):
     assert isinstance(registry, dict)
     assert len(registry) > 0, "Should auto-scan and find builtin plugins"
     assert "obsidian" in registry, "Should find obsidian builtin plugin"
+
+
+def test_register_root_commands_is_known_hook():
+    """register_root_commands should be in _KNOWN_HOOKS for proper detection."""
+    from dodo.plugins import _KNOWN_HOOKS
+
+    assert "register_root_commands" in _KNOWN_HOOKS
