@@ -7,6 +7,27 @@ import pytest
 from dodo.models import Status, TodoItem
 
 
+class TestPriority:
+    def test_priority_values(self):
+        from dodo.models import Priority
+
+        assert Priority.CRITICAL.value == "critical"
+        assert Priority.HIGH.value == "high"
+        assert Priority.NORMAL.value == "normal"
+        assert Priority.LOW.value == "low"
+        assert Priority.SOMEDAY.value == "someday"
+
+    def test_priority_sort_order(self):
+        from dodo.models import Priority
+
+        # critical > high > normal > low > someday
+        assert Priority.CRITICAL.sort_order == 5
+        assert Priority.HIGH.sort_order == 4
+        assert Priority.NORMAL.sort_order == 3
+        assert Priority.LOW.sort_order == 2
+        assert Priority.SOMEDAY.sort_order == 1
+
+
 class TestStatus:
     def test_pending_value(self):
         assert Status.PENDING.value == "pending"
