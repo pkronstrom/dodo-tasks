@@ -221,6 +221,18 @@ def add(
     console.print(f"[green]✓[/green] Added to {dest}: {item.text} [dim]({item.id})[/dim]")
 
 
+def _parse_filter(filter_str: str) -> tuple[str, list[str]]:
+    """Parse filter string like 'tag:value1,value2' or 'prio:high'.
+
+    Returns (key, [values]) tuple.
+    """
+    if ":" not in filter_str:
+        raise ValueError(f"Invalid filter format: '{filter_str}'. Use key:value (e.g., tag:work)")
+    key, value = filter_str.split(":", 1)
+    values = [v.strip() for v in value.split(",") if v.strip()]
+    return key.lower(), values
+
+
 @app.command(name="ls")
 @app.command(name="list")
 def list_todos(
@@ -233,10 +245,10 @@ def list_todos(
     sort: Annotated[
         str | None, typer.Option("--sort", "-s", help="Sort by: priority, created, text")
     ] = None,
-    filter_priority: Annotated[
-        str | None, typer.Option("--filter-priority", help="Filter by priority")
+    filter_: Annotated[
+        list[str] | None,
+        typer.Option("--filter", "-F", help="Filter: tag:name, prio:level, status:done"),
     ] = None,
-    filter_tag: Annotated[str | None, typer.Option("--filter-tag", help="Filter by tag")] = None,
 ):
     """List todos."""
     from dodo.formatters import get_formatter
@@ -255,17 +267,35 @@ def list_todos(
     status = None if all_ else (Status.DONE if done else Status.PENDING)
     items = svc.list(status=status)
 
-    # Apply filtering
-    if filter_priority:
-        try:
-            target_priority = Priority(filter_priority.lower())
-            items = [i for i in items if i.priority == target_priority]
-        except ValueError:
-            console.print(f"[red]Error:[/red] Invalid priority '{filter_priority}'")
-            raise typer.Exit(1)
+    # Apply filters
+    if filter_:
+        for f in filter_:
+            try:
+                key, values = _parse_filter(f)
+            except ValueError as e:
+                console.print(f"[red]Error:[/red] {e}")
+                raise typer.Exit(1)
 
-    if filter_tag:
-        items = [i for i in items if i.tags and filter_tag in i.tags]
+            if key in ("prio", "priority"):
+                try:
+                    target_priorities = [Priority(v.lower()) for v in values]
+                    items = [i for i in items if i.priority in target_priorities]
+                except ValueError:
+                    console.print(f"[red]Error:[/red] Invalid priority in '{f}'")
+                    raise typer.Exit(1)
+            elif key in ("tag", "tags"):
+                # Match any of the specified tags
+                items = [i for i in items if i.tags and any(t in i.tags for t in values)]
+            elif key == "status":
+                try:
+                    target_statuses = [Status(v.lower()) for v in values]
+                    items = [i for i in items if i.status in target_statuses]
+                except ValueError:
+                    console.print(f"[red]Error:[/red] Invalid status in '{f}'")
+                    raise typer.Exit(1)
+            else:
+                console.print(f"[red]Error:[/red] Unknown filter key '{key}'")
+                raise typer.Exit(1)
 
     # Apply sorting
     if sort:
