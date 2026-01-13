@@ -6,6 +6,7 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from dodo.plugins.ai import DEFAULT_COMMAND, DEFAULT_MODEL, DEFAULT_RUN_COMMAND
 from dodo.plugins.ai.prompts import (
     DEFAULT_ADD_PROMPT,
     DEFAULT_DEP_PROMPT,
@@ -21,11 +22,6 @@ ai_app = typer.Typer(
 )
 
 console = Console()
-
-# Default config values
-DEFAULT_COMMAND = "claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model {{model}} --tools ''"
-DEFAULT_RUN_COMMAND = "claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model {{model}} --tools 'Read,Glob,Grep,WebSearch,Bash(git log:*,git status:*,git diff:*,git show:*,git blame:*,git branch:*)'"
-DEFAULT_MODEL = "sonnet"
 
 
 def _get_ai_config(cfg):
@@ -69,7 +65,7 @@ def ai_add(
         console.print("[red]Error:[/red] Provide text or pipe input")
         raise typer.Exit(1)
 
-    cfg, project_id, svc = get_service_context(global_=global_)
+    cfg, project_id, svc = get_service_context(global_=global_, project=dodo)
     ai_config = _get_ai_config(cfg)
 
     # Get existing tags for context
@@ -134,7 +130,7 @@ def ai_prioritize(
     from dodo.models import Priority, Status
     from dodo.plugins.ai.engine import run_ai_prioritize
 
-    cfg, project_id, svc = get_service_context(global_=global_)
+    cfg, project_id, svc = get_service_context(global_=global_, project=dodo)
     ai_config = _get_ai_config(cfg)
 
     # Get pending todos
@@ -212,7 +208,7 @@ def ai_reword(
     from dodo.models import Status
     from dodo.plugins.ai.engine import run_ai_reword
 
-    cfg, project_id, svc = get_service_context(global_=global_)
+    cfg, project_id, svc = get_service_context(global_=global_, project=dodo)
     ai_config = _get_ai_config(cfg)
 
     # Get pending todos
@@ -278,7 +274,7 @@ def ai_tag(
     from dodo.models import Status
     from dodo.plugins.ai.engine import run_ai_tag
 
-    cfg, project_id, svc = get_service_context(global_=global_)
+    cfg, project_id, svc = get_service_context(global_=global_, project=dodo)
     ai_config = _get_ai_config(cfg)
 
     # Get pending todos
@@ -366,7 +362,7 @@ def ai_run(
     if not sys.stdin.isatty():
         piped = sys.stdin.read()
 
-    cfg, project_id, svc = get_service_context(global_=global_)
+    cfg, project_id, svc = get_service_context(global_=global_, project=dodo)
     ai_config = _get_ai_config(cfg)
 
     # Check if graph plugin is available
@@ -565,7 +561,7 @@ def ai_dep(
     from dodo.plugins import call_hook
     from dodo.plugins.ai.engine import run_ai_dep
 
-    cfg, project_id, svc = get_service_context(global_=global_)
+    cfg, project_id, svc = get_service_context(global_=global_, project=dodo)
     ai_config = _get_ai_config(cfg)
     backend = svc.backend
 

@@ -1,0 +1,5 @@
+{
+  "name": "ai",
+  "version": "1.0.0",
+  "description": "AI-assisted todo management (requires claude CLI)"
+}

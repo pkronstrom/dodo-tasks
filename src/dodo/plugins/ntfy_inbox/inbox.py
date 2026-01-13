@@ -17,13 +17,13 @@ def inbox() -> None:
 
     cfg = Config.load()
 
-    topic = cfg.get_plugin_config("ntfy_inbox", "topic", "")
+    topic = cfg.get_plugin_config("ntfy-inbox", "topic", "")
     if not topic:
-        console.print("[red]Error:[/red] ntfy_inbox topic not configured")
+        console.print("[red]Error:[/red] ntfy-inbox topic not configured")
         console.print("[dim]Set it with: dodo config[/dim]")
         raise SystemExit(1)
 
-    server = cfg.get_plugin_config("ntfy_inbox", "server", "https://ntfy.sh").rstrip("/")
+    server = cfg.get_plugin_config("ntfy-inbox", "server", "https://ntfy.sh").rstrip("/")
 
     console.print(f"[dim]Listening for todos on {server}/{topic}...[/dim]")
     console.print("[dim]Send messages to add todos. Use 'ai:' prefix for AI processing.[/dim]")
@@ -105,14 +105,17 @@ def _process_message(msg: dict) -> None:
         if use_ai:
             # Try to use AI plugin if enabled
             if "ai" in cfg.enabled_plugins:
-                from dodo.plugins.ai.engine import run_ai
-                from dodo.plugins.ai.prompts import DEFAULT_SYS_PROMPT
+                try:
+                    from dodo.plugins.ai import DEFAULT_COMMAND
+                    from dodo.plugins.ai.engine import run_ai
+                    from dodo.plugins.ai.prompts import DEFAULT_SYS_PROMPT
+                except ModuleNotFoundError:
+                    console.print("[yellow]AI plugin not installed, adding as-is[/yellow]")
+                    item = svc.add(text)
+                    console.print(f"[green]Added:[/green] {item.text}{proj_info}")
+                    return
 
-                ai_command = cfg.get_plugin_config(
-                    "ai",
-                    "command",
-                    "claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model {{model}} --tools ''",
-                )
+                ai_command = cfg.get_plugin_config("ai", "command", DEFAULT_COMMAND)
                 todo_texts = run_ai(
                     user_input=text,
                     piped_content=None,

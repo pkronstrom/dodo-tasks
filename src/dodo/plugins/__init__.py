@@ -385,10 +385,10 @@ def get_all_plugins() -> list[PluginInfo]:
                 register_config = getattr(module, "register_config", None)
                 if register_config:
                     for cfg_var in register_config():
-                        env_name = f"DODO_{cfg_var.name.upper()}"
+                        env_name = f"DODO_{name.upper().replace('-', '_')}_{cfg_var.name.upper()}"
                         env_val = os.environ.get(env_name)
-                        # Also check config file
-                        config_val = getattr(config, cfg_var.name, None)
+                        # Check nested plugin config (plugins.<name>.<key>)
+                        config_val = config.get_plugin_config(name, cfg_var.name)
                         is_set = bool(env_val or config_val)
                         envs.append(
                             PluginEnvVar(

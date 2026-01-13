@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from dodo.ai import _escape_single_quotes, build_command, run_ai
+from dodo.plugins.ai.engine import _escape_single_quotes, build_command, run_ai
 
 
 class TestEscapeSingleQuotes:
@@ -64,7 +64,7 @@ class TestBuildCommand:
 
 
 class TestRunAi:
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     def test_returns_list_from_json(self, mock_run: MagicMock):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -80,7 +80,7 @@ class TestRunAi:
 
         assert result == ["Todo one", "Todo two"]
 
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     def test_includes_piped_content_in_prompt(self, mock_run: MagicMock):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -101,7 +101,7 @@ class TestRunAi:
         cmd_str = " ".join(cmd)
         assert "piped" in cmd_str.lower() or "some piped content" in cmd_str
 
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     def test_handles_single_item(self, mock_run: MagicMock):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -117,7 +117,7 @@ class TestRunAi:
 
         assert result == ["Single todo"]
 
-    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.plugins.ai.engine.subprocess.run")
     def test_error_returns_empty(self, mock_run: MagicMock):
         mock_run.return_value = MagicMock(
             returncode=1,
