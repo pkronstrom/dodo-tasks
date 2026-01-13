@@ -59,17 +59,10 @@ def _load_json_file(path) -> dict:
 
 
 def _get_config_dir():
-    """Get config directory path, respecting DODO_CONFIG_DIR env var.
+    """Get config directory path using shared resolution logic."""
+    from dodo.config import get_default_config_dir
 
-    Optimized to avoid loading full Config at import time.
-    """
-    import os
-    from pathlib import Path
-
-    config_dir = os.environ.get("DODO_CONFIG_DIR")
-    if config_dir:
-        return Path(config_dir)
-    return Path.home() / ".config" / "dodo"
+    return get_default_config_dir()
 
 
 def _get_plugin_for_command(argv: list[str]) -> tuple[str, bool] | None:
