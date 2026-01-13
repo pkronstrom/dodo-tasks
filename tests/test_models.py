@@ -71,3 +71,52 @@ class TestTodoItem:
         )
         assert item.project == "myapp_d1204e"
         assert item.completed_at is not None
+
+
+class TestTodoItemPriorityTags:
+    def test_todoitem_with_priority(self):
+        from dodo.models import Priority
+
+        item = TodoItem(
+            id="abc12345",
+            text="Test",
+            status=Status.PENDING,
+            created_at=datetime.now(),
+            priority=Priority.HIGH,
+        )
+        assert item.priority == Priority.HIGH
+
+    def test_todoitem_with_tags(self):
+        item = TodoItem(
+            id="abc12345",
+            text="Test",
+            status=Status.PENDING,
+            created_at=datetime.now(),
+            tags=["backend", "urgent"],
+        )
+        assert item.tags == ["backend", "urgent"]
+
+    def test_todoitem_defaults_none(self):
+        item = TodoItem(
+            id="abc12345",
+            text="Test",
+            status=Status.PENDING,
+            created_at=datetime.now(),
+        )
+        assert item.priority is None
+        assert item.tags is None
+
+    def test_todoitem_to_dict_includes_priority_tags(self):
+        from dodo.models import Priority
+
+        item = TodoItem(
+            id="abc12345",
+            text="Test",
+            status=Status.PENDING,
+            created_at=datetime(2024, 1, 15, 10, 30),
+            priority=Priority.HIGH,
+            tags=["api"],
+        )
+        d = item.to_dict()
+        assert d["priority"] == "high"
+        assert d["tags"] == ["api"]
