@@ -33,13 +33,11 @@ def register_config() -> list[ConfigVar]:
     """Declare config variables for this plugin."""
     return [
         ConfigVar(
-            "obsidian_api_url",
+            "api_url",
             "https://localhost:27124",
             label="API URL",
             description="REST API endpoint",
         ),
-        ConfigVar("obsidian_api_key", "", label="API Key", description="authentication key"),
-        ConfigVar(
-            "obsidian_vault_path", "dodo/todos.md", label="Vault path", description="path in vault"
-        ),
+        ConfigVar("api_key", "", label="API Key", description="authentication key"),
+        ConfigVar("vault_path", "dodo/todos.md", label="Vault path", description="path in vault"),
     ]

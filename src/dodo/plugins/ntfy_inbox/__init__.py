@@ -35,8 +35,8 @@ class ConfigVar:
 def register_config() -> list[ConfigVar]:
     """Declare config variables for this plugin."""
     return [
-        ConfigVar("ntfy_topic", "", label="Topic", description="your secret topic"),
-        ConfigVar("ntfy_server", "https://ntfy.sh", label="Server", description="ntfy server URL"),
+        ConfigVar("topic", "", label="Topic", description="your secret topic"),
+        ConfigVar("server", "https://ntfy.sh", label="Server", description="ntfy server URL"),
     ]
 
 
