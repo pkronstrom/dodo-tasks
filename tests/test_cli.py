@@ -89,6 +89,30 @@ class TestCliList:
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "First todo" in result.stdout
 
+    def test_list_sort_by_priority(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "Low priority", "--priority", "low"])
+            runner.invoke(app, ["add", "High priority", "--priority", "high"])
+            result = runner.invoke(app, ["list", "--sort", "priority"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        # High priority should appear before low priority
+        high_pos = result.stdout.find("High priority")
+        low_pos = result.stdout.find("Low priority")
+        assert high_pos < low_pos, f"Expected high before low: {result.stdout}"
+
+    def test_list_sort_by_created(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "First"])
+            runner.invoke(app, ["add", "Second"])
+            result = runner.invoke(app, ["list", "--sort", "created"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        # First should appear before Second (oldest first)
+        first_pos = result.stdout.find("First")
+        second_pos = result.stdout.find("Second")
+        assert first_pos < second_pos, f"Expected first before second: {result.stdout}"
+
 
 class TestCliDone:
     def test_done_marks_complete(self, cli_env):

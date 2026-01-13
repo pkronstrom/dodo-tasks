@@ -60,8 +60,13 @@ class TodoService:
         self._backend_name: str = ""  # Set by _create_backend
         self._backend = self._create_backend()
 
-    def add(self, text: str) -> TodoItem:
-        return self._backend.add(text, project=self._project_id)
+    def add(
+        self,
+        text: str,
+        priority: Priority | None = None,
+        tags: list[str] | None = None,
+    ) -> TodoItem:
+        return self._backend.add(text, project=self._project_id, priority=priority, tags=tags)
 
     def list(self, status: Status | None = None) -> list[TodoItem]:
         return self._backend.list(project=self._project_id, status=status)
@@ -83,6 +88,14 @@ class TodoService:
     def update_text(self, id: str, text: str) -> TodoItem:
         """Update todo text."""
         return self._backend.update_text(id, text)
+
+    def update_priority(self, id: str, priority: Priority | None) -> TodoItem:
+        """Update todo priority."""
+        return self._backend.update_priority(id, priority)
+
+    def update_tags(self, id: str, tags: list[str] | None) -> TodoItem:
+        """Update todo tags."""
+        return self._backend.update_tags(id, tags)
 
     def delete(self, id: str) -> None:
         self._backend.delete(id)
