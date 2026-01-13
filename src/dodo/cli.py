@@ -160,16 +160,11 @@ def add(
     global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
 ):
     """Add a todo item."""
-    cfg = _get_config()
+    from dodo.cli_context import get_service_context
 
-    if global_:
-        target = "global"
-        project_id = None
-    else:
-        project_id = _detect_project(worktree_shared=cfg.worktree_shared)
-        target = project_id or "global"
+    cfg, project_id, svc = get_service_context(global_=global_)
+    target = project_id or "global"
 
-    svc = _get_service(cfg, project_id)
     item = svc.add(text)
 
     _save_last_action("add", item.id, target)
