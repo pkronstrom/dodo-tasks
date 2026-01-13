@@ -36,6 +36,7 @@ class TestFormatterRegistry:
         assert "table" in FORMATTERS
         assert "jsonl" in FORMATTERS
         assert "tsv" in FORMATTERS
+        assert "csv" in FORMATTERS
 
     def test_get_formatter_table(self):
         formatter = get_formatter("table")
@@ -145,17 +146,78 @@ class TestTsvFormatter:
     def test_format_empty(self):
         formatter = TsvFormatter()
         output = formatter.format([])
-        assert output == ""
+        # Still outputs header even with no items
+        assert output == "id\tstatus\ttext"
 
     def test_format_single_item(self, sample_items):
         formatter = TsvFormatter()
         output = formatter.format([sample_items[0]])
-        assert output == "abc123\tdone\tBuy milk"
+        lines = output.strip().split("\n")
+        assert lines[0] == "id\tstatus\ttext"
+        assert lines[1] == "abc123\tdone\tBuy milk"
 
     def test_format_multiple_items(self, sample_items):
         formatter = TsvFormatter()
         output = formatter.format(sample_items)
         lines = output.strip().split("\n")
-        assert len(lines) == 2
-        assert lines[0] == "abc123\tdone\tBuy milk"
-        assert lines[1] == "def456\tpending\tCall dentist"
+        assert len(lines) == 3  # header + 2 items
+        assert lines[0] == "id\tstatus\ttext"
+        assert lines[1] == "abc123\tdone\tBuy milk"
+        assert lines[2] == "def456\tpending\tCall dentist"
+
+
+class TestCsvFormatter:
+    def test_format_empty(self):
+        from dodo.formatters.csv import CsvFormatter
+
+        formatter = CsvFormatter()
+        output = formatter.format([])
+        assert output == "id,status,text"
+
+    def test_format_single_item(self, sample_items):
+        from dodo.formatters.csv import CsvFormatter
+
+        formatter = CsvFormatter()
+        output = formatter.format([sample_items[0]])
+        lines = output.strip().split("\n")
+        assert lines[0] == "id,status,text"
+        assert lines[1] == "abc123,done,Buy milk"
+
+    def test_format_multiple_items(self, sample_items):
+        from dodo.formatters.csv import CsvFormatter
+
+        formatter = CsvFormatter()
+        output = formatter.format(sample_items)
+        lines = output.strip().split("\n")
+        assert len(lines) == 3  # header + 2 items
+        assert lines[0] == "id,status,text"
+        assert lines[1] == "abc123,done,Buy milk"
+        assert lines[2] == "def456,pending,Call dentist"
+
+    def test_format_escapes_commas(self):
+        from dodo.formatters.csv import CsvFormatter
+
+        item = TodoItem(
+            id="test1",
+            text="Buy milk, eggs, bread",
+            status=Status.PENDING,
+            created_at=datetime.now(),
+        )
+        formatter = CsvFormatter()
+        output = formatter.format([item])
+        lines = output.strip().split("\n")
+        assert lines[1] == 'test1,pending,"Buy milk, eggs, bread"'
+
+    def test_format_escapes_quotes(self):
+        from dodo.formatters.csv import CsvFormatter
+
+        item = TodoItem(
+            id="test2",
+            text='Say "hello"',
+            status=Status.PENDING,
+            created_at=datetime.now(),
+        )
+        formatter = CsvFormatter()
+        output = formatter.format([item])
+        lines = output.strip().split("\n")
+        assert lines[1] == 'test2,pending,"Say ""hello"""'
