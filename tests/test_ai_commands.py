@@ -117,12 +117,18 @@ class TestAISync:
 
 class TestAIRun:
     @patch("dodo.ai.subprocess.run")
-    def test_ai_run_no_todos(self, mock_run: MagicMock, cli_env):
-        """AI run with no todos shows message."""
+    def test_ai_run_no_todos_no_changes(self, mock_run: MagicMock, cli_env):
+        """AI run with no todos and no AI output shows no changes."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"todos": [], "delete": [], "create": []}',
+            stderr="",
+        )
+
         result = runner.invoke(app, ["ai", "run", "mark all as done"])
 
         assert result.exit_code == 0, f"Failed: {result.output}"
-        assert "No todos to modify" in result.stdout
+        assert "No changes needed" in result.stdout
 
     @patch("dodo.ai.subprocess.run")
     def test_ai_run_with_instruction(self, mock_run: MagicMock, cli_env):
@@ -135,7 +141,7 @@ class TestAIRun:
         # Mock AI response with no changes
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout='{"todos": [], "delete": []}',
+            stdout='{"todos": [], "delete": [], "create": []}',
             stderr="",
         )
 
@@ -163,7 +169,7 @@ class TestAIRun:
         # Mock AI response with status change
         mock_run.return_value = MagicMock(
             returncode=0,
-            stdout=f'{{"todos": [{{"id": "{todo_id}", "status": "done"}}], "delete": []}}',
+            stdout=f'{{"todos": [{{"id": "{todo_id}", "status": "done"}}], "delete": [], "create": []}}',
             stderr="",
         )
 
@@ -277,3 +283,54 @@ class TestAIRunSchema:
         assert "pending" in status_enum
         assert "done" in status_enum
         assert "cancelled" not in status_enum, "cancelled is not a valid Status enum value"
+
+    def test_run_schema_includes_create_array(self):
+        """RUN_SCHEMA should include create array for new todos."""
+        import json
+
+        from dodo.ai import RUN_SCHEMA
+
+        schema = json.loads(RUN_SCHEMA)
+        assert "create" in schema["properties"]
+        assert "create" in schema["required"]
+        create_items = schema["properties"]["create"]["items"]["properties"]
+        assert "text" in create_items
+        assert "priority" in create_items
+        assert "tags" in create_items
+
+
+class TestAIRunCreate:
+    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.project.detect_project", return_value=None)
+    def test_ai_run_creates_new_todos(self, mock_project: MagicMock, mock_run: MagicMock, cli_env):
+        """AI run can create new todos."""
+        # Mock AI response with create
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"todos": [], "delete": [], "create": [{"text": "New todo from AI", "priority": "high", "tags": ["ai-generated"]}]}',
+            stderr="",
+        )
+
+        result = runner.invoke(app, ["ai", "run", "create a test todo", "-y"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Created" in result.stdout
+        assert "New todo from AI" in result.stdout
+
+    @patch("dodo.ai.subprocess.run")
+    @patch("dodo.project.detect_project", return_value=None)
+    def test_ai_run_shows_create_preview(
+        self, mock_project: MagicMock, mock_run: MagicMock, cli_env
+    ):
+        """AI run shows preview of todos to create."""
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='{"todos": [], "delete": [], "create": [{"text": "Preview todo", "priority": null, "tags": []}]}',
+            stderr="",
+        )
+
+        result = runner.invoke(app, ["ai", "run", "create a todo"], input="n\n")
+
+        # Exit code 1 is expected when user cancels
+        assert "Create (1)" in result.stdout
+        assert "Preview todo" in result.stdout
