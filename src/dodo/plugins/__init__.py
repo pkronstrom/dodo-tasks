@@ -6,6 +6,7 @@ with backends, commands, and formatters.
 
 from __future__ import annotations
 
+import importlib
 import importlib.util
 import json
 import os
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
 __all__ = [
     # Public API
     "apply_hooks",
+    "call_hook",
     "clear_plugin_cache",
     "get_all_plugins",
     "load_registry",
@@ -50,6 +52,7 @@ _KNOWN_HOOKS = [
     "register_root_commands",  # Added: for top-level CLI commands
     "register_config",
     "register_backend",
+    "register_hooks",  # For cross-plugin communication
     "extend_backend",
     "extend_formatter",
 ]
@@ -282,6 +285,51 @@ def apply_hooks(hook: str, target: T, config: Config) -> T:
             if result is not None:
                 target = result
     return target
+
+
+def call_hook(hook_name: str, config: Config, *args, **kwargs):
+    """Call a named hook from any enabled plugin that provides it.
+
+    Unlike apply_hooks which chains transformations, this calls a specific
+    hook function and returns its result directly. Used for cross-plugin
+    communication (e.g., AI plugin calling graph plugin's add_dependencies).
+
+    Args:
+        hook_name: The hook name to call (e.g., "add_dependencies")
+        config: The Config instance
+        *args, **kwargs: Arguments to pass to the hook function
+
+    Returns:
+        The hook function's return value, or None if no plugin provides it.
+    """
+    registry = load_registry(config.config_dir)
+    enabled = config.enabled_plugins
+
+    for name, info in registry.items():
+        if "register_hooks" not in info.get("hooks", []):
+            continue
+        if name not in enabled:
+            continue
+
+        path = None if info.get("builtin") else info.get("path")
+        plugin = import_plugin(name, path)
+
+        register_hooks_fn = getattr(plugin, "register_hooks", None)
+        if not register_hooks_fn:
+            continue
+
+        hooks = register_hooks_fn()
+        if hook_name not in hooks:
+            continue
+
+        # Import and call the hook function
+        hook_ref = hooks[hook_name]
+        module_path, func_name = hook_ref.rsplit(":", 1)
+        module = importlib.import_module(module_path)
+        func = getattr(module, func_name)
+        return func(*args, **kwargs)
+
+    return None
 
 
 @dataclass
