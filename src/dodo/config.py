@@ -38,13 +38,6 @@ class ConfigMeta:
         "default_backend": "Backend (markdown|sqlite|obsidian)",
         "default_format": "Output format (table|jsonl|tsv)",
         "editor": "Editor command (empty = use $EDITOR)",
-        "ai_command": "AI CLI command template",
-        "ai_model": "AI model for basic commands (haiku|sonnet|opus)",
-        "ai_run_model": "AI model for ai run command (haiku|sonnet|opus)",
-        "ai_sys_prompt": "AI system prompt",
-        "obsidian_api_url": "Obsidian REST API URL",
-        "obsidian_api_key": "Obsidian API key",
-        "obsidian_vault_path": "Path within Obsidian vault",
     }
 
 
@@ -59,29 +52,8 @@ class Config:
         "default_backend": "sqlite",
         "default_format": "table",
         "editor": "",  # Empty = use $EDITOR or vim
-        "ai_command": "claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model {{model}} --tools ''",
-        "ai_model": "sonnet",  # Model for ai add/prio/tag/reword/dep
-        "ai_run_command": "claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model {{model}} --tools 'Read,Glob,Grep,WebSearch,Bash(git log:*,git status:*,git diff:*,git show:*,git blame:*,git branch:*)'",
-        "ai_run_model": "sonnet",  # Model for ai run (needs more capability)
-        "ai_sys_prompt": (
-            "Convert user input into a JSON array of todo strings. "
-            "NEVER ask questions or add commentary. Output ONLY the JSON array, nothing else. "
-            'If input is one task, return ["task"]. If multiple, split into separate items. '
-            "Keep each item under 100 chars."
-        ),
-        "ai_add_prompt": "",  # Empty = use default from ai.py
-        "ai_prioritize_prompt": "",
-        "ai_tag_prompt": "",
-        "ai_reword_prompt": "",
-        "ai_timeout": 60,  # AI command timeout in seconds
-        "obsidian_api_url": "https://localhost:27124",
-        "obsidian_api_key": "",
-        "obsidian_vault_path": "dodo/todos.md",
         # Plugin system
         "enabled_plugins": "",  # Comma-separated list of enabled plugins
-        # ntfy-inbox plugin
-        "ntfy_topic": "",  # User's secret ntfy topic
-        "ntfy_server": "https://ntfy.sh",
     }
 
     def __init__(self, config_dir: Path | None = None):
