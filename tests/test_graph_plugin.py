@@ -1,5 +1,168 @@
 """Tests for graph plugin."""
 
+import pytest
+
+
+@pytest.fixture
+def graph_wrapper(tmp_path):
+    """Create a GraphWrapper with SQLite backend for testing."""
+    from dodo.backends.sqlite import SqliteBackend
+    from dodo.plugins.graph.wrapper import GraphWrapper
+
+    db_path = tmp_path / "test.db"
+    backend = SqliteBackend(db_path)
+    return GraphWrapper(backend)
+
+
+class TestGraphWrapperDependencies:
+    """Tests for dependency management in GraphWrapper."""
+
+    def test_add_dependency(self, graph_wrapper):
+        """add_dependency creates a dependency relationship."""
+        t1 = graph_wrapper.add("Task 1")
+        t2 = graph_wrapper.add("Task 2")
+
+        graph_wrapper.add_dependency(t1.id, t2.id)
+
+        blockers = graph_wrapper.get_blockers(t2.id)
+        assert t1.id in blockers
+
+    def test_add_dependency_idempotent(self, graph_wrapper):
+        """Adding same dependency twice doesn't create duplicates."""
+        t1 = graph_wrapper.add("Task 1")
+        t2 = graph_wrapper.add("Task 2")
+
+        graph_wrapper.add_dependency(t1.id, t2.id)
+        graph_wrapper.add_dependency(t1.id, t2.id)  # Second time
+
+        blockers = graph_wrapper.get_blockers(t2.id)
+        assert blockers.count(t1.id) == 1
+
+    def test_remove_dependency(self, graph_wrapper):
+        """remove_dependency removes a dependency relationship."""
+        t1 = graph_wrapper.add("Task 1")
+        t2 = graph_wrapper.add("Task 2")
+
+        graph_wrapper.add_dependency(t1.id, t2.id)
+        assert t1.id in graph_wrapper.get_blockers(t2.id)
+
+        graph_wrapper.remove_dependency(t1.id, t2.id)
+        assert t1.id not in graph_wrapper.get_blockers(t2.id)
+
+    def test_get_blockers(self, graph_wrapper):
+        """get_blockers returns IDs of todos blocking this one."""
+        t1 = graph_wrapper.add("Blocker 1")
+        t2 = graph_wrapper.add("Blocker 2")
+        t3 = graph_wrapper.add("Blocked task")
+
+        graph_wrapper.add_dependency(t1.id, t3.id)
+        graph_wrapper.add_dependency(t2.id, t3.id)
+
+        blockers = graph_wrapper.get_blockers(t3.id)
+        assert t1.id in blockers
+        assert t2.id in blockers
+        assert len(blockers) == 2
+
+    def test_get_blocked(self, graph_wrapper):
+        """get_blocked returns IDs of todos blocked by this one."""
+        t1 = graph_wrapper.add("Blocker")
+        t2 = graph_wrapper.add("Blocked 1")
+        t3 = graph_wrapper.add("Blocked 2")
+
+        graph_wrapper.add_dependency(t1.id, t2.id)
+        graph_wrapper.add_dependency(t1.id, t3.id)
+
+        blocked = graph_wrapper.get_blocked(t1.id)
+        assert t2.id in blocked
+        assert t3.id in blocked
+        assert len(blocked) == 2
+
+    def test_list_all_dependencies(self, graph_wrapper):
+        """list_all_dependencies returns all dependency tuples."""
+        t1 = graph_wrapper.add("Task 1")
+        t2 = graph_wrapper.add("Task 2")
+        t3 = graph_wrapper.add("Task 3")
+
+        graph_wrapper.add_dependency(t1.id, t2.id)
+        graph_wrapper.add_dependency(t2.id, t3.id)
+
+        deps = graph_wrapper.list_all_dependencies()
+        assert (t1.id, t2.id) in deps
+        assert (t2.id, t3.id) in deps
+        assert len(deps) == 2
+
+    def test_delete_cascades_dependencies(self, graph_wrapper):
+        """Deleting a todo removes its dependencies."""
+        t1 = graph_wrapper.add("Blocker")
+        t2 = graph_wrapper.add("Blocked")
+        t3 = graph_wrapper.add("Also blocked")
+
+        graph_wrapper.add_dependency(t1.id, t2.id)
+        graph_wrapper.add_dependency(t1.id, t3.id)
+
+        # Delete the blocker
+        graph_wrapper.delete(t1.id)
+
+        # Dependencies should be cleaned up
+        assert graph_wrapper.get_blockers(t2.id) == []
+        assert graph_wrapper.get_blockers(t3.id) == []
+        assert graph_wrapper.list_all_dependencies() == []
+
+
+class TestGraphWrapperQueries:
+    """Tests for dependency-aware queries."""
+
+    def test_get_ready_returns_unblocked_todos(self, graph_wrapper):
+        """get_ready returns todos with no pending blockers."""
+
+        t1 = graph_wrapper.add("Ready task")
+        t2 = graph_wrapper.add("Blocker")
+        t3 = graph_wrapper.add("Blocked task")
+
+        graph_wrapper.add_dependency(t2.id, t3.id)
+
+        ready = graph_wrapper.get_ready()
+        ready_ids = [t.id for t in ready]
+
+        assert t1.id in ready_ids  # No blockers
+        assert t2.id in ready_ids  # Is a blocker but not blocked
+        assert t3.id not in ready_ids  # Blocked by t2
+
+    def test_get_ready_includes_todo_when_blocker_done(self, graph_wrapper):
+        """get_ready includes todo when its blocker is completed."""
+        from dodo.models import Status
+
+        t1 = graph_wrapper.add("Blocker")
+        t2 = graph_wrapper.add("Blocked task")
+
+        graph_wrapper.add_dependency(t1.id, t2.id)
+
+        # Initially blocked
+        ready = graph_wrapper.get_ready()
+        assert t2.id not in [t.id for t in ready]
+
+        # Complete the blocker
+        graph_wrapper.update(t1.id, Status.DONE)
+
+        # Now unblocked
+        ready = graph_wrapper.get_ready()
+        assert t2.id in [t.id for t in ready]
+
+    def test_get_blocked_todos(self, graph_wrapper):
+        """get_blocked_todos returns todos with pending blockers."""
+        t1 = graph_wrapper.add("Blocker")
+        t2 = graph_wrapper.add("Blocked")
+        t3 = graph_wrapper.add("Free")
+
+        graph_wrapper.add_dependency(t1.id, t2.id)
+
+        blocked = graph_wrapper.get_blocked_todos()
+        blocked_ids = [t.id for t in blocked]
+
+        assert t2.id in blocked_ids
+        assert t1.id not in blocked_ids
+        assert t3.id not in blocked_ids
+
 
 def test_list_attaches_blocked_by(tmp_path):
     """GraphWrapper.list() should attach blocked_by to items."""
