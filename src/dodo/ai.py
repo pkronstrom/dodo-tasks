@@ -122,7 +122,7 @@ RUN_SCHEMA = json.dumps(
                     "properties": {
                         "id": {"type": "string"},
                         "text": {"type": "string"},
-                        "status": {"enum": ["pending", "done", "cancelled"]},
+                        "status": {"enum": ["pending", "done"]},
                         "priority": {
                             "type": ["string", "null"],
                             "enum": ["critical", "high", "normal", "low", "someday", None],
@@ -511,6 +511,11 @@ def _extract_ai_run_result(output: str) -> tuple[list[dict], list[str]]:
         # Handle structured_output wrapper
         if isinstance(data, dict) and "structured_output" in data:
             data = data["structured_output"]
+
+        # Type guard: ensure we have a dict before accessing fields
+        if not isinstance(data, dict):
+            print(f"Unexpected output type: {type(data).__name__}", file=sys.stderr)
+            return ([], [])
 
         todos = data.get("todos", [])
         delete = data.get("delete", [])
