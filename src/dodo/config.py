@@ -60,7 +60,7 @@ class Config:
         "default_format": "table",
         "editor": "",  # Empty = use $EDITOR or vim
         "ai_command": "claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model {{model}} --tools ''",
-        "ai_model": "haiku",  # Model for ai add/prio/tag/reword/dep
+        "ai_model": "sonnet",  # Model for ai add/prio/tag/reword/dep
         "ai_run_command": "claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model {{model}} --tools 'Read,Glob,Grep,WebSearch,Bash(git log:*,git status:*,git diff:*,git show:*,git blame:*,git branch:*)'",
         "ai_run_model": "sonnet",  # Model for ai run (needs more capability)
         "ai_sys_prompt": (
