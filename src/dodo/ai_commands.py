@@ -336,6 +336,10 @@ def ai_run(
         console.print("[yellow]No todos to modify[/yellow]")
         return
 
+    # Check if graph plugin is available
+    backend = svc.backend
+    has_graph = hasattr(backend, "add_dependency")
+
     # Build todo data including dependencies if available
     todos_data = []
     for item in items:
@@ -347,11 +351,16 @@ def ai_run(
             "tags": item.tags or [],
         }
         # Include dependencies if available (graph plugin)
-        if hasattr(item, "blocked_by"):
+        if has_graph and hasattr(item, "blocked_by"):
             data["dependencies"] = item.blocked_by or []
         todos_data.append(data)
 
     prompt = _get_prompt(cfg, "ai_run_prompt", DEFAULT_RUN_PROMPT)
+    # Remove dependency instructions if graph plugin not available
+    if not has_graph:
+        prompt = prompt.replace(
+            "- dependencies: Array of IDs this todo depends on (blockers)\n", ""
+        )
 
     _print_waiting("Processing instruction")
     modified, to_delete = run_ai_run(
@@ -429,7 +438,6 @@ def ai_run(
 
     # Apply changes
     applied = 0
-    backend = svc.backend
 
     for mod in modified:
         item_id = mod["id"]
@@ -511,11 +519,14 @@ def ai_dep(
         console.print("[green]No dependencies detected[/green]")
         return
 
-    # Filter out invalid IDs and existing dependencies
+    # Filter out invalid IDs, self-dependencies, and existing dependencies
     valid_suggestions = []
     for sug in suggestions:
         blocked_id = sug.get("blocked_id")
         blocker_id = sug.get("blocker_id")
+        # Skip self-dependencies (a todo cannot block itself)
+        if blocked_id == blocker_id:
+            continue
         if blocked_id in items_by_id and blocker_id in items_by_id:
             # Check if dependency already exists
             existing = backend.get_blockers(blocked_id) if hasattr(backend, "get_blockers") else []
