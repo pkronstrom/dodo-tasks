@@ -399,43 +399,6 @@ def undo():
 
 
 @app.command()
-def ai(
-    text: Annotated[str | None, typer.Argument(help="Input text")] = None,
-):
-    """AI-assisted todo creation."""
-    piped = None
-    if not sys.stdin.isatty():
-        piped = sys.stdin.read()
-
-    if not text and not piped:
-        console.print("[red]Error:[/red] Provide text or pipe input")
-        raise typer.Exit(1)
-
-    cfg = _get_config()
-    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
-    svc = _get_service(cfg, project_id)
-
-    from dodo.ai import run_ai
-
-    todo_texts = run_ai(
-        user_input=text or "",
-        piped_content=piped,
-        command=cfg.ai_command,
-        system_prompt=cfg.ai_sys_prompt,
-    )
-
-    if not todo_texts:
-        console.print("[red]Error:[/red] AI returned no todos")
-        raise typer.Exit(1)
-
-    target = project_id or "global"
-    for todo_text in todo_texts:
-        item = svc.add(todo_text)
-        dest = f"[cyan]{target}[/cyan]" if target != "global" else "[dim]global[/dim]"
-        console.print(f"[green]✓[/green] Added to {dest}: {item.text} [dim]({item.id})[/dim]")
-
-
-@app.command()
 def new(
     name: Annotated[str | None, typer.Argument(help="Name for the dodo")] = None,
     local: Annotated[bool, typer.Option("--local", help="Create in .dodo/ locally")] = False,
@@ -708,17 +671,6 @@ def _register_plugins_subapp() -> None:
 
 
 _register_plugins_subapp()
-
-
-# Register AI commands subapp
-def _register_ai_subapp() -> None:
-    """Register the AI commands subapp lazily."""
-    from dodo.ai_commands import ai_app
-
-    app.add_typer(ai_app, name="ai")
-
-
-_register_ai_subapp()
 
 
 # Helpers
