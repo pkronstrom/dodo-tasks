@@ -680,6 +680,17 @@ def _register_plugins_subapp() -> None:
 _register_plugins_subapp()
 
 
+# Register AI commands subapp
+def _register_ai_subapp() -> None:
+    """Register the AI commands subapp lazily."""
+    from dodo.ai_commands import ai_app
+
+    app.add_typer(ai_app, name="ai")
+
+
+_register_ai_subapp()
+
+
 # Helpers
 
 
