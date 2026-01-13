@@ -184,3 +184,28 @@ class GraphWrapper:
     def _ensure_deps_schema(self) -> None:
         with self._connect() as conn:
             conn.executescript(self.DEPS_SCHEMA)
+
+
+def add_dependencies_hook(backend, pairs: list[tuple[str, str]]) -> int:
+    """Add dependency pairs via hook interface.
+
+    Called by AI plugin's `ai dep` command to store detected dependencies.
+
+    Args:
+        backend: The backend instance (should be GraphWrapper)
+        pairs: List of (blocked_id, blocker_id) tuples
+
+    Returns:
+        Number of dependencies added
+    """
+    if not isinstance(backend, GraphWrapper):
+        return 0
+
+    count = 0
+    for blocked_id, blocker_id in pairs:
+        try:
+            backend.add_dependency(blocker_id, blocked_id)
+            count += 1
+        except Exception:
+            pass  # Skip invalid dependencies
+    return count

@@ -126,10 +126,17 @@ def extend_formatter(formatter, config: Config):
     if isinstance(formatter, TreeFormatter):
         return formatter
 
-    # Check if tree view is enabled in config as default
-    tree_view = getattr(config, "graph_tree_view", "false")
+    # Check if tree view is enabled in config as default (use nested config)
+    tree_view = config.get_plugin_config("graph", "tree_view", "false")
     if str(tree_view).lower() in ("true", "1", "yes"):
         return TreeFormatter()
 
     # Wrap formatter to add blocked_by column when present
     return GraphFormatter(formatter)
+
+
+def register_hooks() -> dict[str, str]:
+    """Register callable hooks for cross-plugin communication."""
+    return {
+        "add_dependencies": "dodo.plugins.graph.wrapper:add_dependencies_hook",
+    }
