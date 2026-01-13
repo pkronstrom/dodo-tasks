@@ -226,7 +226,11 @@ def list_todos(
     items = svc.list(status=status)
 
     format_str = format_ or cfg.default_format
-    formatter = get_formatter(format_str)
+    try:
+        formatter = get_formatter(format_str)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
 
     # Allow plugins to extend/wrap the formatter
     from dodo.plugins import apply_hooks

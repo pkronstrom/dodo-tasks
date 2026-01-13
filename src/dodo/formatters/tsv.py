@@ -13,10 +13,8 @@ class TsvFormatter:
     NAME = "tsv"
 
     def format(self, items: list[TodoItem]) -> str:
-        if not items:
-            return ""
+        lines = ["id\tstatus\ttext"]
 
-        lines = []
         for item in items:
             lines.append(f"{item.id}\t{item.status.value}\t{item.text}")
 
