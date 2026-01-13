@@ -134,3 +134,81 @@ class TestMarkdownFormat:
 
         content = todo_file.read_text()
         assert "/" in content  # Uses custom format
+
+
+class TestMarkdownBackendPriorityTags:
+    def test_add_with_priority(self, tmp_path: Path):
+        from dodo.models import Priority
+
+        backend = MarkdownBackend(tmp_path / "todos.md")
+
+        item = backend.add("Test", priority=Priority.HIGH)
+
+        assert item.priority == Priority.HIGH
+        # Check file content
+        content = (tmp_path / "todos.md").read_text()
+        assert "!high" in content
+
+    def test_add_with_tags(self, tmp_path: Path):
+        backend = MarkdownBackend(tmp_path / "todos.md")
+
+        item = backend.add("Test", tags=["backend", "api"])
+
+        assert item.tags == ["backend", "api"]
+        content = (tmp_path / "todos.md").read_text()
+        assert "#backend" in content
+        assert "#api" in content
+
+    def test_update_priority(self, tmp_path: Path):
+        from dodo.models import Priority
+
+        backend = MarkdownBackend(tmp_path / "todos.md")
+        item = backend.add("Test")
+
+        updated = backend.update_priority(item.id, Priority.CRITICAL)
+
+        assert updated.priority == Priority.CRITICAL
+
+    def test_update_tags(self, tmp_path: Path):
+        backend = MarkdownBackend(tmp_path / "todos.md")
+        item = backend.add("Test")
+
+        updated = backend.update_tags(item.id, ["new-tag"])
+
+        assert updated.tags == ["new-tag"]
+
+    def test_roundtrip_priority_tags(self, tmp_path: Path):
+        from dodo.models import Priority
+
+        backend = MarkdownBackend(tmp_path / "todos.md")
+
+        item = backend.add("Test", priority=Priority.HIGH, tags=["api"])
+
+        retrieved = backend.get(item.id)
+        assert retrieved.priority == Priority.HIGH
+        assert retrieved.tags == ["api"]
+
+    def test_update_preserves_priority_tags(self, tmp_path: Path):
+        from dodo.models import Priority
+
+        backend = MarkdownBackend(tmp_path / "todos.md")
+        item = backend.add("Test", priority=Priority.HIGH, tags=["api"])
+
+        # Update status should preserve priority and tags
+        updated = backend.update(item.id, Status.DONE)
+
+        assert updated.priority == Priority.HIGH
+        assert updated.tags == ["api"]
+
+    def test_update_text_preserves_priority_tags(self, tmp_path: Path):
+        from dodo.models import Priority
+
+        backend = MarkdownBackend(tmp_path / "todos.md")
+        item = backend.add("Test", priority=Priority.HIGH, tags=["api"])
+
+        # Update text should preserve priority and tags
+        updated = backend.update_text(item.id, "New text")
+
+        assert updated.text == "New text"
+        assert updated.priority == Priority.HIGH
+        assert updated.tags == ["api"]

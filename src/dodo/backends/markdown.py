@@ -12,7 +12,7 @@ from dodo.backends.utils import (
     generate_todo_id,
     parse_todo_line,
 )
-from dodo.models import Status, TodoItem
+from dodo.models import Priority, Status, TodoItem
 
 
 @contextmanager
@@ -50,7 +50,13 @@ class MarkdownBackend:
         self._format = format or MarkdownFormat()
         self._lock_path = file_path.with_suffix(".lock")
 
-    def add(self, text: str, project: str | None = None) -> TodoItem:
+    def add(
+        self,
+        text: str,
+        project: str | None = None,
+        priority: Priority | None = None,
+        tags: list[str] | None = None,
+    ) -> TodoItem:
         timestamp = datetime.now()
         item = TodoItem(
             id=generate_todo_id(text, timestamp),
@@ -58,6 +64,8 @@ class MarkdownBackend:
             status=Status.PENDING,
             created_at=timestamp,
             project=project,
+            priority=priority,
+            tags=tags,
         )
         with _file_lock(self._lock_path):
             self._append_item(item)
@@ -90,6 +98,8 @@ class MarkdownBackend:
                         created_at=item.created_at,
                         completed_at=datetime.now() if status == Status.DONE else None,
                         project=item.project,
+                        priority=item.priority,
+                        tags=item.tags,
                     )
                     lines[idx] = format_todo_line(updated_item, self._format.timestamp_fmt)
                     break
@@ -114,6 +124,60 @@ class MarkdownBackend:
                         created_at=item.created_at,
                         completed_at=item.completed_at,
                         project=item.project,
+                        priority=item.priority,
+                        tags=item.tags,
+                    )
+                    lines[idx] = format_todo_line(updated_item, self._format.timestamp_fmt)
+                    break
+
+            if not updated_item:
+                raise KeyError(f"Todo not found: {id}")
+
+            self._write_lines(lines)
+            return updated_item
+
+    def update_priority(self, id: str, priority: Priority | None) -> TodoItem:
+        with _file_lock(self._lock_path):
+            lines, items = self._read_lines_with_items()
+            updated_item = None
+
+            for idx, (line, item) in enumerate(zip(lines, items)):
+                if item and item.id == id:
+                    updated_item = TodoItem(
+                        id=item.id,
+                        text=item.text,
+                        status=item.status,
+                        created_at=item.created_at,
+                        completed_at=item.completed_at,
+                        project=item.project,
+                        priority=priority,
+                        tags=item.tags,
+                    )
+                    lines[idx] = format_todo_line(updated_item, self._format.timestamp_fmt)
+                    break
+
+            if not updated_item:
+                raise KeyError(f"Todo not found: {id}")
+
+            self._write_lines(lines)
+            return updated_item
+
+    def update_tags(self, id: str, tags: list[str] | None) -> TodoItem:
+        with _file_lock(self._lock_path):
+            lines, items = self._read_lines_with_items()
+            updated_item = None
+
+            for idx, (line, item) in enumerate(zip(lines, items)):
+                if item and item.id == id:
+                    updated_item = TodoItem(
+                        id=item.id,
+                        text=item.text,
+                        status=item.status,
+                        created_at=item.created_at,
+                        completed_at=item.completed_at,
+                        project=item.project,
+                        priority=item.priority,
+                        tags=tags,
                     )
                     lines[idx] = format_todo_line(updated_item, self._format.timestamp_fmt)
                     break
