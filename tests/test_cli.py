@@ -117,7 +117,7 @@ class TestCliList:
         with patch("dodo.project.detect_project", return_value=None):
             runner.invoke(app, ["add", "High pri", "--priority", "high"])
             runner.invoke(app, ["add", "Low pri", "--priority", "low"])
-            result = runner.invoke(app, ["list", "--filter-priority", "high"])
+            result = runner.invoke(app, ["list", "--filter", "prio:high"])
 
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "High pri" in result.stdout
@@ -127,11 +127,39 @@ class TestCliList:
         with patch("dodo.project.detect_project", return_value=None):
             runner.invoke(app, ["add", "Backend task", "--tags", "backend"])
             runner.invoke(app, ["add", "Frontend task", "--tags", "frontend"])
-            result = runner.invoke(app, ["list", "--filter-tag", "backend"])
+            result = runner.invoke(app, ["list", "--filter", "tag:backend"])
 
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "Backend task" in result.stdout
         assert "Frontend task" not in result.stdout
+
+    def test_list_filter_multiple_tags(self, cli_env):
+        """Filter by multiple tags (OR logic)."""
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "Backend task", "--tags", "backend"])
+            runner.invoke(app, ["add", "Frontend task", "--tags", "frontend"])
+            runner.invoke(app, ["add", "Other task", "--tags", "other"])
+            result = runner.invoke(app, ["list", "--filter", "tag:backend,frontend"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Backend task" in result.stdout
+        assert "Frontend task" in result.stdout
+        assert "Other task" not in result.stdout
+
+    def test_list_filter_combined(self, cli_env):
+        """Multiple filters (AND logic)."""
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "High backend", "--priority", "high", "--tags", "backend"])
+            runner.invoke(app, ["add", "Low backend", "--priority", "low", "--tags", "backend"])
+            runner.invoke(app, ["add", "High frontend", "--priority", "high", "--tags", "frontend"])
+            result = runner.invoke(
+                app, ["list", "--filter", "prio:high", "--filter", "tag:backend"]
+            )
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "High backend" in result.stdout
+        assert "Low backend" not in result.stdout
+        assert "High frontend" not in result.stdout
 
 
 class TestCliDone:
