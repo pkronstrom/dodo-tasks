@@ -4,7 +4,16 @@ from typing import Any
 
 from rich.table import Table
 
-from dodo.models import Status, TodoItem
+from dodo.models import Priority, Status, TodoItem
+
+# Priority display styling
+PRIORITY_STYLES = {
+    Priority.CRITICAL: "[red bold]!!!![/red bold]",
+    Priority.HIGH: "[yellow]![/yellow]",
+    Priority.NORMAL: "[dim]·[/dim]",
+    Priority.LOW: "[dim cyan]↓[/dim cyan]",
+    Priority.SOMEDAY: "[dim magenta]○[/dim magenta]",
+}
 
 
 class TableFormatter:
@@ -25,17 +34,35 @@ class TableFormatter:
         except ValueError:
             return dt.strftime("%m-%d %H:%M")
 
+    def _format_priority(self, priority: Priority | None) -> str:
+        if priority is None:
+            return ""
+        return PRIORITY_STYLES.get(priority, "")
+
+    def _format_tags(self, tags: list[str] | None) -> str:
+        if not tags:
+            return ""
+        return " ".join(f"[cyan]#{t}[/cyan]" for t in tags[:3])  # Max 3 tags
+
     def format(self, items: list[TodoItem]) -> Any:
         if not items:
             return "[dim]No todos[/dim]"
+
+        # Check if any items have priority or tags
+        has_priority = any(item.priority for item in items)
+        has_tags = any(item.tags for item in items)
 
         table = Table(show_header=True, header_style="bold")
 
         if self.show_id:
             table.add_column("ID", style="dim")
         table.add_column("Done", width=6)
+        if has_priority:
+            table.add_column("Pri", width=5)
         table.add_column("Created", width=len(self._format_datetime(items[0].created_at)))
         table.add_column("Todo")
+        if has_tags:
+            table.add_column("Tags")
 
         for item in items:
             # Colorblind-safe: blue checkmark for done
@@ -45,7 +72,13 @@ class TableFormatter:
             row = []
             if self.show_id:
                 row.append(item.id)  # Full ID, not truncated
-            row.extend([status, created, item.text])
+            row.append(status)
+            if has_priority:
+                row.append(self._format_priority(item.priority))
+            row.append(created)
+            row.append(item.text)
+            if has_tags:
+                row.append(self._format_tags(item.tags))
 
             table.add_row(*row)
 
