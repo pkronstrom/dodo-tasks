@@ -132,3 +132,35 @@ class TestCliRm:
 
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "Removed" in result.stdout
+
+
+class TestGetServiceContext:
+    def test_get_service_context_returns_tuple(self, tmp_path, monkeypatch):
+        """get_service_context() should return (config, project_id, service) tuple."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+
+        from dodo.config import clear_config_cache
+
+        clear_config_cache()
+
+        from dodo.cli_context import get_service_context
+
+        cfg, project_id, svc = get_service_context()
+
+        assert cfg is not None
+        assert svc is not None
+        # project_id can be None (global) or string
+
+    def test_get_service_context_respects_global_flag(self, tmp_path, monkeypatch):
+        """get_service_context(global_=True) should force global project."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+
+        from dodo.config import clear_config_cache
+
+        clear_config_cache()
+
+        from dodo.cli_context import get_service_context
+
+        cfg, project_id, svc = get_service_context(global_=True)
+
+        assert project_id is None
