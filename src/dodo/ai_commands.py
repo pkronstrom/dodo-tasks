@@ -20,6 +20,11 @@ def _get_prompt(cfg, key: str, default: str) -> str:
     return custom if custom else default
 
 
+def _print_waiting() -> None:
+    """Print a friendly waiting message."""
+    console.print("[dim italic]Thinking... this may take a moment[/dim italic]")
+
+
 @ai_app.command(name="add")
 def ai_add(
     text: Annotated[str | None, typer.Argument(help="Input text")] = None,
@@ -50,6 +55,7 @@ def ai_add(
 
     prompt = _get_prompt(cfg, "ai_add_prompt", DEFAULT_ADD_PROMPT)
 
+    _print_waiting()
     tasks = run_ai_add(
         user_input=text or "",
         piped_content=piped,
@@ -120,6 +126,7 @@ def ai_prioritize(
 
     prompt = _get_prompt(cfg, "ai_prioritize_prompt", DEFAULT_PRIORITIZE_PROMPT)
 
+    _print_waiting()
     assignments = run_ai_prioritize(
         todos=todos_data,
         command=cfg.ai_command,
@@ -188,6 +195,7 @@ def ai_reword(
 
     prompt = _get_prompt(cfg, "ai_reword_prompt", DEFAULT_REWORD_PROMPT)
 
+    _print_waiting()
     rewrites = run_ai_reword(
         todos=todos_data,
         command=cfg.ai_command,
@@ -257,6 +265,7 @@ def ai_tag(
 
     prompt = _get_prompt(cfg, "ai_tag_prompt", DEFAULT_TAG_PROMPT)
 
+    _print_waiting()
     suggestions = run_ai_tag(
         todos=todos_data,
         command=cfg.ai_command,
