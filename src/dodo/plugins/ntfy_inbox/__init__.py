@@ -1,12 +1,42 @@
 """ntfy-inbox plugin: Receive todos via ntfy.sh.
 
-This plugin adds commands under `dodo ntfy` that subscribe to an ntfy topic
-and automatically add incoming messages as todos.
+This plugin subscribes to an ntfy topic and automatically adds incoming
+messages as todos.
 
-Usage:
+Setup:
     dodo plugins enable ntfy-inbox
-    dodo config     # Set ntfy_topic
-    dodo ntfy run   # Start listening
+    dodo config                      # Set ntfy topic
+    dodo plugins ntfy-inbox run      # Start listening
+
+Message format:
+    - Message body: Todo text
+    - Title: Target dodo name (e.g., 'work', 'personal'). Empty = auto-detect.
+    - Priority header (1-5): Maps to someday/low/normal/high/critical
+    - No priority = unprioritized (null)
+
+Text prefixes (override ntfy header):
+    !!: or !!!: or !!!!:  -> critical
+    !:                    -> high
+    normal:               -> normal
+    low:                  -> low
+    someday:              -> someday
+
+Tags: Include #hashtags in message text (e.g., "Buy milk #errands #shopping")
+
+AI processing: Prefix message with "ai:" to process through AI plugin
+
+Examples:
+    # Simple todo to default dodo
+    curl -d "Buy groceries" ntfy.sh/mytopic
+
+    # High priority with tags to 'work' dodo
+    curl -d "Fix bug #urgent" -H "Title: work" -H "Priority: 4" ntfy.sh/mytopic
+
+    # Critical priority via text prefix
+    curl -d "!!: Server down #incident" ntfy.sh/mytopic
+
+    # AI-processed todo
+    curl -d "ai: remember to call mom tomorrow" ntfy.sh/mytopic
 """
 
 from __future__ import annotations

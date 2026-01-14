@@ -17,15 +17,17 @@ PRIORITY_PREFIXES = {
     "!!!:": "critical",
     "!!:": "high",
     "!:": "high",
+    "normal:": "normal",
     "low:": "low",
     "someday:": "someday",
 }
 
 # ntfy priority header to dodo priority mapping
+# None (no header) = unprioritized (null)
 NTFY_PRIORITY_MAP = {
     5: "critical",  # max/urgent
     4: "high",
-    3: None,  # default/normal
+    3: "normal",  # default
     2: "low",
     1: "someday",  # min
 }
@@ -86,8 +88,13 @@ def inbox() -> None:
 
     console.print(f"[dim]Listening for todos on {server}/{topic}...[/dim]")
     console.print("[dim]Send messages to add todos. Use 'ai:' prefix for AI processing.[/dim]")
-    console.print("[dim]Priority: !!: (high), low:, someday: or use ntfy priority header.[/dim]")
+    console.print(
+        "[dim]Priority: !!: (critical), !: (high), normal:, low:, someday: or ntfy header 1-5.[/dim]"
+    )
     console.print("[dim]Tags: #tag1 #tag2 in message text.[/dim]")
+    console.print(
+        "[dim]Dodo: Set title to target a specific dodo (e.g., 'work', 'personal').[/dim]"
+    )
     console.print("[dim]Press Ctrl+C to stop.[/dim]\n")
 
     _subscribe(topic, server)
@@ -138,6 +145,7 @@ def _process_message(msg: dict) -> None:
     from dodo.config import Config
     from dodo.core import TodoService
     from dodo.models import Priority
+    from dodo.resolve import resolve_dodo
 
     # Skip non-message events (open, keepalive, etc.)
     if msg.get("event") != "message":
@@ -147,8 +155,8 @@ def _process_message(msg: dict) -> None:
     if not text:
         return
 
-    # Title = project name (empty = global)
-    project = msg.get("title", "").strip() or None
+    # Title = dodo name (empty = auto-detect/global)
+    dodo_name = msg.get("title", "").strip() or None
 
     # Get ntfy priority header (1-5 scale)
     ntfy_priority = msg.get("priority")
@@ -175,8 +183,16 @@ def _process_message(msg: dict) -> None:
 
     try:
         cfg = Config.load()
-        svc = TodoService(cfg, project)
-        proj_info = f" [cyan][{project}][/cyan]" if project else ""
+
+        # Resolve dodo name like CLI does
+        result = resolve_dodo(cfg, dodo_name)
+        if result.path:
+            svc = TodoService(cfg, project_id=None, storage_path=result.path)
+        else:
+            svc = TodoService(cfg, result.name)
+
+        dodo_label = result.name or "global"
+        dodo_info = f" [cyan][{dodo_label}][/cyan]" if result.name else ""
         prio_info = f" [yellow][{priority.value}][/yellow]" if priority else ""
         tags_info = f" [dim]{' '.join('#' + t for t in tags)}[/dim]" if tags else ""
 
@@ -191,7 +207,7 @@ def _process_message(msg: dict) -> None:
                     console.print("[yellow]AI plugin not installed, adding as-is[/yellow]")
                     item = svc.add(text, priority=priority, tags=tags or None)
                     console.print(
-                        f"[green]Added:[/green] {item.text}{prio_info}{tags_info}{proj_info}"
+                        f"[green]Added:[/green] {item.text}{prio_info}{tags_info}{dodo_info}"
                     )
                     return
 
@@ -206,14 +222,14 @@ def _process_message(msg: dict) -> None:
                     # Apply priority/tags to AI-generated items too
                     item = svc.add(todo_text, priority=priority, tags=tags or None)
                     console.print(
-                        f"[green]Added:[/green] {item.text}{prio_info}{tags_info}{proj_info}"
+                        f"[green]Added:[/green] {item.text}{prio_info}{tags_info}{dodo_info}"
                     )
             else:
                 console.print("[yellow]AI plugin not enabled, adding as-is[/yellow]")
                 item = svc.add(text, priority=priority, tags=tags or None)
-                console.print(f"[green]Added:[/green] {item.text}{prio_info}{tags_info}{proj_info}")
+                console.print(f"[green]Added:[/green] {item.text}{prio_info}{tags_info}{dodo_info}")
         else:
             item = svc.add(text, priority=priority, tags=tags or None)
-            console.print(f"[green]Added:[/green] {item.text}{prio_info}{tags_info}{proj_info}")
+            console.print(f"[green]Added:[/green] {item.text}{prio_info}{tags_info}{dodo_info}")
     except Exception as e:
         console.print(f"[red]Error adding todo:[/red] {e}")
