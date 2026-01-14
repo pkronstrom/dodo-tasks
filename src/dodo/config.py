@@ -38,6 +38,7 @@ class ConfigMeta:
         "default_backend": "Backend (markdown|sqlite|obsidian)",
         "default_format": "Output format (table|jsonl|tsv)",
         "editor": "Editor command (empty = use $EDITOR)",
+        "interactive_width": "Max width for interactive menu (default: 120)",
     }
 
 
@@ -52,6 +53,7 @@ class Config:
         "default_backend": "sqlite",
         "default_format": "table",
         "editor": "",  # Empty = use $EDITOR or vim
+        "interactive_width": 120,  # Max width for interactive menu
         # Plugin system
         "enabled_plugins": "",  # Comma-separated list of enabled plugins
     }
@@ -169,3 +171,29 @@ class Config:
         if target_type is int:
             return int(value)
         return value
+
+    # Directory mapping methods
+    def get_directory_mapping(self, directory: str) -> str | None:
+        """Get the dodo name mapped to a directory path."""
+        mappings = self._data.get("directory_mappings", {})
+        return mappings.get(directory)
+
+    def set_directory_mapping(self, directory: str, dodo_name: str) -> None:
+        """Map a directory path to a dodo name."""
+        if "directory_mappings" not in self._data:
+            self._data["directory_mappings"] = {}
+        self._data["directory_mappings"][directory] = dodo_name
+        self._save()
+
+    def remove_directory_mapping(self, directory: str) -> bool:
+        """Remove a directory mapping. Returns True if it existed."""
+        mappings = self._data.get("directory_mappings", {})
+        if directory in mappings:
+            del mappings[directory]
+            self._save()
+            return True
+        return False
+
+    def get_all_directory_mappings(self) -> dict[str, str]:
+        """Get all directory mappings."""
+        return self._data.get("directory_mappings", {})

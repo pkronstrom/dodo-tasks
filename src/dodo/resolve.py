@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -9,18 +12,56 @@ if TYPE_CHECKING:
     from dodo.config import Config
 
 
+class ResolveSource(Enum):
+    """How the dodo was resolved."""
+
+    GLOBAL = "global"  # --global flag
+    EXPLICIT = "explicit"  # --dodo flag
+    LOCAL = "local"  # .dodo/ in cwd or parents
+    MAPPING = "mapping"  # directory mapping in config
+    GIT = "git"  # git-based project detection
+
+
+@dataclass
+class ResolvedDodo:
+    """Result of dodo resolution.
+
+    Supports tuple unpacking for backward compatibility:
+        name, path = resolve_dodo(cfg)
+
+    Or use named fields for clarity:
+        result = resolve_dodo(cfg)
+        if result.source == ResolveSource.MAPPING:
+            print(f"Using mapped dodo: {result.name}")
+    """
+
+    name: str | None
+    """Name/ID of the dodo, or None for global."""
+
+    path: Path | None
+    """Explicit storage path if resolved, or None to use default."""
+
+    source: ResolveSource
+    """How the dodo was resolved."""
+
+    def __iter__(self) -> Iterator[str | None | Path | None]:
+        """Support tuple unpacking: name, path = result."""
+        yield self.name
+        yield self.path
+
+
 def resolve_dodo(
     config: Config,
     dodo_name: str | None = None,
     global_: bool = False,
-) -> tuple[str | None, Path | None]:
+) -> ResolvedDodo:
     """Resolve which dodo to use.
 
     Priority:
     1. --global flag: use global dodo
     2. Explicit --dodo name: check local then global
     3. Default .dodo/ in cwd or parents
-    4. Single named .dodo/<name>/ in cwd or parents
+    4. Directory mapping in config
     5. Git-based project detection (fallback)
 
     Args:
@@ -29,12 +70,11 @@ def resolve_dodo(
         global_: Force global dodo (from --global flag)
 
     Returns:
-        (dodo_name, explicit_storage_path)
-        - dodo_name: Name/ID of the dodo (or None for global)
-        - explicit_storage_path: Path to storage dir if explicitly resolved
+        ResolvedDodo with name, path, and source.
+        Supports tuple unpacking: name, path = resolve_dodo(cfg)
     """
     if global_:
-        return None, None
+        return ResolvedDodo(None, None, ResolveSource.GLOBAL)
 
     # Explicit dodo name provided - auto-detect local vs global
     if dodo_name:
@@ -44,41 +84,59 @@ def resolve_dodo(
     return _auto_detect_dodo(config)
 
 
-def _resolve_named_dodo(config: Config, dodo_name: str) -> tuple[str, Path]:
+def _resolve_named_dodo(config: Config, dodo_name: str) -> ResolvedDodo:
     """Resolve a named dodo, checking local first then global."""
     # Check local first (.dodo/<name>/)
     local_path = Path.cwd() / ".dodo" / dodo_name
     if local_path.exists():
-        return dodo_name, local_path
+        return ResolvedDodo(dodo_name, local_path, ResolveSource.LOCAL)
 
     # Check parent directories for .dodo/<name>/
     for parent in Path.cwd().parents:
         candidate = parent / ".dodo" / dodo_name
         if candidate.exists():
-            return dodo_name, candidate
+            return ResolvedDodo(dodo_name, candidate, ResolveSource.LOCAL)
         if parent == Path.home() or parent == Path("/"):
             break
 
     # Check global (~/.config/dodo/<name>/)
     global_path = config.config_dir / dodo_name
     if global_path.exists():
-        return dodo_name, global_path
+        return ResolvedDodo(dodo_name, global_path, ResolveSource.EXPLICIT)
 
     # Not found - return the global path (will error later)
-    return dodo_name, global_path
+    return ResolvedDodo(dodo_name, global_path, ResolveSource.EXPLICIT)
 
 
-def _auto_detect_dodo(config: Config) -> tuple[str | None, Path | None]:
+def _auto_detect_dodo(config: Config) -> ResolvedDodo:
     """Auto-detect which dodo to use based on current directory."""
+    cwd = str(Path.cwd())
+
+    # Check directory mappings first (highest priority after explicit flags)
+    mapped_dodo = config.get_directory_mapping(cwd)
+    if mapped_dodo:
+        dodo_path = config.config_dir / mapped_dodo
+        if dodo_path.exists():
+            return ResolvedDodo(mapped_dodo, dodo_path, ResolveSource.MAPPING)
+        else:
+            # Warn about invalid mapping
+            import sys
+
+            print(
+                f"Warning: Directory mapped to '{mapped_dodo}' but dodo not found. "
+                f"Run 'dodo unlink' to remove mapping.",
+                file=sys.stderr,
+            )
+
     # Check current directory and parents for .dodo/
-    name, path = _find_dodo_in_dir(Path.cwd())
-    if path:
-        return name, path
+    result = _find_dodo_in_dir(Path.cwd())
+    if result.path:
+        return result
 
     for parent in Path.cwd().parents:
-        name, path = _find_dodo_in_dir(parent)
-        if path:
-            return name, path
+        result = _find_dodo_in_dir(parent)
+        if result.path:
+            return result
         if parent == Path.home() or parent == Path("/"):
             break
 
@@ -86,31 +144,25 @@ def _auto_detect_dodo(config: Config) -> tuple[str | None, Path | None]:
     from dodo.project import detect_project
 
     project_id = detect_project(worktree_shared=config.worktree_shared)
-    return project_id, None
+    return ResolvedDodo(project_id, None, ResolveSource.GIT)
 
 
-def _find_dodo_in_dir(base: Path) -> tuple[str | None, Path | None]:
+def _find_dodo_in_dir(base: Path) -> ResolvedDodo:
     """Find a dodo in a directory.
 
-    Returns (name, path) or (None, None).
+    Only auto-selects the DEFAULT dodo (dodo.json directly in .dodo/).
+    Named dodos (.dodo/<name>/) must be explicitly requested with --dodo flag.
+
+    Returns ResolvedDodo (name/path may be None if not found).
     """
     dodo_dir = base / ".dodo"
     if not dodo_dir.exists():
-        return None, None
+        return ResolvedDodo(None, None, ResolveSource.LOCAL)
 
-    # Check for default dodo (dodo.json directly in .dodo/)
+    # Only auto-select the default dodo (dodo.json directly in .dodo/)
     if (dodo_dir / "dodo.json").exists():
-        return "local", dodo_dir
+        return ResolvedDodo("local", dodo_dir, ResolveSource.LOCAL)
 
-    # Check for named dodos (.dodo/<name>/dodo.json)
-    try:
-        named_dodos = [d for d in dodo_dir.iterdir() if d.is_dir() and (d / "dodo.json").exists()]
-    except PermissionError:
-        return None, None
-
-    if len(named_dodos) == 1:
-        # Single named dodo - auto-select it
-        return named_dodos[0].name, named_dodos[0]
-
-    # Multiple or none - don't auto-select
-    return None, None
+    # Named dodos exist but no default - don't auto-select
+    # User must explicitly request with --dodo <name>
+    return ResolvedDodo(None, None, ResolveSource.LOCAL)

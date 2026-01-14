@@ -6,15 +6,6 @@ from rich.table import Table
 
 from dodo.models import Priority, Status, TodoItem
 
-# Priority display styling
-PRIORITY_STYLES = {
-    Priority.CRITICAL: "[red bold]!!!![/red bold]",
-    Priority.HIGH: "[yellow]![/yellow]",
-    Priority.NORMAL: "[dim]·[/dim]",
-    Priority.LOW: "[dim cyan]↓[/dim cyan]",
-    Priority.SOMEDAY: "[dim magenta]○[/dim magenta]",
-}
-
 
 class TableFormatter:
     """Format todos as a Rich table.
@@ -35,14 +26,17 @@ class TableFormatter:
             return dt.strftime("%m-%d %H:%M")
 
     def _format_priority(self, priority: Priority | None) -> str:
-        if priority is None:
-            return ""
-        return PRIORITY_STYLES.get(priority, "")
+        from dodo.ui.formatting import format_priority
+
+        return format_priority(priority)
 
     def _format_tags(self, tags: list[str] | None) -> str:
+        from dodo.ui.formatting import MAX_DISPLAY_TAGS
+
         if not tags:
             return ""
-        return " ".join(f"[cyan]#{t}[/cyan]" for t in tags[:3])  # Max 3 tags
+        # Table uses cyan for visibility in dedicated column
+        return " ".join(f"[cyan]#{t}[/cyan]" for t in tags[:MAX_DISPLAY_TAGS])
 
     def format(self, items: list[TodoItem]) -> Any:
         if not items:

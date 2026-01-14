@@ -18,16 +18,23 @@ dep_app = typer.Typer(
 )
 
 
-def _get_graph_backend():
+def _get_graph_backend(
+    dodo: str | None = None,
+    global_: bool = False,
+):
     """Get backend with graph wrapper (if available)."""
     from dodo.backends.base import GraphCapable
     from dodo.config import Config
     from dodo.core import TodoService
-    from dodo.project import detect_project
+    from dodo.resolve import resolve_dodo
 
     cfg = Config.load()
-    project_id = detect_project(worktree_shared=cfg.worktree_shared)
-    svc = TodoService(cfg, project_id)
+    result = resolve_dodo(cfg, dodo, global_)
+
+    if result.path:
+        svc = TodoService(cfg, project_id=None, storage_path=result.path)
+    else:
+        svc = TodoService(cfg, result.name)
 
     backend = svc.backend
     if not isinstance(backend, GraphCapable):
@@ -35,12 +42,15 @@ def _get_graph_backend():
         console.print("[dim]Set backend with: dodo config (then select sqlite)[/dim]")
         raise typer.Exit(1)
 
-    return backend, project_id
+    return backend, result.name
 
 
-def ready() -> None:
+def ready(
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Use global list")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
+) -> None:
     """List todos with no blocking dependencies (ready to work on)."""
-    backend, project_id = _get_graph_backend()
+    backend, project_id = _get_graph_backend(dodo, global_)
 
     items = backend.get_ready(project_id)
 
@@ -59,9 +69,12 @@ def ready() -> None:
     console.print(table)
 
 
-def blocked() -> None:
+def blocked(
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Use global list")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
+) -> None:
     """List todos that are blocked by other todos."""
-    backend, project_id = _get_graph_backend()
+    backend, project_id = _get_graph_backend(dodo, global_)
 
     items = backend.get_blocked_todos(project_id)
 
@@ -89,9 +102,11 @@ def blocked() -> None:
 def add_dep(
     blocker: Annotated[str, typer.Argument(help="ID of blocking todo")],
     blocked: Annotated[str, typer.Argument(help="ID of blocked todo")],
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Use global list")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
 ) -> None:
     """Add a dependency: <blocker> blocks <blocked>."""
-    backend, _ = _get_graph_backend()
+    backend, _ = _get_graph_backend(dodo, global_)
 
     # Validate both todos exist
     if not backend.get(blocker):
@@ -105,13 +120,83 @@ def add_dep(
     console.print(f"[green]Added:[/green] {blocker} blocks {blocked}")
 
 
+@dep_app.command(name="add-bulk")
+def add_dep_bulk(
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Use global list")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
+    quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Minimal output")] = False,
+) -> None:
+    """Bulk add dependencies from JSONL stdin.
+
+    Each line should be a JSON object with fields:
+    - blocker: ID of blocking todo
+    - blocked: ID of blocked todo
+
+    Example:
+        echo '{"blocker": "abc123", "blocked": "def456"}
+        {"blocker": "abc123", "blocked": "ghi789"}' | dodo dep add-bulk
+    """
+    import json
+    import sys
+
+    backend, _ = _get_graph_backend(dodo, global_)
+
+    added = 0
+    errors = 0
+
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError as e:
+            if not quiet:
+                console.print(f"[red]Error:[/red] Invalid JSON: {e}")
+            errors += 1
+            continue
+
+        blocker = data.get("blocker", "")
+        blocked = data.get("blocked", "")
+
+        if not blocker or not blocked:
+            if not quiet:
+                console.print("[red]Error:[/red] Missing 'blocker' or 'blocked' field")
+            errors += 1
+            continue
+
+        # Validate todos exist
+        if not backend.get(blocker):
+            if not quiet:
+                console.print(f"[yellow]Warning:[/yellow] Blocker not found: {blocker}")
+            errors += 1
+            continue
+        if not backend.get(blocked):
+            if not quiet:
+                console.print(f"[yellow]Warning:[/yellow] Blocked not found: {blocked}")
+            errors += 1
+            continue
+
+        backend.add_dependency(blocker, blocked)
+        added += 1
+
+        if not quiet:
+            console.print(f"[green]✓[/green] {blocker} → {blocked}")
+
+    if not quiet:
+        console.print(f"[dim]Added {added} dependencies ({errors} errors)[/dim]")
+
+
 @dep_app.command(name="rm")
 def remove_dep(
     blocker: Annotated[str, typer.Argument(help="ID of blocking todo")],
     blocked: Annotated[str, typer.Argument(help="ID of blocked todo")],
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Use global list")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
 ) -> None:
     """Remove a dependency."""
-    backend, _ = _get_graph_backend()
+    backend, _ = _get_graph_backend(dodo, global_)
 
     backend.remove_dependency(blocker, blocked)
     console.print(f"[yellow]Removed:[/yellow] {blocker} no longer blocks {blocked}")
@@ -120,9 +205,11 @@ def remove_dep(
 @dep_app.command(name="list")
 def list_deps(
     tree: Annotated[bool, typer.Option("--tree", "-t", help="Show as tree")] = False,
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Use global list")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
 ) -> None:
     """List all dependencies."""
-    backend, project_id = _get_graph_backend()
+    backend, project_id = _get_graph_backend(dodo, global_)
 
     if tree:
         # Get all todos with blocked_by info

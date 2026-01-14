@@ -17,8 +17,8 @@ def get_service_context(
 
     This centralizes the common pattern used by most CLI commands:
         cfg = _get_config()
-        project_id = _detect_project(worktree_shared=cfg.worktree_shared)
-        svc = _get_service(cfg, project_id)
+        dodo_name, storage_path = resolve_dodo(cfg)
+        svc = _get_service(cfg, dodo_name)
 
     Args:
         global_: Force global list (no project)
@@ -29,18 +29,24 @@ def get_service_context(
     """
     from dodo.config import Config
     from dodo.core import TodoService
-    from dodo.project import detect_project
+    from dodo.resolve import resolve_dodo
 
     cfg = Config.load()
 
     if global_:
         project_id = None
+        storage_path = None
     elif project:
         project_id = _resolve_project(project, cfg)
+        storage_path = None
     else:
-        project_id = detect_project(worktree_shared=cfg.worktree_shared)
+        # Use resolve_dodo which checks directory mappings first
+        project_id, storage_path = resolve_dodo(cfg)
 
-    svc = TodoService(cfg, project_id)
+    if storage_path:
+        svc = TodoService(cfg, project_id=None, storage_path=storage_path)
+    else:
+        svc = TodoService(cfg, project_id)
     return cfg, project_id, svc
 
 

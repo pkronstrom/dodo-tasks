@@ -101,13 +101,32 @@ class GraphWrapper:
                 (blocker_id, blocked_id),
             )
 
-    def get_blockers(self, todo_id: str) -> list[str]:
-        """Get IDs of todos blocking this one."""
+    def get_blockers(self, todo_id: str, only_pending: bool = True) -> list[str]:
+        """Get IDs of todos blocking this one.
+
+        Args:
+            todo_id: The blocked todo's ID
+            only_pending: If True (default), only return blockers that are still pending.
+                         Completed blockers are excluded since they no longer block.
+        """
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT blocker_id FROM dependencies WHERE blocked_id = ?",
-                (todo_id,),
-            ).fetchall()
+            if only_pending:
+                # Only return blockers that are still pending
+                rows = conn.execute(
+                    """
+                    SELECT d.blocker_id
+                    FROM dependencies d
+                    JOIN todos t ON d.blocker_id = t.id
+                    WHERE d.blocked_id = ? AND t.status = 'pending'
+                    """,
+                    (todo_id,),
+                ).fetchall()
+            else:
+                # Return all blockers regardless of status
+                rows = conn.execute(
+                    "SELECT blocker_id FROM dependencies WHERE blocked_id = ?",
+                    (todo_id,),
+                ).fetchall()
         return [row[0] for row in rows]
 
     def get_blocked(self, todo_id: str) -> list[str]:
