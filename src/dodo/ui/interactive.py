@@ -13,25 +13,74 @@ from dodo.config import Config
 from dodo.core import TodoService
 from dodo.models import Status, TodoItem, UndoAction
 
-from .panel_builder import calculate_visible_range, format_scroll_indicator
+from .panel_builder import format_scroll_indicator
 from .rich_menu import RichTerminalMenu
 
 # UI Constants
 LIVE_REFRESH_RATE = 20
-DEFAULT_PANEL_WIDTH = 80
+DEFAULT_PANEL_WIDTH = 120  # Overridden by config.interactive_width
 DEFAULT_TERMINAL_HEIGHT = 24
 STATUS_MSG_MAX_LEN = 30
 CONFIG_DISPLAY_MAX_LEN = 35
+MAX_TEXT_WRAP_LINES = 5  # Max lines for text wrapping before ellipsis
 
 console = Console()
 
 
-def interactive_menu() -> None:
-    """Main interactive menu when running bare 'dodo'."""
+def _strip_markup(s: str) -> str:
+    """Strip Rich markup tags to get display width."""
+    import re
+
+    return re.sub(r"\[[^\]]*\]", "", s)
+
+
+def _wrap_text(text: str, width: int, max_lines: int = 5) -> list[str]:
+    """Wrap text to specified width, up to max_lines.
+
+    Returns list of lines. If text exceeds max_lines, last line ends with '...'.
+    """
+    if len(text) <= width:
+        return [text]
+
+    lines: list[str] = []
+    remaining = text
+
+    while remaining and len(lines) < max_lines:
+        if len(remaining) <= width:
+            lines.append(remaining)
+            remaining = ""
+        elif len(lines) == max_lines - 1:
+            # Last allowed line - truncate with ellipsis
+            lines.append(remaining[: width - 3] + "...")
+            remaining = ""
+        else:
+            # Find word break point
+            break_point = width
+            # Look for last space within width
+            space_pos = remaining[:width].rfind(" ")
+            if space_pos > width // 2:  # Only break at space if it's not too early
+                break_point = space_pos
+
+            lines.append(remaining[:break_point].rstrip())
+            remaining = remaining[break_point:].lstrip()
+
+    return lines if lines else [text[:width]]
+
+
+def interactive_menu(
+    global_: bool = False,
+    dodo: str | None = None,
+) -> None:
+    """Main interactive menu when running bare 'dodo'.
+
+    Args:
+        global_: Force global dodo (from -g flag)
+        dodo: Explicit dodo name (from -d flag)
+    """
     from dodo.resolve import resolve_dodo
 
     cfg = Config.load()
-    dodo_name, storage_path = resolve_dodo(cfg)
+    dodo_name, storage_path = resolve_dodo(cfg, dodo, global_)
     target = dodo_name or "global"
 
     # Create service with explicit path if resolved
@@ -108,51 +157,58 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
     last_size: tuple[int, int] = (0, 0)  # Track terminal size for resize detection
     input_mode: bool = False
     input_buffer: str = ""
+    remove_mode: bool = False
+    remove_buffer: str = ""
+    show_priority: bool = True
+    show_tags: bool = True
+    hide_completed: bool = False
+
+    # Import shared formatting
+    from dodo.ui.formatting import MAX_DISPLAY_TAGS
+    from dodo.ui.formatting import format_priority as _fmt_priority
+    from dodo.ui.formatting import format_tags as _fmt_tags
+
+    def format_priority(priority) -> str:
+        return _fmt_priority(priority) if show_priority else ""
+
+    def format_tags(tags: list[str] | None) -> str:
+        return _fmt_tags(tags, max_tags=MAX_DISPLAY_TAGS) if show_tags else ""
+
+    def restore_terminal() -> None:
+        """Ensure terminal is in clean state on exit."""
+        sys.stdout.write("\033[?25h")  # Show cursor
+        sys.stdout.flush()
 
     def build_display() -> tuple[Panel, bool]:
         """Build the display as a Panel. Returns (panel, size_changed)."""
         nonlocal scroll_offset, last_size
 
         # Recalculate dimensions (may have changed due to resize)
-        term_width = console.width or DEFAULT_PANEL_WIDTH
+        max_width = getattr(cfg, "interactive_width", DEFAULT_PANEL_WIDTH)
+        term_width = console.width or max_width
         term_height = console.height or DEFAULT_TERMINAL_HEIGHT
-        width = min(DEFAULT_PANEL_WIDTH, term_width - 4)
+        width = min(max_width, term_width - 4)
         height = term_height
-        max_items = height - 6
+        # Reserve space: blank(1) + scroll indicators(2) + input line(1) + blank(1) + status(1) + footer(1) + borders(2) = 9
+        max_items = height - 9
 
         # Detect resize
         current_size = (term_width, term_height)
         size_changed = last_size != (0, 0) and last_size != current_size
         last_size = current_size
 
-        items = svc.list()
+        all_items = svc.list()
+        items = [i for i in all_items if not hide_completed or i.status != Status.DONE]
 
         lines: list[str] = []
         lines.append("")  # blank line before items
 
-        if not items and not input_mode:
+        if not items and not input_mode and not remove_mode:
             lines.append("[dim]No todos - press 'a' to add one[/dim]")
         else:
-            # Calculate visible range
-            new_offset, visible_start, visible_end = calculate_visible_range(
-                cursor=cursor,
-                total_items=len(items),
-                max_visible=max_items,
-                scroll_offset=scroll_offset,
-            )
-            scroll_offset = new_offset
-
-            # Add scroll indicators
-            above_indicator, below_indicator = format_scroll_indicator(
-                hidden_above=scroll_offset,
-                hidden_below=len(items) - visible_end,
-            )
-            if above_indicator:
-                lines.append(above_indicator)
-
-            for i in range(visible_start, visible_end):
-                item = items[i]
-                selected = i == cursor and not input_mode  # Hide selection in input mode
+            # Helper to render a single item and return its lines
+            def render_item(item: TodoItem, selected: bool) -> list[str]:
+                item_lines: list[str] = []
                 done = item.status == Status.DONE
 
                 # Marker: blue > for active (colorblind-safe)
@@ -161,18 +217,119 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
                 else:
                     marker = " "
 
-                # Checkbox: blue checkmark for done, orange dot for pending (colorblind-safe)
+                # Priority indicator
+                prio = format_priority(item.priority) if hasattr(item, "priority") else ""
+                prio_prefix = f"{prio} " if prio else ""
+
+                # Checkbox
                 check = "[blue]✓[/blue]" if done else "[dim]•[/dim]"
 
-                # Text (no wrapping - keep it simple)
+                # Tags suffix
+                tags_str = format_tags(item.tags) if hasattr(item, "tags") and not done else ""
+
+                # Calculate prefix width
+                prio_display_width = len(_strip_markup(prio)) if prio else 0
+                prefix_width = 4 + (prio_display_width + 1 if prio else 0)
+
+                # Text and tags layout
                 text = escape(item.text)
-                if len(text) > width - 6:
-                    text = text[: width - 9] + "..."
+                available_width = width - prefix_width
+                indent = " " * prefix_width
 
                 if done:
-                    lines.append(f"{marker} {check} [dim]{text}[/dim]")
+                    if len(text) > available_width:
+                        text = text[: available_width - 3] + "..."
+                    item_lines.append(f"{marker} {prio_prefix}{check} [dim]{text}[/dim]")
                 else:
-                    lines.append(f"{marker} {check} {text}")
+                    tags_display_len = len(_strip_markup(tags_str)) if tags_str else 0
+
+                    if len(text) + tags_display_len <= available_width:
+                        item_lines.append(f"{marker} {prio_prefix}{check} {text}{tags_str}")
+                    else:
+                        text_lines = _wrap_text(text, available_width, MAX_TEXT_WRAP_LINES)
+                        item_lines.append(f"{marker} {prio_prefix}{check} {text_lines[0]}")
+
+                        for continuation in text_lines[1:-1]:
+                            item_lines.append(f"{indent}{continuation}")
+
+                        if len(text_lines) > 1:
+                            last_line = text_lines[-1]
+                            if tags_str and len(last_line) + tags_display_len <= available_width:
+                                item_lines.append(f"{indent}{last_line}{tags_str}")
+                            else:
+                                item_lines.append(f"{indent}{last_line}")
+                                if tags_str:
+                                    item_lines.append(f"{indent}{tags_str.lstrip()}")
+                        elif tags_str:
+                            item_lines.append(f"{indent}{tags_str.lstrip()}")
+
+                return item_lines
+
+            # Pre-calculate line counts for all items
+            item_line_counts = [len(render_item(item, False)) for item in items]
+
+            # Find visible range accounting for line heights
+            # Strategy: ensure cursor is visible, try to show context around it
+
+            def calc_visible_from(start: int) -> tuple[int, int, int, bool]:
+                """Calculate visible range starting from given index.
+                Returns (visible_start, visible_end, lines_used, cursor_in_range)."""
+                lines = 0
+                end = start
+                cursor_in = False
+                for i in range(start, len(items)):
+                    h = item_line_counts[i]
+                    if lines + h <= max_items:
+                        lines += h
+                        end = i + 1
+                        if i == cursor:
+                            cursor_in = True
+                    else:
+                        break
+                return start, end, lines, cursor_in
+
+            # Start from current scroll offset
+            visible_start, visible_end, lines_used, cursor_visible = calc_visible_from(
+                scroll_offset
+            )
+
+            # If cursor is above visible range, scroll up
+            if cursor < scroll_offset:
+                visible_start, visible_end, lines_used, cursor_visible = calc_visible_from(cursor)
+                scroll_offset = cursor
+
+            # If cursor is below visible range, find a start that includes cursor
+            if not cursor_visible and cursor < len(items):
+                # Work backwards from cursor to find optimal start
+                # Show cursor with as much context above as possible
+                best_start = cursor
+                test_start = cursor
+                while test_start > 0:
+                    test_start -= 1
+                    _, end, _, has_cursor = calc_visible_from(test_start)
+                    if has_cursor:
+                        best_start = test_start
+                    else:
+                        break  # Can't fit cursor from this start
+
+                visible_start, visible_end, lines_used, cursor_visible = calc_visible_from(
+                    best_start
+                )
+                scroll_offset = best_start
+
+            # Add scroll indicators
+            above_indicator, below_indicator = format_scroll_indicator(
+                hidden_above=visible_start,
+                hidden_below=len(items) - visible_end,
+            )
+            if above_indicator:
+                lines.append(above_indicator)
+
+            # Render visible items
+            for i in range(visible_start, visible_end):
+                selected = i == cursor and not input_mode and not remove_mode
+                item_lines = render_item(items[i], selected)
+                lines.extend(item_lines)
 
             if below_indicator:
                 lines.append(below_indicator)
@@ -186,22 +343,27 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
                 input_display = input_display[-max_input_len:]
             lines.append(f"[cyan]>[/cyan] [dim]•[/dim] {input_display}[blink]_[/blink]")
 
+        # Show remove prompt when in remove mode
+        if remove_mode:
+            remove_display = escape(remove_buffer) if remove_buffer else ""
+            lines.append(f"  [yellow]Remove ID:[/yellow] {remove_display}[blink]_[/blink]")
+
         # Status line (with left margin)
         if input_mode:
             status_line = "[dim]  Type todo text...[/dim]"
+        elif remove_mode:
+            status_line = "[dim]  Type ID prefix to remove...[/dim]"
         elif status_msg:
             status_line = f"  {status_msg}"
         else:
             done_count = sum(1 for i in items if i.status == Status.DONE)
             status_line = f"[dim]  {len(items)} todos · {done_count} done[/dim]"
 
-        # Footer changes during input mode
-        if input_mode:
-            footer = "[dim]  enter save · esc cancel[/dim]"
+        # Footer changes during input/remove mode
+        if input_mode or remove_mode:
+            footer = "[dim]  enter confirm · esc cancel[/dim]"
         else:
-            footer = (
-                "[dim]  ↑↓/jk · space toggle · e edit · d del · u undo · a/A add · q quit[/dim]"
-            )
+            footer = "[dim]  ↑↓/jk · space · e edit · d/r del · u undo · a/A add · h hide · p/t toggle · q[/dim]"
 
         # Calculate panel height: content + blank + status + footer + borders
         # +1 blank before items (already added), +1 blank after, +1 status, +1 footer, +2 borders
@@ -249,7 +411,12 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
                         input_mode = False
                         input_buffer = ""
                         status_msg = "[dim]Cancelled[/dim]"
+                    elif remove_mode:
+                        remove_mode = False
+                        remove_buffer = ""
+                        status_msg = "[dim]Cancelled[/dim]"
                     else:
+                        restore_terminal()
                         return
 
                 # Handle input mode keystrokes
@@ -281,12 +448,53 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
                     live.update(panel)
                     continue
 
+                # Handle remove mode keystrokes
+                if remove_mode:
+                    if key == "\x1b":  # Escape
+                        remove_mode = False
+                        remove_buffer = ""
+                        status_msg = "[dim]Cancelled[/dim]"
+                    elif key in ("\r", "\n"):  # Enter - remove
+                        if remove_buffer.strip():
+                            partial_id = remove_buffer.strip().lower()
+                            if not all(c in "0123456789abcdef" for c in partial_id):
+                                status_msg = "[red]Invalid ID (must be hex)[/red]"
+                            else:
+                                matches = [i for i in items if i.id.startswith(partial_id)]
+                                if len(matches) == 0:
+                                    status_msg = f"[red]No match for '{partial_id}'[/red]"
+                                elif len(matches) == 1:
+                                    item = matches[0]
+                                    undo_stack.append(UndoAction("delete", item))
+                                    svc.delete(item.id)
+                                    status_msg = (
+                                        f"[dim]✓ Deleted: {item.text[:STATUS_MSG_MAX_LEN]}[/dim]"
+                                    )
+                                else:
+                                    status_msg = (
+                                        f"[yellow]Ambiguous: {len(matches)} matches[/yellow]"
+                                    )
+                        else:
+                            status_msg = "[dim]Cancelled (empty)[/dim]"
+                        remove_mode = False
+                        remove_buffer = ""
+                    elif key in ("\x7f", "\x08", readchar.key.BACKSPACE):
+                        remove_buffer = remove_buffer[:-1]
+                    elif len(key) == 1 and key.isprintable():
+                        remove_buffer += key
+                    panel, size_changed = build_display()
+                    if size_changed:
+                        console.clear()
+                    live.update(panel)
+                    continue
+
                 # Normal mode keystrokes
                 if key in (readchar.key.UP, "k"):  # Up (wrap around)
                     cursor = max_cursor if cursor == 0 else cursor - 1
                 elif key in (readchar.key.DOWN, "j", "\t"):  # Down/Tab (wrap around)
                     cursor = 0 if cursor >= max_cursor else cursor + 1
                 elif key == "q":  # Quit
+                    restore_terminal()
                     return
                 elif key in ("s", " ") and items:  # Toggle status
                     item = items[cursor]
@@ -326,6 +534,26 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
                     break
                 elif key == "u" and not undo_stack:
                     status_msg = "[dim]Nothing to undo[/dim]"
+                elif key == "r":  # Remove by ID
+                    remove_mode = True
+                    remove_buffer = ""
+                elif key == "p":  # Toggle priority display
+                    show_priority = not show_priority
+                    status_msg = (
+                        "[dim]Priority: on[/dim]" if show_priority else "[dim]Priority: off[/dim]"
+                    )
+                elif key == "t":  # Toggle tags display
+                    show_tags = not show_tags
+                    status_msg = "[dim]Tags: on[/dim]" if show_tags else "[dim]Tags: off[/dim]"
+                elif key == "h":  # Toggle hide completed
+                    hide_completed = not hide_completed
+                    status_msg = (
+                        "[dim]Hiding completed[/dim]"
+                        if hide_completed
+                        else "[dim]Showing all[/dim]"
+                    )
+                    # Reset cursor if it's now out of bounds
+                    cursor = 0
 
                 panel, size_changed = build_display()
                 if size_changed:
@@ -979,6 +1207,10 @@ def _build_settings_items(
     items.append(("editor", "Editor", "edit", None, None, None))
     pending["editor"] = cfg.editor
 
+    # Interactive width setting
+    items.append(("interactive_width", "Menu width", "edit", None, None, "max panel width"))
+    pending["interactive_width"] = str(cfg.interactive_width)
+
     # Empty line + Plugins header
     items.append(("_spacer", "", "divider", None, None, None))
     items.append(("_divider", "── Plugins ──", "divider", None, None, None))
@@ -1367,6 +1599,12 @@ def _unified_settings_loop(
                 [f"Edit: {items[cursor][1].strip()}"],
             )
             if new_val is not None:
+                # Convert numeric fields to int
+                if item_key == "interactive_width":
+                    try:
+                        new_val = int(new_val)
+                    except ValueError:
+                        new_val = 120  # Default on invalid input
                 pending[item_key] = new_val
                 save_item(item_key, new_val)
             continue

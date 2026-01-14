@@ -48,10 +48,15 @@ def _resolve_dodo(
     dodo_name: str | None = None,
     global_: bool = False,
 ) -> tuple[str | None, Path | None]:
-    """Resolve which dodo to use. Wrapper for shared resolve_dodo."""
+    """Resolve which dodo to use. Wrapper for shared resolve_dodo.
+
+    Returns tuple for backward compatibility (supports unpacking).
+    The underlying resolve_dodo returns ResolvedDodo which supports __iter__.
+    """
     from dodo.resolve import resolve_dodo
 
-    return resolve_dodo(config, dodo_name, global_)
+    result = resolve_dodo(config, dodo_name, global_)
+    return result.name, result.path
 
 
 def _get_service_with_path(config: Config, path: Path) -> TodoService:
@@ -165,12 +170,16 @@ else:
 
 
 @app.callback(invoke_without_command=True)
-def main(ctx: typer.Context):
+def main(
+    ctx: typer.Context,
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Use global list")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
+):
     """Launch interactive menu if no command given."""
     if ctx.invoked_subcommand is None:
         from dodo.ui.interactive import interactive_menu
 
-        interactive_menu()
+        interactive_menu(global_=global_, dodo=dodo)
 
 
 @app.command()
@@ -219,6 +228,90 @@ def add(
 
     dest = f"[cyan]{target}[/cyan]" if target != "global" else "[dim]global[/dim]"
     console.print(f"[green]✓[/green] Added to {dest}: {item.text} [dim]({item.id})[/dim]")
+
+
+@app.command(name="add-bulk")
+def add_bulk(
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
+    quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Only output IDs")] = False,
+):
+    """Bulk add todos from JSONL stdin.
+
+    Each line should be a JSON object with fields:
+    - text (required): Todo text
+    - priority: critical/high/normal/low/someday
+    - tags: list of tag strings
+
+    Use $prev in text to reference the previous item's ID.
+
+    Example:
+        echo '{"text": "Parent task", "priority": "high"}
+        {"text": "Subtask of $prev", "tags": ["sub"]}' | dodo add-bulk
+    """
+    from dodo.models import Priority
+
+    cfg = _get_config()
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
+
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
+    else:
+        svc = _get_service(cfg, dodo_id)
+
+    prev_id: str | None = None
+    added = 0
+    errors = 0
+
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError as e:
+            if not quiet:
+                console.print(f"[red]Error:[/red] Invalid JSON: {e}")
+            errors += 1
+            continue
+
+        text = data.get("text", "")
+        if not text:
+            if not quiet:
+                console.print("[red]Error:[/red] Missing 'text' field")
+            errors += 1
+            continue
+
+        # Replace $prev placeholder
+        if prev_id and "$prev" in text:
+            text = text.replace("$prev", prev_id)
+
+        # Parse priority
+        parsed_priority = None
+        if prio_str := data.get("priority"):
+            try:
+                parsed_priority = Priority(prio_str.lower())
+            except ValueError:
+                if not quiet:
+                    console.print(f"[yellow]Warning:[/yellow] Invalid priority '{prio_str}'")
+
+        # Parse tags
+        parsed_tags = data.get("tags")
+        if parsed_tags and not isinstance(parsed_tags, list):
+            parsed_tags = None
+
+        item = svc.add(text, priority=parsed_priority, tags=parsed_tags)
+        prev_id = item.id
+        added += 1
+
+        if quiet:
+            console.print(item.id)
+        else:
+            console.print(f"[green]✓[/green] {item.id}: {item.text[:50]}")
+
+    if not quiet:
+        console.print(f"[dim]Added {added} todos ({errors} errors)[/dim]")
 
 
 def _parse_filter(filter_str: str) -> tuple[str, list[str]]:
@@ -330,11 +423,16 @@ def list_todos(
 @app.command()
 def done(
     id: Annotated[str, typer.Argument(help="Todo ID (or partial)")],
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Use global list")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
 ):
     """Mark todo as done."""
     cfg = _get_config()
-    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
-    svc = _get_service(cfg, project_id)
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
+    else:
+        svc = _get_service(cfg, dodo_id)
 
     # Try to find matching ID
     item = _find_item_by_partial_id(svc, id)
@@ -350,11 +448,16 @@ def done(
 @app.command()
 def rm(
     id: Annotated[str, typer.Argument(help="Todo ID (or partial)")],
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Use global list")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
 ):
     """Remove a todo."""
     cfg = _get_config()
-    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
-    svc = _get_service(cfg, project_id)
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
+    else:
+        svc = _get_service(cfg, dodo_id)
 
     item = _find_item_by_partial_id(svc, id)
     if not item:
@@ -405,8 +508,15 @@ def new(
     backend: Annotated[
         str | None, typer.Option("--backend", "-b", help="Backend (sqlite|markdown)")
     ] = None,
+    link: Annotated[
+        bool, typer.Option("--link", "-l", help="Link current directory to this dodo")
+    ] = True,
 ):
-    """Create a new dodo."""
+    """Create a new dodo.
+
+    When run from a git directory, automatically links the project to this dodo
+    so that 'dodo list' uses it. Use --no-link to skip this.
+    """
     from pathlib import Path
 
     from dodo.project_config import ProjectConfig
@@ -455,6 +565,16 @@ def new(
 
     location = str(target_dir).replace(str(Path.home()), "~")
     console.print(f"[green]✓[/green] Created dodo in {location}")
+
+    # Link current directory to this dodo via config mapping
+    if link and not local and name:
+        cwd = str(Path.cwd())
+        existing = cfg.get_directory_mapping(cwd)
+        if existing:
+            console.print(f"[dim]  Directory already mapped to '{existing}'[/dim]")
+        else:
+            cfg.set_directory_mapping(cwd, name)
+            console.print(f"[dim]  Mapped {Path.cwd().name} → {name}[/dim]")
 
 
 @app.command()
@@ -519,6 +639,52 @@ def destroy(
 
 
 @app.command()
+def link(
+    name: Annotated[str, typer.Argument(help="Name of the dodo to link to")],
+):
+    """Link current directory to an existing dodo.
+
+    This stores a mapping in config so that 'dodo list' from this directory
+    uses the specified dodo instead of creating a new one.
+    """
+    from pathlib import Path
+
+    cfg = _get_config()
+    cwd = str(Path.cwd())
+
+    # Check if the named dodo exists
+    target_dir = cfg.config_dir / name
+    if not target_dir.exists():
+        console.print(f"[red]Error:[/red] Dodo '{name}' not found")
+        console.print(f"  Create it first with: dodo new {name}")
+        raise typer.Exit(1)
+
+    # Check if already mapped
+    existing = cfg.get_directory_mapping(cwd)
+    if existing:
+        console.print(f"[yellow]Directory already mapped to '{existing}'[/yellow]")
+        console.print("  Use 'dodo unlink' to remove the mapping first")
+        raise typer.Exit(1)
+
+    cfg.set_directory_mapping(cwd, name)
+    console.print(f"[green]✓[/green] Linked {Path.cwd().name} → {name}")
+
+
+@app.command()
+def unlink():
+    """Remove the dodo mapping for current directory."""
+    from pathlib import Path
+
+    cfg = _get_config()
+    cwd = str(Path.cwd())
+
+    if cfg.remove_directory_mapping(cwd):
+        console.print(f"[green]✓[/green] Unlinked {Path.cwd().name}")
+    else:
+        console.print("[yellow]No mapping exists for this directory[/yellow]")
+
+
+@app.command()
 def config():
     """Open interactive config editor."""
     from dodo.ui.interactive import interactive_config
@@ -535,13 +701,11 @@ def export(
     from dodo.formatters.jsonl import JsonlFormatter
 
     cfg = _get_config()
-
-    if global_:
-        project_id = None
+    dodo_id, explicit_path = _resolve_dodo(cfg, global_=global_)
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
     else:
-        project_id = _detect_project(worktree_shared=cfg.worktree_shared)
-
-    svc = _get_service(cfg, project_id)
+        svc = _get_service(cfg, dodo_id)
     items = svc.list()
 
     # JsonlFormatter uses to_dict() which includes plugin fields like blocked_by
@@ -565,15 +729,13 @@ def info(
     from dodo.models import Status
 
     cfg = _get_config()
+    dodo_id, explicit_path = _resolve_dodo(cfg, global_=global_)
+    target = dodo_id or "global"
 
-    if global_:
-        project_id = None
-        target = "global"
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
     else:
-        project_id = _detect_project(worktree_shared=cfg.worktree_shared)
-        target = project_id or "global"
-
-    svc = _get_service(cfg, project_id)
+        svc = _get_service(cfg, dodo_id)
     items = svc.list()
 
     pending = sum(1 for i in items if i.status == Status.PENDING)
@@ -599,14 +761,17 @@ def backend(
     from dodo.project_config import ProjectConfig, get_project_config_dir
 
     cfg = _get_config()
-    project_id = _detect_project(worktree_shared=cfg.worktree_shared)
+    dodo_id, explicit_path = _resolve_dodo(cfg)
 
-    if not project_id:
+    if not dodo_id and not explicit_path:
         console.print("[red]Error:[/red] No dodo found")
         raise typer.Exit(1)
 
-    # Get project config directory (respects local_storage setting)
-    project_dir = get_project_config_dir(cfg, project_id, cfg.worktree_shared)
+    # Get project config directory
+    if explicit_path:
+        project_dir = explicit_path
+    else:
+        project_dir = get_project_config_dir(cfg, dodo_id, cfg.worktree_shared)
     if not project_dir:
         console.print("[red]Error:[/red] Could not determine project config directory")
         raise typer.Exit(1)

@@ -41,6 +41,30 @@ class TreeFormatter:
             return item.item.status
         return item.status
 
+    def _get_priority(self, item):
+        """Get priority from item or wrapped item."""
+        if hasattr(item, "item"):
+            return item.item.priority
+        return getattr(item, "priority", None)
+
+    def _get_tags(self, item) -> list[str]:
+        """Get tags from item or wrapped item."""
+        if hasattr(item, "item"):
+            return item.item.tags or []
+        return getattr(item, "tags", None) or []
+
+    def _format_priority(self, priority) -> str:
+        """Format priority as colored indicator."""
+        from dodo.ui.formatting import format_priority
+
+        return format_priority(priority)
+
+    def _format_tags(self, tags: list[str]) -> str:
+        """Format tags as dim hashtags."""
+        from dodo.ui.formatting import format_tags
+
+        return format_tags(tags)
+
     def _wrap_text(self, text: str, width: int) -> list[str]:
         """Wrap text to width using stdlib textwrap."""
         import textwrap
@@ -89,24 +113,39 @@ class TreeFormatter:
             item_id = self._get_id(item)
             is_done = self._get_status(item) == Status.DONE
             text = self._get_text(item)
+            priority = self._get_priority(item)
+            tags = self._get_tags(item)
+
+            # Priority indicator (before icon)
+            prio_str = self._format_priority(priority)
+            prio_prefix = f"{prio_str} " if prio_str else ""
 
             # Colorblind-safe: blue for done, dim for pending (lighter than orange)
             icon = "[blue]✓[/blue]" if is_done else "[dim]•[/dim]"
             id_str = f"[dim]{item_id[:8]}[/dim]"
 
+            # Tags suffix
+            tags_str = self._format_tags(tags) if not is_done else ""
+
             # Calculate available width for text
             # Tree indent is roughly 4 chars per level
             tree_indent = depth * 4
-            prefix_width = self.ID_WIDTH  # "• abc12345 "
+            # Account for priority prefix width (!! = 2, ! = 1, etc)
+            prio_width = (
+                len(prio_str.replace("[", "").replace("]", "").split("/")[0]) + 1 if prio_str else 0
+            )
+            prefix_width = self.ID_WIDTH + prio_width
             available = self.max_width - tree_indent - prefix_width
 
             # Child count indicator
             kids = children.get(item_id, [])
             suffix = f" [cyan]→{len(kids)}[/cyan]" if kids and not is_done else ""
             suffix_len = len(f" →{len(kids)}") if kids and not is_done else 0
+            # Account for tags in suffix
+            tags_len = sum(len(t) + 2 for t in tags[:3]) if tags and not is_done else 0
 
             # Wrap text (min width 1 to handle narrow terminals gracefully)
-            text_width = max(1, available - suffix_len)
+            text_width = max(1, available - suffix_len - tags_len)
             lines = self._wrap_text(text, text_width)
 
             # Truncate to max lines
@@ -125,7 +164,7 @@ class TreeFormatter:
             # Format output
             if is_done:
                 # Done items: dimmed and strikethrough
-                first_line = f"{icon} {id_str} [dim strike]{lines[0]}[/dim strike]"
+                first_line = f"{prio_prefix}{icon} {id_str} [dim strike]{lines[0]}[/dim strike]"
                 if len(lines) > 1:
                     continuation = "\n".join(
                         f"{cont_prefix}[dim strike]{line}[/dim strike]" for line in lines[1:]
@@ -133,8 +172,8 @@ class TreeFormatter:
                     return f"{first_line}\n{continuation}"
                 return first_line
             else:
-                # Pending items
-                first_line = f"{icon} {id_str} {lines[0]}{suffix}"
+                # Pending items with tags
+                first_line = f"{prio_prefix}{icon} {id_str} {lines[0]}{tags_str}{suffix}"
                 if len(lines) > 1:
                     continuation = "\n".join(f"{cont_prefix}{line}" for line in lines[1:])
                     return f"{first_line}\n{continuation}"

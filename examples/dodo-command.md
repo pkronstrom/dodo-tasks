@@ -1,132 +1,109 @@
-# Dodo Command Reference
+# Dodo Commands for AI Agents
 
-Commands for managing multiple dodo instances - creating, using, and destroying named dodos.
+## Use Case 1: Project Task Tracking
 
-## dodo new
-
-Create new dodo instances.
+Track your own work in the project's `.dodo/` at git root:
 
 ```bash
-dodo new                              # Create default dodo in ~/.config/dodo/
-dodo new <name>                       # Create named dodo in ~/.config/dodo/<name>/
-dodo new --local                      # Create local dodo in .dodo/
-dodo new <name> --local               # Create named local dodo in .dodo/<name>/
-dodo new -b sqlite                    # Specify backend (-b or --backend)
+# Track progress as you work
+dodo add "Implement user auth"
+dodo add "Write tests" -P high
+dodo list -f jsonl                       # Machine-readable status
+dodo done <id>                           # Mark complete
 ```
 
-### Examples
+Simple, persistent. Tasks live with the project.
+
+---
+
+## Use Case 2: Agentic Workflow with Subagents
+
+Orchestrate parallel subagents with dependency-aware task distribution.
+
+### Step 1: Create ephemeral dodo
 
 ```bash
-# Create a named global dodo
-dodo new feature-auth
-
-# Create a local dodo for this project
-dodo new project-tasks --local
-
-# Create with SQLite backend (recommended for AI agents)
-dodo new ai-session -b sqlite --local
+dodo new workflow-abc --local -b sqlite
 ```
 
-## dodo destroy
-
-Remove dodo instances. **Auto-detects** local vs global location.
+### Step 2: Bulk insert tasks with dependencies
 
 ```bash
-dodo destroy <name>                   # Auto-detects and removes
-dodo destroy --local                  # Remove default .dodo/ (no name)
+# Add all tasks
+echo '{"text": "Setup database schema", "priority": "high", "tags": ["db"]}
+{"text": "Implement user model", "tags": ["backend"]}
+{"text": "Implement auth endpoints", "tags": ["backend"]}
+{"text": "Write integration tests", "tags": ["test"]}' | dodo add-bulk -d workflow-abc -q > task_ids.txt
+
+# Add dependencies (auth depends on user model, tests depend on auth)
+echo '{"blocker": "<user-model-id>", "blocked": "<auth-endpoints-id>"}
+{"blocker": "<auth-endpoints-id>", "blocked": "<integration-tests-id>"}' | dodo dep add-bulk -d workflow-abc
 ```
 
-### Examples
+### Step 3: Dispatch subagents with ready tasks
+
+Pass these instructions to each subagent:
+
+```
+Track your work with dodo:
+- See ready tasks: dodo ready -d workflow-abc
+- Mark done when complete: dodo done <id> -d workflow-abc
+
+Only work on tasks shown by 'dodo ready'. Dependencies are tracked automatically.
+```
+
+Subagents pull ready tasks, complete them, and blocked tasks become unblocked.
+
+### Step 4: Cleanup when done
 
 ```bash
-# Remove a named dodo (auto-detects location)
-dodo destroy feature-auth
-dodo destroy project-tasks
-
-# Remove default local dodo
-dodo destroy --local
+dodo destroy workflow-abc
 ```
 
-## -d / --dodo flag
+Ephemeral dodos prevent stale task accumulation.
 
-Target a specific dodo. **Auto-detects** local vs global - checks `.dodo/<name>/` first, then `~/.config/dodo/<name>/`.
+---
+
+## JSONL Schema
+
+**add-bulk** fields:
+- `text` (required): Todo text
+- `priority`: critical/high/normal/low/someday
+- `tags`: ["tag1", "tag2"]
+
+**dep add-bulk** fields:
+- `blocker` (required): ID of blocking todo
+- `blocked` (required): ID of blocked todo
+
+## Command Reference
 
 ```bash
-dodo add "task" -d my-session         # Add to specific dodo
-dodo list -d my-session               # List from specific dodo
-dodo done 1 -d my-session             # Complete task in specific dodo
+# Single operations
+dodo add "task" [-d name] [-g] [-P priority] [-t tags]
+dodo list [-d name] [-g] [-f jsonl]
+dodo done <id> [-d name] [-g]
+dodo rm <id> [-d name] [-g]
+
+# Dependencies (requires graph plugin)
+dodo ready [-d name]                         # Tasks with no blockers
+dodo dep add <blocker> <blocked> [-d name]
+dodo dep add-bulk [-d name] [-q]             # JSONL stdin
+dodo dep rm <blocker> <blocked> [-d name]
+dodo dep list [-d name] [-t]                 # -t for tree view
+
+# Bulk operations
+dodo add-bulk [-d name] [-g] [-q]            # JSONL stdin
+
+# Dodo management
+dodo new <name> [--local] [-b sqlite|markdown]
+dodo destroy <name>
 ```
 
-### Examples
+### Flags
 
-```bash
-# Full workflow with shorthand
-dodo new ci-tasks --local
-dodo add "Fix build" -d ci-tasks
-dodo add "Run tests" -d ci-tasks
-dodo list -d ci-tasks
-dodo done 1 -d ci-tasks
-dodo destroy ci-tasks
-```
-
-## AI Agent Usage
-
-AI agents can use ephemeral dodos for task tracking during autonomous operations.
-
-### Ephemeral Session
-
-```bash
-# Create
-dodo new agent-123 --local -b sqlite
-
-# Add tasks
-dodo add "Fetch data" -d agent-123
-dodo add "Process data" -d agent-123
-dodo add "Generate report" -d agent-123
-
-# Work
-dodo list -d agent-123
-dodo done 1 -d agent-123
-
-# Cleanup
-dodo destroy agent-123
-```
-
-### Why Named Dodos for AI?
-
-1. **Isolation** - Each session has its own task list
-2. **Cleanup** - Easy removal when done
-3. **Tracking** - Separation from human tasks
-4. **Local scope** - `--local` keeps tasks in project directory
-
-### Multi-Agent Workflow
-
-```bash
-# Agent 1: Research
-dodo new research -b sqlite --local
-dodo add "Analyze codebase" -d research
-dodo add "Identify patterns" -d research
-
-# Agent 2: Implementation
-dodo new impl -b sqlite --local
-dodo add "Implement feature" -d impl
-dodo add "Write tests" -d impl
-
-# Check progress
-dodo list -d research
-dodo list -d impl
-
-# Cleanup
-dodo destroy research
-dodo destroy impl
-```
-
-## Backend Selection
-
-```bash
-dodo new my-dodo -b sqlite      # Fast, concurrent access (default)
-dodo new my-dodo -b markdown    # Human-readable, git-friendly
-```
-
-- **sqlite**: Recommended for AI agents, frequent updates
-- **markdown**: Good for shared tasks, manual editing
+- `-d, --dodo`: Target specific dodo by name
+- `-g, --global`: Use global dodo (~/.config/dodo/)
+- `-q, --quiet`: Minimal output (IDs only for bulk ops)
+- `-f, --format`: Output format (table/jsonl/tree)
+- `-P, --priority`: Priority level
+- `-t, --tags`: Comma-separated tags (add) or tree view (dep list)
