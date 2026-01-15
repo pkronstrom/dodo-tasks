@@ -7,6 +7,7 @@ import re
 import time
 import urllib.request
 
+import typer
 from rich.console import Console
 
 console = Console()
@@ -72,9 +73,15 @@ def _parse_priority_and_tags(
     return text, priority, tags
 
 
-def inbox() -> None:
-    """Listen for todos from ntfy.sh and add them automatically."""
+def inbox(
+    global_: bool = typer.Option(False, "-g", "--global", help="Use global dodo"),
+) -> None:
+    """Listen for todos from ntfy.sh and add them automatically.
+
+    By default, uses the dodo for the current directory. Use --global to force global dodo.
+    """
     from dodo.config import Config
+    from dodo.resolve import resolve_dodo
 
     cfg = Config.load()
 
@@ -86,27 +93,36 @@ def inbox() -> None:
 
     server = cfg.get_plugin_config("ntfy-inbox", "server", "https://ntfy.sh").rstrip("/")
 
+    # Resolve default dodo at startup
+    if global_:
+        default_dodo_name = None
+        default_dodo_label = "global"
+    else:
+        result = resolve_dodo(cfg, None)
+        default_dodo_name = result.name
+        default_dodo_label = result.name or "global"
+
     console.print(f"[dim]Listening for todos on {server}/{topic}...[/dim]")
-    console.print("[dim]Send messages to add todos. Use 'ai:' prefix for AI processing.[/dim]")
+    console.print(
+        f"[dim]Default dodo: [cyan]{default_dodo_label}[/cyan] (set Title to override)[/dim]"
+    )
     console.print(
         "[dim]Priority: !!: (critical), !: (high), normal:, low:, someday: or ntfy header 1-5.[/dim]"
     )
     console.print("[dim]Tags: #tag1 #tag2 in message text.[/dim]")
-    console.print(
-        "[dim]Dodo: Set title to target a specific dodo (e.g., 'work', 'personal').[/dim]"
-    )
+    console.print("[dim]Use 'ai:' prefix for AI processing.[/dim]")
     console.print("[dim]Press Ctrl+C to stop.[/dim]\n")
 
-    _subscribe(topic, server)
+    _subscribe(topic, server, default_dodo_name)
 
 
-def _subscribe(topic: str, server: str) -> None:
+def _subscribe(topic: str, server: str, default_dodo: str | None) -> None:
     """Subscribe with automatic reconnection."""
     retry_delay = 5
 
     while True:
         try:
-            if not _subscribe_once(topic, server):
+            if not _subscribe_once(topic, server, default_dodo):
                 console.print(f"[yellow]Reconnecting in {retry_delay}s...[/yellow]")
                 time.sleep(retry_delay)
                 continue
@@ -115,7 +131,7 @@ def _subscribe(topic: str, server: str) -> None:
             break
 
 
-def _subscribe_once(topic: str, server: str) -> bool:
+def _subscribe_once(topic: str, server: str, default_dodo: str | None) -> bool:
     """Subscribe to ntfy topic and process messages. Returns False on error."""
     url = f"{server}/{topic}/json"
 
@@ -129,7 +145,7 @@ def _subscribe_once(topic: str, server: str) -> bool:
                     continue
                 try:
                     msg = json.loads(line.decode("utf-8"))
-                    _process_message(msg)
+                    _process_message(msg, default_dodo)
                 except json.JSONDecodeError:
                     continue
     except KeyboardInterrupt:
@@ -140,7 +156,7 @@ def _subscribe_once(topic: str, server: str) -> bool:
     return True
 
 
-def _process_message(msg: dict) -> None:
+def _process_message(msg: dict, default_dodo: str | None) -> None:
     """Process a single ntfy message and add to dodo."""
     from dodo.config import Config
     from dodo.core import TodoService
@@ -155,7 +171,7 @@ def _process_message(msg: dict) -> None:
     if not text:
         return
 
-    # Title = dodo name (empty = auto-detect/global)
+    # Title = dodo name (empty = use default)
     dodo_name = msg.get("title", "").strip() or None
 
     # Get ntfy priority header (1-5 scale)
@@ -184,15 +200,21 @@ def _process_message(msg: dict) -> None:
     try:
         cfg = Config.load()
 
-        # Resolve dodo name like CLI does
-        result = resolve_dodo(cfg, dodo_name)
-        if result.path:
-            svc = TodoService(cfg, project_id=None, storage_path=result.path)
+        # Resolve dodo: title overrides default, otherwise use default_dodo
+        if dodo_name:
+            # Explicit title - resolve it
+            result = resolve_dodo(cfg, dodo_name)
+            if result.path:
+                svc = TodoService(cfg, project_id=None, storage_path=result.path)
+            else:
+                svc = TodoService(cfg, result.name)
+            dodo_label = result.name or "global"
+            dodo_info = f" [cyan][{dodo_label}][/cyan]" if result.name else ""
         else:
-            svc = TodoService(cfg, result.name)
-
-        dodo_label = result.name or "global"
-        dodo_info = f" [cyan][{dodo_label}][/cyan]" if result.name else ""
+            # No title - use pre-resolved default
+            svc = TodoService(cfg, default_dodo)
+            dodo_label = default_dodo or "global"
+            dodo_info = f" [cyan][{dodo_label}][/cyan]" if default_dodo else ""
         prio_info = f" [yellow][{priority.value}][/yellow]" if priority else ""
         tags_info = f" [dim]{' '.join('#' + t for t in tags)}[/dim]" if tags else ""
 

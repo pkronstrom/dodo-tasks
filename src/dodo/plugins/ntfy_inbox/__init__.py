@@ -49,6 +49,9 @@ if TYPE_CHECKING:
 
     from dodo.config import Config
 
+# Commands this plugin registers
+COMMANDS = ["plugins/ntfy-inbox"]
+
 
 @dataclass
 class ConfigVar:
