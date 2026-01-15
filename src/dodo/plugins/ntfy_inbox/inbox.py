@@ -171,6 +171,24 @@ def _process_message(msg: dict, default_dodo: str | None) -> None:
     if not text:
         return
 
+    # Handle JSON-encoded message body (iOS Shortcuts workaround)
+    # If message looks like {"message": "..."}, parse it
+    if text.startswith("{") and text.endswith("}"):
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict) and "message" in parsed:
+                text = parsed.get("message", "").strip()
+                # Also check for title/priority in the JSON
+                if not msg.get("title") and parsed.get("title"):
+                    msg["title"] = parsed["title"]
+                if not msg.get("priority") and parsed.get("priority"):
+                    msg["priority"] = parsed["priority"]
+        except json.JSONDecodeError:
+            pass  # Not valid JSON, use as-is
+
+    if not text:
+        return
+
     # Title = dodo name (empty = use default)
     dodo_name = msg.get("title", "").strip() or None
 
