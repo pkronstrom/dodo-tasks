@@ -823,13 +823,34 @@ def backend(
     console.print(f"[green]✓[/green] Backend set to: {name}")
 
 
+_plugin_commands_registered = False
+
+
+def _register_plugin_commands() -> None:
+    """Allow plugins to register additional CLI commands under 'dodo plugins <name>'.
+
+    Called when 'plugins' subcommand is detected to ensure commands are registered
+    before Typer validates subcommands.
+    """
+    global _plugin_commands_registered
+    if _plugin_commands_registered:
+        return
+    _plugin_commands_registered = True
+
+    from dodo.cli_plugins import plugins_app
+    from dodo.plugins import apply_hooks
+
+    cfg = _get_config()
+    apply_hooks("register_commands", plugins_app, cfg)
+
+
 def _register_plugins_subapp() -> None:
     """Register the plugins subapp with the main app."""
     from dodo.cli_plugins import plugins_app
 
-    @plugins_app.callback()
-    def plugins_callback() -> None:
-        """Register plugin commands lazily when plugins subcommand is accessed."""
+    # Register plugin commands eagerly when 'plugins' subcommand is likely
+    # This is needed because Typer validates subcommands before callbacks run
+    if len(sys.argv) > 2 and sys.argv[1] == "plugins":
         _register_plugin_commands()
 
     app.add_typer(plugins_app, name="plugins")
@@ -924,23 +945,3 @@ def _clear_last_action() -> None:
     state_file = cfg.config_dir / ".last_action"
     if state_file.exists():
         state_file.unlink()
-
-
-_plugin_commands_registered = False
-
-
-def _register_plugin_commands() -> None:
-    """Allow plugins to register additional CLI commands under 'dodo plugins <name>'.
-
-    Called lazily on first plugin subcommand access to avoid import-time overhead.
-    """
-    global _plugin_commands_registered
-    if _plugin_commands_registered:
-        return
-    _plugin_commands_registered = True
-
-    from dodo.cli_plugins import plugins_app
-    from dodo.plugins import apply_hooks
-
-    cfg = _get_config()
-    apply_hooks("register_commands", plugins_app, cfg)

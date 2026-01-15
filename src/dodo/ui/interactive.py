@@ -1664,10 +1664,12 @@ def _plugins_config() -> None:
         items.append((toggle_key, f"[bold]{plugin.name}[/bold]", "toggle", None, plugin.name))
         pending[toggle_key] = plugin.enabled
 
-        # Plugin config vars (indented)
+        # Plugin config vars (indented) - use composite key to avoid conflicts
         for env in plugin.envs:
-            items.append((env.name, f"  {env.name}", "edit", None, None))
-            pending[env.name] = getattr(cfg, env.name, env.default) or ""
+            config_key = f"{plugin.name}:{env.name}"
+            label = getattr(env, "label", None) or env.name
+            items.append((config_key, f"  {label}", "edit", None, plugin.name))
+            pending[config_key] = cfg.get_plugin_config(plugin.name, env.name, env.default) or ""
 
     _plugins_config_loop(cfg, items, pending)
 
@@ -1718,9 +1720,13 @@ def _plugins_config_loop(
             current.discard(plugin_name)
         cfg.set("enabled_plugins", ",".join(sorted(current)))
 
-    def save_config_var(key: str, val: object) -> None:
-        """Save config variable."""
-        if getattr(cfg, key, None) != val:
+    def save_config_var(key: str, val: object, plugin_name: str | None = None) -> None:
+        """Save config variable. Uses plugin config if plugin_name is provided."""
+        if plugin_name:
+            # Key format is "plugin_name:var_name", extract var_name
+            var_name = key.split(":", 1)[1] if ":" in key else key
+            cfg.set_plugin_config(plugin_name, var_name, val)
+        elif getattr(cfg, key, None) != val:
             cfg.set(key, val)
 
     while True:
@@ -1752,14 +1758,14 @@ def _plugins_config_loop(
                 render()
 
         if edit_triggered:
-            item_key = items[cursor][0]
+            item_key, _, _, _, plugin_name = items[cursor]
             new_val = _edit_in_editor(
                 str(pending[item_key]),
                 [f"Edit: {items[cursor][1].strip()}"],
             )
             if new_val is not None:
                 pending[item_key] = new_val
-                save_config_var(item_key, new_val)
+                save_config_var(item_key, new_val, plugin_name)
         else:
             break
 
