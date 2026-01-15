@@ -1,77 +1,103 @@
 # Dodo
 
-Todo router - manage todos across multiple backends.
+A fast, flexible todo manager with smart project routing and plugin support.
+
+## Features
+
+- **Smart routing**: Todos automatically go to the right project based on your current directory
+- **Multiple backends**: SQLite (default), Markdown, Obsidian
+- **Plugin system**: Extend with AI processing, dependency graphs, ntfy.sh integration
+- **Interactive UI**: Full TUI with vim-style navigation
+- **Priority & tags**: Organize with `!!:` prefixes and `#hashtags`
 
 ## Installation
 
 ```bash
-pip install -e ".[dev]"
+# With uv (recommended)
+uv tool install git+https://github.com/yourusername/dodo
+
+# With pipx
+pipx install git+https://github.com/yourusername/dodo
+
+# Development
+git clone https://github.com/yourusername/dodo
+cd dodo
+uv sync
 ```
 
-## Usage
+## Quick Start
 
 ```bash
-# Add a todo (smart routing: local project or global)
-dodo add "fix the bug"
+dodo add "Fix the bug"              # Add to current project's dodo
+dodo add -g "Buy groceries"         # Add to global dodo
+dodo list                           # List todos
+dodo done abc123                    # Mark done (partial ID works)
+dodo                                # Interactive menu
+```
 
-# Add to global explicitly
-dodo add -g "remember to buy milk"
+## Project Routing
 
-# List todos
-dodo list
+Dodo automatically detects which todo list to use:
 
-# Mark done
-dodo done <id>
+1. **Local** `.dodo/` directory in current or parent folder
+2. **Mapped** directories via `dodo link`
+3. **Git-based** project detection (fallback)
+4. **Global** `~/.config/dodo/` (with `-g` flag)
 
-# Interactive menu
-dodo
+```bash
+dodo link                           # Map current dir to a dodo
+dodo -d work add "Task"             # Target specific dodo by name
 ```
 
 ## Plugins
 
-Plugins are standalone scripts in `~/.config/dodo/plugins/` or `./plugins/`.
-
 ```bash
-# List installed plugins
-dodo plugins list
-
-# Run a plugin
-dodo plugins run ntfy-inbox
+dodo plugins list                   # Show available plugins
+dodo plugins enable ai              # Enable a plugin
+dodo config                         # Configure plugins
 ```
 
-### ntfy-inbox
+### Built-in Plugins
 
-Receive todos via [ntfy.sh](https://ntfy.sh) - enables "Hey Siri, add to my dodo".
+| Plugin | Description |
+|--------|-------------|
+| `ai` | AI-assisted todo formatting (claude, gemini, llm) |
+| `graph` | Dependency tracking with `dodo dep add` |
+| `ntfy-inbox` | Receive todos via ntfy.sh (Siri integration) |
+| `obsidian` | Obsidian vault backend |
+
+### ntfy-inbox (Siri Integration)
 
 ```bash
-export DODO_NTFY_TOPIC="dodo-your-secret"
-dodo plugins run ntfy-inbox
+dodo plugins enable ntfy-inbox
+dodo config                         # Set your ntfy topic
+dodo plugins ntfy-inbox run         # Start listener
+dodo plugins ntfy-inbox run -g      # Force global dodo
 ```
 
-See `plugins/ntfy-inbox/README.md` for iPhone Shortcut setup.
+Send todos via curl or iOS Shortcuts:
+```bash
+curl -d "Buy milk #errands" ntfy.sh/your-topic
+curl -d '{"message":"Task","priority":4}' ntfy.sh/your-topic
+```
 
 ## Configuration
 
-Copy `.env.template` to `~/.config/dodo/.env` and customize.
-
-## AI Backends
-
-### llm (default)
 ```bash
-DODO_AI_COMMAND="llm '{{prompt}}' -s '{{system}}' --schema '{{schema}}'"
+dodo config                         # Interactive config menu
 ```
 
-### Claude CLI
-```bash
-DODO_AI_COMMAND="claude -p '{{prompt}}' --system-prompt '{{system}}' --json-schema '{{schema}}' --output-format json --model haiku --tools ''"
+Config stored in `~/.config/dodo/config.json`. Plugin config uses nested structure:
+```json
+{
+  "default_backend": "sqlite",
+  "plugins": {
+    "ntfy-inbox": { "topic": "your-secret" },
+    "ai": { "command": "claude -p ..." }
+  }
+}
 ```
 
-### Gemini CLI (no schema enforcement)
-```bash
-DODO_AI_COMMAND="gemini '{{prompt}}' --output-format json"
-```
+## License
 
-### Codex CLI (requires schema file)
-```bash
-DODO_AI_COMMAND="codex exec '{{prompt}}' --output-schema ~/.config/dodo/schema.json"
-```
+MIT
