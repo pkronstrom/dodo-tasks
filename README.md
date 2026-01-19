@@ -1,5 +1,7 @@
 # Dodo
 
+![dodo banner](docs/dodo_banner.png)
+
 A fast, flexible todo manager with smart project routing and plugin support.
 
 ## Features
@@ -14,13 +16,13 @@ A fast, flexible todo manager with smart project routing and plugin support.
 
 ```bash
 # With uv (recommended)
-uv tool install git+https://github.com/yourusername/dodo
+uv tool install git+https://github.com/pkronstrom/dodo-tasks
 
 # With pipx
-pipx install git+https://github.com/yourusername/dodo
+pipx install git+https://github.com/pkronstrom/dodo-tasks
 
 # Development
-git clone https://github.com/yourusername/dodo
+git clone https://github.com/pkronstrom/dodo-tasks
 cd dodo
 uv sync
 ```

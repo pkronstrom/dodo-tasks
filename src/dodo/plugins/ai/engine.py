@@ -39,12 +39,15 @@ def build_command(
     """Build command arguments from template.
 
     Returns a list of arguments suitable for subprocess.run without shell=True.
+
+    Security: All parameters are escaped for shell single-quoted strings to prevent
+    command injection when the template is parsed by shlex.split().
     """
     cmd_str = (
         template.replace("{{prompt}}", _escape_single_quotes(prompt))
         .replace("{{system}}", _escape_single_quotes(system))
         .replace("{{schema}}", _escape_single_quotes(schema))
-        .replace("{{model}}", model)
+        .replace("{{model}}", _escape_single_quotes(model))
     )
     return shlex.split(cmd_str)
 
