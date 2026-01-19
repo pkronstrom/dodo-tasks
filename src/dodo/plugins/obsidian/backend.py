@@ -26,13 +26,28 @@ class ObsidianBackend:
         api_url: str | None = None,
         api_key: str = "",
         vault_path: str = "dodo/todos.md",
+        verify_ssl: bool = False,
     ):
+        """Initialize Obsidian backend.
+
+        Args:
+            api_url: Obsidian REST API URL (default: https://localhost:27124)
+            api_key: API key for authentication
+            vault_path: Path to todo file within vault
+            verify_ssl: Whether to verify SSL certificates. Default False because
+                        Obsidian Local REST API uses self-signed certificates.
+                        Set to True if you've configured proper certificates.
+
+        Security note: When verify_ssl=False, the connection is vulnerable to
+        man-in-the-middle attacks. This is acceptable for localhost connections
+        but ensure you understand the implications for remote connections.
+        """
         self._api_url = (api_url or self.DEFAULT_API_URL).rstrip("/")
         self._api_key = api_key
         self._vault_path = vault_path
         self._client = httpx.Client(
             headers={"Authorization": f"Bearer {api_key}"},
-            verify=False,  # Local self-signed cert
+            verify=verify_ssl,
             timeout=10.0,
         )
 
