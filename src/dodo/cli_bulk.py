@@ -396,3 +396,90 @@ def edit(
 
     if not quiet:
         console.print(f"[dim]Edited {edited} todos[/dim]")
+
+
+@bulk_app.command()
+def dep(
+    global_: Annotated[bool, typer.Option("-g", "--global", help="Use global list")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
+    quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Minimal output")] = False,
+):
+    """Bulk add dependencies from JSONL stdin.
+
+    Each line should be a JSON object with fields:
+    - blocker: ID of blocking todo
+    - blocked: ID of blocked todo
+
+    Example:
+        echo '{"blocker": "abc123", "blocked": "def456"}
+        {"blocker": "abc123", "blocked": "ghi789"}' | dodo bulk dep
+    """
+    import json
+
+    from dodo.backends.base import GraphCapable
+    from dodo.core import TodoService
+    from dodo.resolve import resolve_dodo
+
+    cfg = _get_config()
+    result = resolve_dodo(cfg, dodo, global_)
+
+    if result.path:
+        svc = TodoService(cfg, project_id=None, storage_path=result.path)
+    else:
+        svc = TodoService(cfg, result.name)
+
+    backend = svc.backend
+    if not isinstance(backend, GraphCapable):
+        console.print("[red]Error:[/red] Bulk dep requires SQLite backend with graph plugin")
+        console.print("[dim]Enable with: dodo plugins enable graph[/dim]")
+        raise typer.Exit(1)
+
+    if sys.stdin.isatty():
+        console.print("[yellow]No input provided. Pipe JSONL to stdin.[/yellow]")
+        raise typer.Exit(1)
+
+    added = 0
+    errors = 0
+
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError as e:
+            if not quiet:
+                console.print(f"[red]Error:[/red] Invalid JSON: {e}")
+            errors += 1
+            continue
+
+        blocker = data.get("blocker", "")
+        blocked = data.get("blocked", "")
+
+        if not blocker or not blocked:
+            if not quiet:
+                console.print("[red]Error:[/red] Missing 'blocker' or 'blocked' field")
+            errors += 1
+            continue
+
+        # Validate todos exist
+        if not backend.get(blocker):
+            if not quiet:
+                console.print(f"[yellow]Warning:[/yellow] Blocker not found: {blocker}")
+            errors += 1
+            continue
+        if not backend.get(blocked):
+            if not quiet:
+                console.print(f"[yellow]Warning:[/yellow] Blocked not found: {blocked}")
+            errors += 1
+            continue
+
+        backend.add_dependency(blocker, blocked)
+        added += 1
+
+        if not quiet:
+            console.print(f"[green]✓[/green] {blocker} → {blocked}")
+
+    if not quiet:
+        console.print(f"[dim]Added {added} dependencies ({errors} errors)[/dim]")

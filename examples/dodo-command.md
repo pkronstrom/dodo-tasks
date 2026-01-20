@@ -37,7 +37,7 @@ echo '{"text": "Setup database schema", "priority": "high", "tags": ["db"]}
 
 # Add dependencies (auth depends on user model, tests depend on auth)
 echo '{"blocker": "<user-model-id>", "blocked": "<auth-endpoints-id>"}
-{"blocker": "<auth-endpoints-id>", "blocked": "<integration-tests-id>"}' | dodo dep add-bulk -d workflow-abc
+{"blocker": "<auth-endpoints-id>", "blocked": "<integration-tests-id>"}' | dodo bulk dep -d workflow-abc
 ```
 
 ### Step 3: Dispatch subagents with ready tasks
@@ -71,7 +71,7 @@ Ephemeral dodos prevent stale task accumulation.
 - `priority`: critical/high/normal/low/someday
 - `tags`: ["tag1", "tag2"]
 
-**dep add-bulk** fields:
+**bulk dep** fields:
 - `blocker` (required): ID of blocking todo
 - `blocked` (required): ID of blocked todo
 
@@ -89,7 +89,7 @@ dodo undo                                    # Undo last operation
 dodo graph ready [-d name]                   # Tasks with no blockers
 dodo graph blocked [-d name]                 # Tasks that are blocked
 dodo dep add <blocker> <blocked> [-d name]
-dodo dep add-bulk [-d name]                  # JSONL stdin
+dodo bulk dep [-d name]                  # JSONL stdin
 dodo dep rm <blocker> <blocked> [-d name]
 dodo dep list [-d name] [--tree]             # --tree for tree view
 

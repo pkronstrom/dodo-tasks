@@ -120,72 +120,15 @@ def add_dep(
     console.print(f"[green]Added:[/green] {blocker} blocks {blocked}")
 
 
-@dep_app.command(name="add-bulk")
+@dep_app.command(name="add-bulk", hidden=True)
 def add_dep_bulk(
     global_: Annotated[bool, typer.Option("-g", "--global", help="Use global list")] = False,
     dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
     quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Minimal output")] = False,
 ) -> None:
-    """Bulk add dependencies from JSONL stdin.
-
-    Each line should be a JSON object with fields:
-    - blocker: ID of blocking todo
-    - blocked: ID of blocked todo
-
-    Example:
-        echo '{"blocker": "abc123", "blocked": "def456"}
-        {"blocker": "abc123", "blocked": "ghi789"}' | dodo dep add-bulk
-    """
-    import json
-    import sys
-
-    backend, _ = _get_graph_backend(dodo, global_)
-
-    added = 0
-    errors = 0
-
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-
-        try:
-            data = json.loads(line)
-        except json.JSONDecodeError as e:
-            if not quiet:
-                console.print(f"[red]Error:[/red] Invalid JSON: {e}")
-            errors += 1
-            continue
-
-        blocker = data.get("blocker", "")
-        blocked = data.get("blocked", "")
-
-        if not blocker or not blocked:
-            if not quiet:
-                console.print("[red]Error:[/red] Missing 'blocker' or 'blocked' field")
-            errors += 1
-            continue
-
-        # Validate todos exist
-        if not backend.get(blocker):
-            if not quiet:
-                console.print(f"[yellow]Warning:[/yellow] Blocker not found: {blocker}")
-            errors += 1
-            continue
-        if not backend.get(blocked):
-            if not quiet:
-                console.print(f"[yellow]Warning:[/yellow] Blocked not found: {blocked}")
-            errors += 1
-            continue
-
-        backend.add_dependency(blocker, blocked)
-        added += 1
-
-        if not quiet:
-            console.print(f"[green]✓[/green] {blocker} → {blocked}")
-
-    if not quiet:
-        console.print(f"[dim]Added {added} dependencies ({errors} errors)[/dim]")
+    """Deprecated: Use 'dodo bulk dep' instead."""
+    console.print("[yellow]Warning:[/yellow] 'dodo dep add-bulk' is deprecated. Use 'dodo bulk dep' instead.")
+    raise typer.Exit(1)
 
 
 @dep_app.command(name="rm")
