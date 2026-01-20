@@ -95,7 +95,7 @@ def test_get_project_storage_path_uses_resolved_backend(tmp_path, monkeypatch):
     from dodo.ui.interactive import _get_project_storage_path
 
     # Should return markdown path, not sqlite
-    path = _get_project_storage_path(cfg, project_id, worktree_shared=False)
+    path = _get_project_storage_path(cfg, project_id)
 
     assert path.suffix == ".md", f"Expected .md but got {path}"
 
@@ -138,13 +138,37 @@ def test_resolve_dodo_with_local_dodo(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.chdir(tmp_path)
 
-    # Create a local dodo
-    local_dodo = tmp_path / ".dodo" / "mytest"
+    # Create a default local dodo (dodo.json directly in .dodo/)
+    local_dodo = tmp_path / ".dodo"
     local_dodo.mkdir(parents=True)
     (local_dodo / "dodo.json").write_text('{"backend": "sqlite"}')
 
     cfg = Config.load()
     name, path = resolve_dodo(cfg)
 
-    assert name == "mytest"
+    # Default local dodo is auto-detected with name "local"
+    assert name == "local"
     assert path == local_dodo
+
+
+def test_resolve_dodo_with_named_local_dodo(tmp_path, monkeypatch):
+    """Verify resolve_dodo correctly resolves named local dodos when explicit."""
+    from dodo.config import Config, clear_config_cache
+    from dodo.resolve import resolve_dodo
+
+    # Set up isolated environment
+    clear_config_cache()
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+
+    # Create a named local dodo (.dodo/mytest/)
+    named_dodo = tmp_path / ".dodo" / "mytest"
+    named_dodo.mkdir(parents=True)
+    (named_dodo / "dodo.json").write_text('{"backend": "sqlite"}')
+
+    cfg = Config.load()
+    # Named dodos must be explicitly requested
+    name, path = resolve_dodo(cfg, "mytest")
+
+    assert name == "mytest"
+    assert path == named_dodo

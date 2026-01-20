@@ -12,14 +12,13 @@ if TYPE_CHECKING:
 
 
 def get_project_config_dir(
-    config: Config, project_id: str | None, worktree_shared: bool = False
+    config: Config, project_id: str | None
 ) -> Path | None:
     """Get the directory where project config (dodo.json) should live.
 
     Args:
         config: Global dodo config
         project_id: Project identifier
-        worktree_shared: Whether worktrees share config
 
     Returns:
         Path to project config directory, or None if no project

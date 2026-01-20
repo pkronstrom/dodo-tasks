@@ -34,13 +34,6 @@ class ConfigMeta:
         "timestamps_enabled": "Add timestamps to todo entries",
     }
 
-    SETTINGS: dict[str, str] = {
-        "default_backend": "Backend (markdown|sqlite|obsidian)",
-        "default_format": "Output format (table|jsonl|tsv)",
-        "editor": "Editor command (empty = use $EDITOR)",
-        "interactive_width": "Max width for interactive menu (default: 120)",
-    }
-
 
 class Config:
     """Runtime configuration with env override support."""

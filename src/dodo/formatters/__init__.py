@@ -25,7 +25,9 @@ DEFAULT_DATETIME_FMT = "%m-%d %H:%M"
 
 def _get_plugin_formatter(name: str) -> type | None:
     """Load formatter from enabled plugin if available."""
-    config_dir = Path.home() / ".config" / "dodo"
+    from dodo.config import get_default_config_dir
+
+    config_dir = get_default_config_dir()
     registry_path = config_dir / "plugin_registry.json"
     config_path = config_dir / "config.json"
 

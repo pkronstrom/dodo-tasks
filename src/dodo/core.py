@@ -153,9 +153,7 @@ class TodoService:
             return self._config.default_backend
 
         # Get project config directory
-        project_dir = get_project_config_dir(
-            self._config, self._project_id, self._config.worktree_shared
-        )
+        project_dir = get_project_config_dir(self._config, self._project_id)
         if not project_dir:
             return self._config.default_backend
 
@@ -234,7 +232,6 @@ class TodoService:
                     self._config,
                     self._project_id,
                     backend_name,
-                    self._config.worktree_shared,
                 )
                 return backend_cls(path=path)
             else:
@@ -250,7 +247,6 @@ class TodoService:
             self._config,
             self._project_id,
             "markdown",
-            self._config.worktree_shared,
         )
 
     def _get_sqlite_path(self) -> Path:
@@ -262,5 +258,4 @@ class TodoService:
             self._config,
             self._project_id,
             "sqlite",
-            self._config.worktree_shared,
         )

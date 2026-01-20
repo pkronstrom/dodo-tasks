@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import Enum
@@ -10,6 +11,37 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from dodo.config import Config
+
+# Security: Pattern for valid dodo names (prevents path traversal)
+_VALID_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+
+
+class InvalidDodoNameError(ValueError):
+    """Raised when a dodo name contains invalid characters."""
+
+    pass
+
+
+def validate_dodo_name(name: str | None) -> str | None:
+    """Validate dodo name to prevent path traversal attacks.
+
+    Args:
+        name: Dodo name to validate, or None
+
+    Returns:
+        The validated name, or None if input was None
+
+    Raises:
+        InvalidDodoNameError: If name contains unsafe characters
+    """
+    if name is None:
+        return None
+    if not _VALID_NAME_PATTERN.match(name):
+        raise InvalidDodoNameError(
+            f"Invalid dodo name '{name}'. Names must start with alphanumeric "
+            "and contain only letters, numbers, underscores, and hyphens."
+        )
+    return name
 
 
 class ResolveSource(Enum):
@@ -72,12 +104,16 @@ def resolve_dodo(
     Returns:
         ResolvedDodo with name, path, and source.
         Supports tuple unpacking: name, path = resolve_dodo(cfg)
+
+    Raises:
+        InvalidDodoNameError: If dodo_name contains invalid characters
     """
     if global_:
         return ResolvedDodo(None, None, ResolveSource.GLOBAL)
 
-    # Explicit dodo name provided - auto-detect local vs global
+    # Validate and resolve explicit dodo name
     if dodo_name:
+        validate_dodo_name(dodo_name)
         return _resolve_named_dodo(config, dodo_name)
 
     # No name: auto-detect dodo
@@ -124,7 +160,7 @@ def _auto_detect_dodo(config: Config) -> ResolvedDodo:
 
             print(
                 f"Warning: Directory mapped to '{mapped_dodo}' but dodo not found. "
-                f"Run 'dodo unlink' to remove mapping.",
+                f"Run 'dodo unuse' to remove mapping.",
                 file=sys.stderr,
             )
 

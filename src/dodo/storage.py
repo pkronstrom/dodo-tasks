@@ -9,7 +9,6 @@ def get_storage_path(
     config: Config,
     project_id: str | None,
     backend: str,
-    worktree_shared: bool = True,
 ) -> Path:
     """Calculate storage path for a backend.
 
@@ -17,7 +16,6 @@ def get_storage_path(
         config: Config instance
         project_id: Project ID or None for global
         backend: Backend name (markdown, sqlite, etc.)
-        worktree_shared: Whether to use worktree-shared paths
 
     Returns:
         Path to storage file

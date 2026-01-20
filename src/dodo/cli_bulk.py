@@ -23,9 +23,13 @@ def _get_config():
 
 
 def _resolve_dodo(config, dodo_name=None, global_=False):
-    from dodo.resolve import resolve_dodo
-    result = resolve_dodo(config, dodo_name, global_)
-    return result.name, result.path
+    from dodo.resolve import InvalidDodoNameError, resolve_dodo
+    try:
+        result = resolve_dodo(config, dodo_name, global_)
+        return result.name, result.path
+    except InvalidDodoNameError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
 
 
 def _get_service(config, project_id):
@@ -59,27 +63,11 @@ def _get_ids_from_input(args: list[str]) -> list[str]:
 
 
 def _save_bulk_undo(action: str, items: list, target: str):
-    """Save undo state for bulk operation."""
-    import json
-    from dodo.config import Config
+    """Save undo state for bulk operation. Delegates to shared undo module."""
+    from dodo.undo import save_undo_state
 
-    cfg = Config.load()
-    state_file = cfg.config_dir / ".last_action"
-    state_file.parent.mkdir(parents=True, exist_ok=True)
-
-    # Convert TodoItem objects to dicts
-    items_data = []
-    for item in items:
-        if hasattr(item, "to_dict"):
-            items_data.append(item.to_dict())
-        elif isinstance(item, dict):
-            items_data.append(item)
-
-    state_file.write_text(json.dumps({
-        "action": action,
-        "target": target,
-        "items": items_data,
-    }))
+    cfg = _get_config()
+    save_undo_state(cfg, action, items, target)
 
 
 @bulk_app.command()

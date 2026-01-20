@@ -591,14 +591,13 @@ def _todos_loop(svc: TodoService, target: str, cfg: Config) -> None:
 
 
 def _get_project_storage_path(
-    cfg: Config, project_id: str | None, worktree_shared: bool, backend: str | None = None
+    cfg: Config, project_id: str | None, backend: str | None = None
 ) -> Path:
     """Get storage path for a project configuration.
 
     Args:
         cfg: Config instance
         project_id: Project ID or None for global
-        worktree_shared: Whether worktrees share storage
         backend: Explicit backend name, or None to resolve from project config
     """
     from dodo.storage import get_storage_path
@@ -608,7 +607,7 @@ def _get_project_storage_path(
         from dodo.project_config import ProjectConfig, get_project_config_dir
 
         if project_id:
-            project_dir = get_project_config_dir(cfg, project_id, worktree_shared)
+            project_dir = get_project_config_dir(cfg, project_id)
             if project_dir:
                 project_cfg = ProjectConfig.load(project_dir)
                 if project_cfg:
@@ -617,7 +616,7 @@ def _get_project_storage_path(
         if backend is None:
             backend = cfg.default_backend
 
-    return get_storage_path(cfg, project_id, backend, worktree_shared)
+    return get_storage_path(cfg, project_id, backend)
 
 
 def _shorten_path(path: Path, config_dir: Path | None = None, max_len: int = 50) -> str:
@@ -761,10 +760,10 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
         except (OSError, KeyError, ValueError):
             return 0
 
-    def get_todo_count(project_id: str | None, worktree_shared: bool = False) -> int:
+    def get_todo_count(project_id: str | None) -> int:
         """Get todo count for a project."""
         try:
-            path = _get_project_storage_path(cfg, project_id, worktree_shared)
+            path = _get_project_storage_path(cfg, project_id)
             if not path.exists():
                 # Try alternate extension
                 if str(path).endswith(".db"):
@@ -788,7 +787,7 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
     added_names: set[str] = set()
 
     # Always show global
-    global_path = _get_project_storage_path(cfg, None, False)
+    global_path = _get_project_storage_path(cfg, None)
     global_count = get_todo_count(None)
     dodos.append(("global", "global", global_path, global_count, current_name == "global"))
     added_names.add("global")
@@ -801,15 +800,15 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
             curr_count = count_todos_in_dir(current_path)
         else:
             # Git-based dodo - use project_id
-            curr_storage = _get_project_storage_path(cfg, current_name, cfg.worktree_shared)
-            curr_count = get_todo_count(current_name, cfg.worktree_shared)
+            curr_storage = _get_project_storage_path(cfg, current_name)
+            curr_count = get_todo_count(current_name)
         dodos.append(("current", current_name, curr_storage, curr_count, True))
         added_names.add(current_name)
 
     # Parent's project if in worktree
     if is_worktree and parent_id and parent_id not in added_names:
-        parent_path = _get_project_storage_path(cfg, parent_id, True)
-        parent_count = get_todo_count(parent_id, True)
+        parent_path = _get_project_storage_path(cfg, parent_id)
+        parent_count = get_todo_count(parent_id)
         parent_display = parent_root.name if parent_root else parent_id
         dodos.append(("parent", parent_display, parent_path, parent_count, False))
         added_names.add(parent_id)
@@ -822,7 +821,7 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
             if proj_dir.is_dir():
                 proj_name = proj_dir.name
                 if proj_name not in added_names:
-                    proj_path = _get_project_storage_path(cfg, proj_name, False)
+                    proj_path = _get_project_storage_path(cfg, proj_name)
                     proj_count = get_todo_count(proj_name)
                     all_dodos.append(("other", proj_name, proj_path, proj_count, False))
                     added_names.add(proj_name)
@@ -918,8 +917,7 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
         import sys as sys_module
 
         proj_id = get_project_id_for_item(key, name)
-        ws = key == "parent"
-        path = _get_project_storage_path(cfg, proj_id, ws)
+        path = _get_project_storage_path(cfg, proj_id)
         if path:
             folder = path.parent
             folder.mkdir(parents=True, exist_ok=True)
@@ -931,8 +929,7 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
     def handle_delete(key: str, name: str) -> bool:
         """Delete dodo with confirmation."""
         proj_id = get_project_id_for_item(key, name)
-        ws = key == "parent"
-        path = _get_project_storage_path(cfg, proj_id, ws)
+        path = _get_project_storage_path(cfg, proj_id)
 
         if not path or not path.exists():
             # Try alternate extension
@@ -1113,8 +1110,8 @@ def _get_storage_paths(cfg: Config, project_id: str | None) -> tuple[Path, Path]
     """Get markdown and sqlite paths for current context."""
     from dodo.storage import get_storage_path
 
-    md_path = get_storage_path(cfg, project_id, "markdown", cfg.worktree_shared)
-    db_path = get_storage_path(cfg, project_id, "sqlite", cfg.worktree_shared)
+    md_path = get_storage_path(cfg, project_id, "markdown")
+    db_path = get_storage_path(cfg, project_id, "sqlite")
     return md_path, db_path
 
 

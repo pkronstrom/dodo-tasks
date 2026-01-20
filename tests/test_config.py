@@ -13,9 +13,6 @@ class TestConfigMeta:
         assert "worktree_shared" in ConfigMeta.TOGGLES
         assert "timestamps_enabled" in ConfigMeta.TOGGLES
 
-    def test_settings_defined(self):
-        assert "default_backend" in ConfigMeta.SETTINGS
-
 
 class TestConfigDefaults:
     def test_default_backend(self):

@@ -26,6 +26,9 @@ def get_service_context(
 
     Returns:
         Tuple of (config, project_id, service)
+
+    Raises:
+        InvalidDodoNameError: If project name is invalid
     """
     from dodo.config import Config
     from dodo.core import TodoService
@@ -37,8 +40,8 @@ def get_service_context(
         project_id = None
         storage_path = None
     elif project:
-        project_id = _resolve_project(project, cfg)
-        storage_path = None
+        # resolve_dodo validates the name
+        project_id, storage_path = resolve_dodo(cfg, project)
     else:
         # Use resolve_dodo which checks directory mappings first
         project_id, storage_path = resolve_dodo(cfg)
@@ -48,29 +51,3 @@ def get_service_context(
     else:
         svc = TodoService(cfg, project_id)
     return cfg, project_id, svc
-
-
-def _resolve_project(partial: str, cfg: Config) -> str | None:
-    """Resolve partial project name to full project ID."""
-    if not partial:
-        return None
-
-    projects_dir = cfg.config_dir / "projects"
-
-    if not projects_dir.exists():
-        return partial  # No projects yet, use as-is
-
-    existing = [p.name for p in projects_dir.iterdir() if p.is_dir()]
-
-    # Exact match
-    if partial in existing:
-        return partial
-
-    # Partial match (prefix)
-    matches = [p for p in existing if p.startswith(partial)]
-
-    if len(matches) == 1:
-        return matches[0]
-
-    # No match or ambiguous - use as-is
-    return partial

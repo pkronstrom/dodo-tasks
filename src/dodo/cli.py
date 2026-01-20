@@ -55,13 +55,6 @@ def _get_service(config: Config, project_id: str | None) -> TodoService:
     return TodoService(config, project_id)
 
 
-def _detect_project(worktree_shared: bool = False) -> str | None:
-    """Lazy import and detect project."""
-    from dodo.project import detect_project
-
-    return detect_project(worktree_shared=worktree_shared)
-
-
 def _resolve_dodo(
     config: Config,
     dodo_name: str | None = None,
@@ -71,11 +64,17 @@ def _resolve_dodo(
 
     Returns tuple for backward compatibility (supports unpacking).
     The underlying resolve_dodo returns ResolvedDodo which supports __iter__.
-    """
-    from dodo.resolve import resolve_dodo
 
-    result = resolve_dodo(config, dodo_name, global_)
-    return result.name, result.path
+    Raises typer.Exit(1) if dodo_name is invalid.
+    """
+    from dodo.resolve import InvalidDodoNameError, resolve_dodo
+
+    try:
+        result = resolve_dodo(config, dodo_name, global_)
+        return result.name, result.path
+    except InvalidDodoNameError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
 
 
 def _get_service_with_path(config: Config, path: Path) -> TodoService:
@@ -514,6 +513,7 @@ def undo():
         svc = _get_service(cfg, project_id)
 
     restored = 0
+    failed = 0
 
     if action == "add":
         # Undo add: delete the added items
@@ -523,9 +523,13 @@ def undo():
                 try:
                     svc.delete(item_id)
                     restored += 1
-                except Exception:
-                    pass
-        console.print(f"[yellow]↩[/yellow] Undid add: removed {restored} item(s)")
+                except Exception as e:
+                    failed += 1
+                    console.print(f"[red]Failed to remove {item_id}:[/red] {e}")
+        if restored > 0:
+            console.print(f"[yellow]↩[/yellow] Undid add: removed {restored} item(s)")
+        if failed > 0:
+            console.print(f"[red]Failed to undo {failed} item(s)[/red]")
 
     elif action == "done":
         # Undo done: restore to pending status
@@ -536,9 +540,13 @@ def undo():
                     # Update status back to pending
                     svc._backend.update(item_id, Status.PENDING)
                     restored += 1
-                except Exception:
-                    pass
-        console.print(f"[yellow]↩[/yellow] Undid done: restored {restored} item(s) to pending")
+                except Exception as e:
+                    failed += 1
+                    console.print(f"[red]Failed to restore {item_id}:[/red] {e}")
+        if restored > 0:
+            console.print(f"[yellow]↩[/yellow] Undid done: restored {restored} item(s) to pending")
+        if failed > 0:
+            console.print(f"[red]Failed to undo {failed} item(s)[/red]")
 
     elif action == "rm":
         # Undo rm: re-create the deleted items
@@ -559,9 +567,14 @@ def undo():
                     tags=item_data.get("tags"),
                 )
                 restored += 1
-            except Exception:
-                pass
-        console.print(f"[yellow]↩[/yellow] Undid rm: restored {restored} item(s)")
+            except Exception as e:
+                failed += 1
+                text_preview = item_data.get("text", "")[:30]
+                console.print(f"[red]Failed to restore '{text_preview}...':[/red] {e}")
+        if restored > 0:
+            console.print(f"[yellow]↩[/yellow] Undid rm: restored {restored} item(s)")
+        if failed > 0:
+            console.print(f"[red]Failed to undo {failed} item(s)[/red]")
 
     elif action == "edit":
         # Undo edit: restore original values
@@ -582,12 +595,20 @@ def undo():
                     if "text" in item_data:
                         svc.update_text(item_id, item_data["text"])
                     restored += 1
-                except Exception:
-                    pass
-        console.print(f"[yellow]↩[/yellow] Undid edit: restored {restored} item(s)")
+                except Exception as e:
+                    failed += 1
+                    console.print(f"[red]Failed to restore {item_id}:[/red] {e}")
+        if restored > 0:
+            console.print(f"[yellow]↩[/yellow] Undid edit: restored {restored} item(s)")
+        if failed > 0:
+            console.print(f"[red]Failed to undo {failed} item(s)[/red]")
 
     else:
         console.print(f"[yellow]Unknown action: {action}[/yellow]")
+
+    # Report if nothing was actually undone
+    if restored == 0 and failed == 0:
+        console.print("[yellow]Nothing to undo[/yellow]")
 
     _clear_last_action()
 
@@ -997,7 +1018,7 @@ def backend(
     if explicit_path:
         project_dir = explicit_path
     else:
-        project_dir = get_project_config_dir(cfg, dodo_id, cfg.worktree_shared)
+        project_dir = get_project_config_dir(cfg, dodo_id)
     if not project_dir:
         console.print("[red]Error:[/red] Could not determine project config directory")
         raise typer.Exit(1)
@@ -1023,7 +1044,7 @@ def backend(
 
         # Export from source backend
         console.print(f"[dim]Exporting from {source_backend}...[/dim]")
-        source_svc = _get_service(cfg, project_id)
+        source_svc = _get_service(cfg, dodo_id)
         items = source_svc._backend.export_all()
 
         if not items:
@@ -1036,7 +1057,7 @@ def backend(
 
             # Import to new backend
             console.print(f"[dim]Importing to {name}...[/dim]")
-            dest_svc = _get_service(cfg, project_id)
+            dest_svc = _get_service(cfg, dodo_id)
             imported, skipped = dest_svc._backend.import_all(items)
 
             console.print(f"[green]✓[/green] Migrated {imported} todos ({skipped} skipped)")
@@ -1092,38 +1113,6 @@ app.add_typer(bulk_app, name="bulk")
 # Helpers
 
 
-def _resolve_project(partial: str | None) -> str | None:
-    """Resolve partial project name to full project ID."""
-    if not partial:
-        return None
-
-    cfg = _get_config()
-    projects_dir = cfg.config_dir / "projects"
-
-    if not projects_dir.exists():
-        return partial  # No projects yet, use as-is
-
-    existing = [p.name for p in projects_dir.iterdir() if p.is_dir()]
-
-    # Exact match
-    if partial in existing:
-        return partial
-
-    # Partial match (prefix)
-    matches = [p for p in existing if p.startswith(partial)]
-
-    if len(matches) == 1:
-        return matches[0]
-    elif len(matches) > 1:
-        console.print(f"[yellow]Ambiguous dodo '{partial}'. Matches:[/yellow]")
-        for m in matches:
-            console.print(f"  - {m}")
-        raise typer.Exit(1)
-
-    # No match - use as-is (new project)
-    return partial
-
-
 def _find_item_by_partial_id(svc: TodoService, partial_id: str):
     """Find item by full or partial ID."""
     # First try exact match
@@ -1147,64 +1136,24 @@ def _find_item_by_partial_id(svc: TodoService, partial_id: str):
 
 
 def _save_last_action(action: str, id_or_items, target: str, explicit_path: Path | None = None) -> None:
-    """Save last action for undo.
+    """Save last action for undo. Delegates to shared undo module."""
+    from dodo.undo import save_undo_state
 
-    Args:
-        action: The action type (add, done, rm, edit)
-        id_or_items: Either a single ID string or a list of TodoItem snapshots
-        target: The dodo target name
-        explicit_path: Explicit storage path for local dodos (optional)
-    """
     cfg = _get_config()
-    state_file = cfg.config_dir / ".last_action"
-    state_file.parent.mkdir(parents=True, exist_ok=True)
-
-    # Handle both old format (single ID) and new format (item snapshots)
-    if isinstance(id_or_items, str):
-        # Old format for backward compatibility with add
-        items_data = [{"id": id_or_items}]
-    elif isinstance(id_or_items, list):
-        items_data = []
-        for item in id_or_items:
-            if hasattr(item, "to_dict"):
-                items_data.append(item.to_dict())
-            elif isinstance(item, dict):
-                items_data.append(item)
-            else:
-                items_data.append({"id": str(item)})
-    else:
-        items_data = [{"id": str(id_or_items)}]
-
-    data = {
-        "action": action,
-        "target": target,
-        "items": items_data,
-    }
-    # Store explicit path for local dodos
-    if explicit_path:
-        data["explicit_path"] = str(explicit_path)
-
-    state_file.write_text(json.dumps(data))
+    save_undo_state(cfg, action, id_or_items, target, explicit_path)
 
 
 def _load_last_action() -> dict | None:
-    """Load last action."""
+    """Load last action. Delegates to shared undo module."""
+    from dodo.undo import load_undo_state
+
     cfg = _get_config()
-    state_file = cfg.config_dir / ".last_action"
-    if not state_file.exists():
-        return None
-    try:
-        content = state_file.read_text()
-        if content.strip():
-            return json.loads(content)
-        return None
-    except json.JSONDecodeError:
-        return None
+    return load_undo_state(cfg)
 
 
 def _clear_last_action() -> None:
-    """Clear last action after undo."""
+    """Clear last action after undo. Delegates to shared undo module."""
+    from dodo.undo import clear_undo_state
+
     cfg = _get_config()
-    state_file = cfg.config_dir / ".last_action"
-    if state_file.exists():
-        state_file.unlink()
+    clear_undo_state(cfg)
