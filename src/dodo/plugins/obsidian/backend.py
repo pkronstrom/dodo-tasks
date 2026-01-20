@@ -1,5 +1,7 @@
 """Obsidian Local REST API backend."""
 
+from __future__ import annotations
+
 from datetime import datetime
 
 import httpx
@@ -9,7 +11,7 @@ from dodo.backends.utils import (
     generate_todo_id,
     parse_todo_line,
 )
-from dodo.models import Status, TodoItem
+from dodo.models import Priority, Status, TodoItem
 
 
 class ObsidianBackend:
@@ -21,11 +23,14 @@ class ObsidianBackend:
 
     DEFAULT_API_URL = "https://localhost:27124"
 
+    DEFAULT_VAULT_PATH = "dodo/todos.md"
+
     def __init__(
         self,
         api_url: str | None = None,
         api_key: str = "",
-        vault_path: str = "dodo/todos.md",
+        vault_path: str = DEFAULT_VAULT_PATH,
+        project: str | None = None,
         verify_ssl: bool = False,
     ):
         """Initialize Obsidian backend.
@@ -33,7 +38,10 @@ class ObsidianBackend:
         Args:
             api_url: Obsidian REST API URL (default: https://localhost:27124)
             api_key: API key for authentication
-            vault_path: Path to todo file within vault
+            vault_path: Path to todo file within vault. Supports {project} template
+                        for named dodos (e.g., "dodo/{project}.md" creates separate
+                        files per project). Without template, all projects share one file.
+            project: Project/named-dodo identifier for template resolution
             verify_ssl: Whether to verify SSL certificates. Default False because
                         Obsidian Local REST API uses self-signed certificates.
                         Set to True if you've configured proper certificates.
@@ -44,12 +52,26 @@ class ObsidianBackend:
         """
         self._api_url = (api_url or self.DEFAULT_API_URL).rstrip("/")
         self._api_key = api_key
-        self._vault_path = vault_path
+        self._vault_path_template = vault_path
+        self._project = project
+        self._vault_path = self._resolve_vault_path(vault_path, project)
         self._client = httpx.Client(
             headers={"Authorization": f"Bearer {api_key}"},
             verify=verify_ssl,
             timeout=10.0,
         )
+
+    def _resolve_vault_path(self, template: str, project: str | None) -> str:
+        """Resolve vault path template with project name.
+
+        If template contains {project} and project is provided, substitute it.
+        If template contains {project} but no project, use 'default' as fallback.
+        If template has no {project} placeholder, return as-is.
+        """
+        if "{project}" not in template:
+            return template
+        project_name = project or "default"
+        return template.format(project=project_name)
 
     def close(self) -> None:
         """Close the HTTP client."""

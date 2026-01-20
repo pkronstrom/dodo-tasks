@@ -176,14 +176,37 @@ def main(
     dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
 ):
     """Launch interactive menu if no command given."""
+    # Store global options in context for subcommands to access
+    ctx.ensure_object(dict)
+    ctx.obj["global_"] = global_
+    ctx.obj["dodo"] = dodo
+
     if ctx.invoked_subcommand is None:
         from dodo.ui.interactive import interactive_menu
 
         interactive_menu(global_=global_, dodo=dodo)
 
 
+def _get_dodo_from_ctx(
+    ctx: typer.Context,
+    dodo: str | None,
+    global_: bool,
+) -> tuple[str | None, bool]:
+    """Get dodo and global_ from command args or parent context."""
+    # Command-level args take precedence
+    if dodo is not None:
+        return dodo, global_
+    if global_:
+        return None, True
+    # Fall back to parent context (global options)
+    if ctx.obj:
+        return ctx.obj.get("dodo"), ctx.obj.get("global_", False)
+    return None, False
+
+
 @app.command()
 def add(
+    ctx: typer.Context,
     text: Annotated[str, typer.Argument(help="Todo text (use quotes)")],
     global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
     dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
@@ -202,6 +225,7 @@ def add(
     from dodo.models import Priority
 
     cfg = _get_config()
+    dodo, global_ = _get_dodo_from_ctx(ctx, dodo, global_)
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
 
     if explicit_path:
@@ -276,6 +300,7 @@ def _parse_filter(filter_str: str) -> tuple[str, list[str]]:
 @app.command(name="ls")
 @app.command(name="list")
 def list_todos(
+    ctx: typer.Context,
     project: Annotated[str | None, typer.Option("-p", "--project")] = None,
     global_: Annotated[bool, typer.Option("-g", "--global")] = False,
     dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
@@ -297,6 +322,7 @@ def list_todos(
     cfg = _get_config()
 
     # Auto-detect dodo (respects --dodo flag, --global flag, or auto-detection)
+    dodo, global_ = _get_dodo_from_ctx(ctx, dodo, global_)
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
 
     if explicit_path:
@@ -369,12 +395,14 @@ def list_todos(
 
 @app.command()
 def done(
+    ctx: typer.Context,
     id: Annotated[str, typer.Argument(help="Todo ID (or partial)")],
     global_: Annotated[bool, typer.Option("-g", "--global", help="Use global list")] = False,
     dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
 ):
     """Mark todo as done."""
     cfg = _get_config()
+    dodo, global_ = _get_dodo_from_ctx(ctx, dodo, global_)
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
     if explicit_path:
         svc = _get_service_with_path(cfg, explicit_path)
@@ -401,12 +429,14 @@ def done(
 @app.command(name="remove")
 @app.command()
 def rm(
+    ctx: typer.Context,
     id: Annotated[str, typer.Argument(help="Todo ID (or partial)")],
     global_: Annotated[bool, typer.Option("-g", "--global", help="Use global list")] = False,
     dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
 ):
     """Remove a todo."""
     cfg = _get_config()
+    dodo, global_ = _get_dodo_from_ctx(ctx, dodo, global_)
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
     if explicit_path:
         svc = _get_service_with_path(cfg, explicit_path)
@@ -548,7 +578,7 @@ def new(
     name: Annotated[str | None, typer.Argument(help="Name for the dodo")] = None,
     local: Annotated[bool, typer.Option("--local", help="Create in .dodo/ locally")] = False,
     backend: Annotated[
-        str | None, typer.Option("--backend", "-b", help="Backend (sqlite|markdown)")
+        str | None, typer.Option("--backend", "-b", help="Backend (sqlite|markdown|obsidian)")
     ] = None,
     link: Annotated[
         bool, typer.Option("--link", "-l", help="Link current directory to this dodo")
@@ -773,6 +803,7 @@ def config():
 
 @app.command()
 def export(
+    ctx: typer.Context,
     output: Annotated[str | None, typer.Option("-o", "--output", help="Output file")] = None,
     global_: Annotated[bool, typer.Option("-g", "--global", help="Global todos")] = False,
     dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
@@ -782,6 +813,7 @@ def export(
     from dodo.formatters import get_formatter
 
     cfg = _get_config()
+    dodo, global_ = _get_dodo_from_ctx(ctx, dodo, global_)
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
     if explicit_path:
         svc = _get_service_with_path(cfg, explicit_path)
@@ -838,6 +870,7 @@ def show():
     from pathlib import Path
     from dodo.models import Status
     from dodo.project import _get_git_root
+    from dodo.project_config import ProjectConfig
 
     cfg = _get_config()
     cwd = Path.cwd()
@@ -864,18 +897,24 @@ def show():
     if local_dodo.exists():
         # Default local dodo
         if (local_dodo / "dodo.json").exists() or (local_dodo / "dodo.db").exists():
-            available.append(("local", str(local_dodo), "local"))
+            project_cfg = ProjectConfig.load(local_dodo)
+            backend = project_cfg.backend if project_cfg else cfg.default_backend
+            available.append(("local", str(local_dodo), "local", backend))
         # Named local dodos
         for subdir in local_dodo.iterdir():
             if subdir.is_dir() and (subdir / "dodo.json").exists():
-                available.append((subdir.name, str(subdir), "local"))
+                project_cfg = ProjectConfig.load(subdir)
+                backend = project_cfg.backend if project_cfg else cfg.default_backend
+                available.append((subdir.name, str(subdir), "local", backend))
 
     # Check central dodos
     if cfg.config_dir.exists():
         for item in cfg.config_dir.iterdir():
             if item.is_dir() and item.name not in ("projects", ".last_action"):
                 if (item / "dodo.json").exists() or (item / "dodo.db").exists():
-                    available.append((item.name, str(item), "central"))
+                    project_cfg = ProjectConfig.load(item)
+                    backend = project_cfg.backend if project_cfg else cfg.default_backend
+                    available.append((item.name, str(item), "central", backend))
 
     # Determine current default
     dodo_id, explicit_path = _resolve_dodo(cfg)
@@ -888,11 +927,11 @@ def show():
         console.print("[dim]Hint: Run 'dodo new' to create a dodo for this project[/dim]")
         return
 
-    for name, path, location in available:
+    for name, path, location, backend in available:
         marker = "→ " if name == current else "  "
         path_short = path.replace(str(Path.home()), "~")
         hint = "(default)" if name == current else f"(use: dodo -d {name})"
-        console.print(f"  {marker}[cyan]{name}[/cyan]  {path_short}  [dim]{hint}[/dim]")
+        console.print(f"  {marker}[cyan]{name}[/cyan]  [magenta]{backend}[/magenta]  {path_short}  [dim]{hint}[/dim]")
 
     console.print()
 

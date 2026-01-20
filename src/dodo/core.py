@@ -138,6 +138,17 @@ class TodoService:
         """Resolve which backend to use for this project."""
         from dodo.project_config import ProjectConfig, get_project_config_dir
 
+        # For local dodos with explicit storage_path, check config there first
+        if self._storage_path:
+            config = ProjectConfig.load(self._storage_path)
+            if config:
+                return config.backend
+            # Auto-detect from storage path
+            detected = self._auto_detect_backend(self._storage_path)
+            if detected:
+                return detected
+            return self._config.default_backend
+
         if not self._project_id:
             return self._config.default_backend
 
@@ -186,14 +197,24 @@ class TodoService:
         elif backend_name == "sqlite":
             return backend_cls(self._get_sqlite_path())
         elif backend_name == "obsidian":
+            # For local dodos, derive project name from storage path
+            project = self._project_id
+            if not project and self._storage_path:
+                # Use parent directory name as project (e.g., .dodo/myproject -> myproject)
+                # or the directory above .dodo if it's a default local dodo
+                if self._storage_path.name == ".dodo":
+                    project = self._storage_path.parent.name
+                else:
+                    project = self._storage_path.name
             return backend_cls(
                 api_url=self._config.get_plugin_config(
                     "obsidian", "api_url", "https://localhost:27124"
                 ),
                 api_key=self._config.get_plugin_config("obsidian", "api_key", ""),
                 vault_path=self._config.get_plugin_config(
-                    "obsidian", "vault_path", "dodo/todos.md"
+                    "obsidian", "vault_path", "dodo/{project}.md"
                 ),
+                project=project,
             )
         else:
             # For plugin backends, check constructor signature
