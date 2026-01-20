@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
@@ -20,6 +21,24 @@ app = typer.Typer(
     no_args_is_help=False,
 )
 console = Console()
+
+# Security: Pattern for valid dodo names (prevents path traversal)
+_VALID_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+
+
+def _validate_dodo_name(name: str | None) -> str | None:
+    """Validate dodo name to prevent path traversal attacks.
+
+    Raises typer.BadParameter if name contains unsafe characters.
+    """
+    if name is None:
+        return None
+    if not _VALID_NAME_PATTERN.match(name):
+        raise typer.BadParameter(
+            f"Invalid dodo name '{name}'. Names must start with alphanumeric "
+            "and contain only letters, numbers, underscores, and hyphens."
+        )
+    return name
 
 
 def _get_config() -> Config:
@@ -593,6 +612,9 @@ def new(
     from dodo.project import _get_git_root
     from dodo.project_config import ProjectConfig
 
+    # Validate user-provided name for path safety
+    _validate_dodo_name(name)
+
     cfg = _get_config()
     backend_name = backend or cfg.default_backend
     cwd = Path.cwd()
@@ -608,7 +630,7 @@ def new(
         else:
             auto_name = cwd.name
 
-    # Determine the dodo name
+    # Determine the dodo name (auto-names come from filesystem, already safe)
     dodo_name = name or auto_name
 
     # Determine base directory for local storage
@@ -685,6 +707,9 @@ def destroy(
     """Destroy a dodo and its data."""
     import shutil
     from pathlib import Path
+
+    # Validate user-provided name for path safety
+    _validate_dodo_name(name)
 
     cfg = _get_config()
 

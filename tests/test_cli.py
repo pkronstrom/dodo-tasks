@@ -316,6 +316,22 @@ class TestCliNew:
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "customname" in result.stdout
 
+    def test_new_rejects_path_traversal(self, cli_env):
+        """Security: Reject names with path traversal attempts."""
+        with patch("dodo.project.detect_project", return_value=None):
+            result = runner.invoke(app, ["new", "../evil"])
+
+        assert result.exit_code != 0
+        assert "Invalid dodo name" in result.output
+
+    def test_new_rejects_special_characters(self, cli_env):
+        """Security: Reject names with special characters."""
+        with patch("dodo.project.detect_project", return_value=None):
+            result = runner.invoke(app, ["new", "test/subdir"])
+
+        assert result.exit_code != 0
+        assert "Invalid dodo name" in result.output
+
 
 class TestCliAddOutput:
     def test_add_shows_dodo_name(self, cli_env):

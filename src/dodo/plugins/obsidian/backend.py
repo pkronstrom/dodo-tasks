@@ -31,7 +31,7 @@ class ObsidianBackend:
         api_key: str = "",
         vault_path: str = DEFAULT_VAULT_PATH,
         project: str | None = None,
-        verify_ssl: bool = False,
+        verify_ssl: bool | None = None,
     ):
         """Initialize Obsidian backend.
 
@@ -42,15 +42,31 @@ class ObsidianBackend:
                         for named dodos (e.g., "dodo/{project}.md" creates separate
                         files per project). Without template, all projects share one file.
             project: Project/named-dodo identifier for template resolution
-            verify_ssl: Whether to verify SSL certificates. Default False because
-                        Obsidian Local REST API uses self-signed certificates.
-                        Set to True if you've configured proper certificates.
+            verify_ssl: Whether to verify SSL certificates. Default: True for remote
+                        connections, False for localhost (Obsidian Local REST API
+                        typically uses self-signed certificates on localhost).
 
         Security note: When verify_ssl=False, the connection is vulnerable to
         man-in-the-middle attacks. This is acceptable for localhost connections
-        but ensure you understand the implications for remote connections.
+        but should be True for remote connections. Set DODO_OBSIDIAN_VERIFY_SSL=true
+        to override the localhost auto-detection.
         """
-        self._api_url = (api_url or self.DEFAULT_API_URL).rstrip("/")
+        # Auto-detect SSL verification based on URL
+        resolved_url = (api_url or self.DEFAULT_API_URL).rstrip("/")
+        if verify_ssl is None:
+            # Safe default: only disable SSL verification for localhost
+            import os
+            from urllib.parse import urlparse
+            host = urlparse(resolved_url).hostname or ""
+            is_localhost = host in ("localhost", "127.0.0.1", "::1")
+            env_override = os.environ.get("DODO_OBSIDIAN_VERIFY_SSL", "").lower()
+            if env_override in ("true", "1", "yes"):
+                verify_ssl = True
+            elif env_override in ("false", "0", "no"):
+                verify_ssl = False
+            else:
+                verify_ssl = not is_localhost
+        self._api_url = resolved_url
         self._api_key = api_key
         self._vault_path_template = vault_path
         self._project = project
