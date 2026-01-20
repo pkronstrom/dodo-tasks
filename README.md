@@ -34,6 +34,7 @@ uv sync
 ```bash
 dodo add "Fix the bug"              # Add to current project's dodo
 dodo add -g "Buy groceries"         # Add to global dodo
+dodo add "Task" -p high -t work     # With priority and tags
 dodo list                           # List todos
 dodo done abc123                    # Mark done (partial ID works)
 dodo                                # Interactive menu
@@ -78,6 +79,25 @@ dodo                                # Interactive menu
 |------|--------|
 | `-g` / `--global` | Force global, skip detection |
 | `-d name` | Target specific dodo by name |
+
+## Bulk Operations
+
+For scripting and AI agents:
+
+```bash
+# Bulk add from JSONL
+echo '{"text": "Task 1", "priority": "high"}
+{"text": "Task 2", "tags": ["work"]}' | dodo bulk add
+
+# Bulk done/rm with multiple IDs
+dodo bulk done abc123 def456
+dodo bulk rm abc123 def456
+
+# Bulk dependencies (requires graph plugin)
+echo '{"blocker": "abc", "blocked": "def"}' | dodo bulk dep
+```
+
+See [examples/dodo-command.md](examples/dodo-command.md) for agentic workflow patterns.
 
 ## Plugins
 

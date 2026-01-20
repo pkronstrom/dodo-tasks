@@ -17,18 +17,20 @@ src/dodo/
 ├── config.py          # Config with nested plugin config (plugins.<name>.<key>)
 ├── resolve.py         # Dodo resolution (local, global, mapped, git-based)
 ├── core.py            # TodoService - routes to backends
-├── cli.py             # Typer commands (add, list, done, rm, config, plugins)
+├── cli.py             # Typer commands (add, list, done, rm, new, destroy, etc.)
+├── cli_bulk.py        # Bulk operations (bulk add/done/rm/edit/dep)
+├── bulk.py            # Smart input parser (JSONL, JSON array, plain IDs)
 ├── backends/          # Storage backends
-│   ├── base.py        # TodoBackend Protocol
+│   ├── base.py        # TodoBackend Protocol, GraphCapable Protocol
 │   ├── sqlite.py      # SQLite (default)
 │   └── markdown.py    # File-based (dodo.md)
 ├── plugins/           # Hook-based plugin system
 │   ├── __init__.py    # apply_hooks(), load_registry(), import_plugin()
-│   ├── ai/            # AI-assisted todo formatting
-│   ├── graph/         # Dependency tracking (blocked_by)
+│   ├── ai/            # AI-assisted todo management (add, prio, tag, run, dep)
+│   ├── graph/         # Dependency tracking (blocked_by, ready, blocked)
 │   ├── ntfy_inbox/    # ntfy.sh todo ingestion
 │   └── obsidian/      # Obsidian vault backend
-├── formatters/        # Output formatters (table, jsonl, tree)
+├── formatters/        # Output formatters (table, jsonl, tree, txt, md, csv)
 └── ui/                # Interactive menus (interactive.py)
 ```
 
