@@ -207,9 +207,11 @@ def add(
     if explicit_path:
         svc = _get_service_with_path(cfg, explicit_path)
         target = dodo_id or "local"
+        undo_path = explicit_path
     else:
         svc = _get_service(cfg, dodo_id)
         target = dodo_id or "global"
+        undo_path = None
 
     # Parse priority
     parsed_priority = None
@@ -246,7 +248,7 @@ def add(
 
     item = svc.add(text, priority=parsed_priority, tags=parsed_tags)
 
-    _save_last_action("add", item.id, target)
+    _save_last_action("add", item.id, target, undo_path)
 
     # Format output with priority and tags
     output_text = item.text
@@ -257,90 +259,6 @@ def add(
 
     dest = f"[cyan]{target}[/cyan]" if target != "global" else "[dim]global[/dim]"
     console.print(f"[green]✓[/green] Added to {dest}: {output_text} [dim]({item.id})[/dim]")
-
-
-@app.command(name="add-bulk")
-def add_bulk(
-    global_: Annotated[bool, typer.Option("-g", "--global", help="Force global list")] = False,
-    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
-    quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Only output IDs")] = False,
-):
-    """Bulk add todos from JSONL stdin.
-
-    Each line should be a JSON object with fields:
-    - text (required): Todo text
-    - priority: critical/high/normal/low/someday
-    - tags: list of tag strings
-
-    Use $prev in text to reference the previous item's ID.
-
-    Example:
-        echo '{"text": "Parent task", "priority": "high"}
-        {"text": "Subtask of $prev", "tags": ["sub"]}' | dodo add-bulk
-    """
-    from dodo.models import Priority
-
-    cfg = _get_config()
-    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
-
-    if explicit_path:
-        svc = _get_service_with_path(cfg, explicit_path)
-    else:
-        svc = _get_service(cfg, dodo_id)
-
-    prev_id: str | None = None
-    added = 0
-    errors = 0
-
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-
-        try:
-            data = json.loads(line)
-        except json.JSONDecodeError as e:
-            if not quiet:
-                console.print(f"[red]Error:[/red] Invalid JSON: {e}")
-            errors += 1
-            continue
-
-        text = data.get("text", "")
-        if not text:
-            if not quiet:
-                console.print("[red]Error:[/red] Missing 'text' field")
-            errors += 1
-            continue
-
-        # Replace $prev placeholder
-        if prev_id and "$prev" in text:
-            text = text.replace("$prev", prev_id)
-
-        # Parse priority
-        parsed_priority = None
-        if prio_str := data.get("priority"):
-            try:
-                parsed_priority = Priority(prio_str.lower())
-            except ValueError:
-                if not quiet:
-                    console.print(f"[yellow]Warning:[/yellow] Invalid priority '{prio_str}'")
-
-        # Parse tags
-        parsed_tags = data.get("tags")
-        if parsed_tags and not isinstance(parsed_tags, list):
-            parsed_tags = None
-
-        item = svc.add(text, priority=parsed_priority, tags=parsed_tags)
-        prev_id = item.id
-        added += 1
-
-        if quiet:
-            console.print(item.id)
-        else:
-            console.print(f"[green]✓[/green] {item.id}: {item.text[:50]}")
-
-    if not quiet:
-        console.print(f"[dim]Added {added} todos ({errors} errors)[/dim]")
 
 
 def _parse_filter(filter_str: str) -> tuple[str, list[str]]:
@@ -460,8 +378,10 @@ def done(
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
     if explicit_path:
         svc = _get_service_with_path(cfg, explicit_path)
+        undo_path = explicit_path
     else:
         svc = _get_service(cfg, dodo_id)
+        undo_path = None
 
     target = dodo_id or "global"
 
@@ -472,7 +392,7 @@ def done(
         raise typer.Exit(1)
 
     # Save snapshot before modification
-    _save_last_action("done", [item], target)
+    _save_last_action("done", [item], target, undo_path)
 
     completed = svc.complete(item.id)
     console.print(f"[green]✓[/green] Done: {completed.text}")
@@ -490,8 +410,10 @@ def rm(
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
     if explicit_path:
         svc = _get_service_with_path(cfg, explicit_path)
+        undo_path = explicit_path
     else:
         svc = _get_service(cfg, dodo_id)
+        undo_path = None
 
     target = dodo_id or "global"
 
@@ -501,7 +423,7 @@ def rm(
         raise typer.Exit(1)
 
     # Save snapshot before deletion
-    _save_last_action("rm", [item], target)
+    _save_last_action("rm", [item], target, undo_path)
 
     svc.delete(item.id)
     console.print(f"[yellow]✓[/yellow] Removed: {item.text}")
@@ -532,8 +454,15 @@ def undo():
         raise typer.Exit(0)
 
     cfg = _get_config()
-    project_id = None if target == "global" else target
-    svc = _get_service(cfg, project_id)
+
+    # Use explicit path if stored (for local dodos), otherwise use target name
+    explicit_path_str = last.get("explicit_path")
+    if explicit_path_str:
+        svc = _get_service_with_path(cfg, Path(explicit_path_str))
+        project_id = None
+    else:
+        project_id = None if target == "global" else target
+        svc = _get_service(cfg, project_id)
 
     restored = 0
 
@@ -775,52 +704,6 @@ def destroy(
 
     location = str(target_dir).replace(str(Path.home()), "~")
     console.print(f"[green]✓[/green] Destroyed dodo at {location}")
-
-
-@app.command()
-def link(
-    name: Annotated[str, typer.Argument(help="Name of the dodo to link to")],
-):
-    """Link current directory to an existing dodo.
-
-    This stores a mapping in config so that 'dodo list' from this directory
-    uses the specified dodo instead of creating a new one.
-    """
-    from pathlib import Path
-
-    cfg = _get_config()
-    cwd = str(Path.cwd())
-
-    # Check if the named dodo exists
-    target_dir = cfg.config_dir / name
-    if not target_dir.exists():
-        console.print(f"[red]Error:[/red] Dodo '{name}' not found")
-        console.print(f"  Create it first with: dodo new {name}")
-        raise typer.Exit(1)
-
-    # Check if already mapped
-    existing = cfg.get_directory_mapping(cwd)
-    if existing:
-        console.print(f"[yellow]Directory already mapped to '{existing}'[/yellow]")
-        console.print("  Use 'dodo unlink' to remove the mapping first")
-        raise typer.Exit(1)
-
-    cfg.set_directory_mapping(cwd, name)
-    console.print(f"[green]✓[/green] Linked {Path.cwd().name} → {name}")
-
-
-@app.command()
-def unlink():
-    """Remove the dodo mapping for current directory."""
-    from pathlib import Path
-
-    cfg = _get_config()
-    cwd = str(Path.cwd())
-
-    if cfg.remove_directory_mapping(cwd):
-        console.print(f"[green]✓[/green] Unlinked {Path.cwd().name}")
-    else:
-        console.print("[yellow]No mapping exists for this directory[/yellow]")
 
 
 @app.command()
@@ -1199,13 +1082,14 @@ def _find_item_by_partial_id(svc: TodoService, partial_id: str):
         raise typer.Exit(1)
 
 
-def _save_last_action(action: str, id_or_items, target: str) -> None:
+def _save_last_action(action: str, id_or_items, target: str, explicit_path: Path | None = None) -> None:
     """Save last action for undo.
 
     Args:
         action: The action type (add, done, rm, edit)
         id_or_items: Either a single ID string or a list of TodoItem snapshots
         target: The dodo target name
+        explicit_path: Explicit storage path for local dodos (optional)
     """
     cfg = _get_config()
     state_file = cfg.config_dir / ".last_action"
@@ -1227,11 +1111,16 @@ def _save_last_action(action: str, id_or_items, target: str) -> None:
     else:
         items_data = [{"id": str(id_or_items)}]
 
-    state_file.write_text(json.dumps({
+    data = {
         "action": action,
         "target": target,
         "items": items_data,
-    }))
+    }
+    # Store explicit path for local dodos
+    if explicit_path:
+        data["explicit_path"] = str(explicit_path)
+
+    state_file.write_text(json.dumps(data))
 
 
 def _load_last_action() -> dict | None:
