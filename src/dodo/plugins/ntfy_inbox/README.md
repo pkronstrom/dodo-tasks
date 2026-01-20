@@ -20,9 +20,9 @@ Receive todos via push notifications from ntfy.sh.
    ```bash
    dodo config
    ```
-   Set these values:
-   - `ntfy_topic`: Your secret topic name (e.g., `my-secret-todos-abc123`)
-   - `ntfy_server`: Server URL (default: `https://ntfy.sh`)
+   Set these values under **ntfy-inbox**:
+   - `topic`: Your secret topic name (e.g., `my-secret-todos-abc123`)
+   - `server`: Server URL (default: `https://ntfy.sh`)
 
    **Important**: Use a unique, hard-to-guess topic name. Anyone who knows your topic can send you todos.
 
