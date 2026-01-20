@@ -248,8 +248,15 @@ def add(
 
     _save_last_action("add", item.id, target)
 
+    # Format output with priority and tags
+    output_text = item.text
+    if item.priority:
+        output_text += f" !{item.priority.value}"
+    if item.tags:
+        output_text += " " + " ".join(f"#{t}" for t in item.tags)
+
     dest = f"[cyan]{target}[/cyan]" if target != "global" else "[dim]global[/dim]"
-    console.print(f"[green]✓[/green] Added to {dest}: {item.text} [dim]({item.id})[/dim]")
+    console.print(f"[green]✓[/green] Added to {dest}: {output_text} [dim]({item.id})[/dim]")
 
 
 @app.command(name="add-bulk")
@@ -456,11 +463,16 @@ def done(
     else:
         svc = _get_service(cfg, dodo_id)
 
+    target = dodo_id or "global"
+
     # Try to find matching ID
     item = _find_item_by_partial_id(svc, id)
     if not item:
         console.print(f"[red]Error:[/red] Todo not found: {id}")
         raise typer.Exit(1)
+
+    # Save snapshot before modification
+    _save_last_action("done", [item], target)
 
     completed = svc.complete(item.id)
     console.print(f"[green]✓[/green] Done: {completed.text}")
@@ -481,10 +493,15 @@ def rm(
     else:
         svc = _get_service(cfg, dodo_id)
 
+    target = dodo_id or "global"
+
     item = _find_item_by_partial_id(svc, id)
     if not item:
         console.print(f"[red]Error:[/red] Todo not found: {id}")
         raise typer.Exit(1)
+
+    # Save snapshot before deletion
+    _save_last_action("rm", [item], target)
 
     svc.delete(item.id)
     console.print(f"[yellow]✓[/yellow] Removed: {item.text}")
@@ -492,35 +509,109 @@ def rm(
 
 @app.command()
 def undo():
-    """Undo the last add operation."""
+    """Undo the last operation."""
+    from dodo.models import Priority, Status
+
     last = _load_last_action()
 
-    if not last or last.get("action") != "add":
+    if not last:
         console.print("[yellow]Nothing to undo[/yellow]")
         raise typer.Exit(0)
 
+    action = last.get("action")
+    target = last.get("target")
+    items = last.get("items", [])
+
+    # Handle old format (single id field)
+    if "id" in last and not items:
+        items = [{"id": last["id"]}]
+
+    if not items:
+        console.print("[yellow]Nothing to undo[/yellow]")
+        _clear_last_action()
+        raise typer.Exit(0)
+
     cfg = _get_config()
-    project_id = None if last["target"] == "global" else last["target"]
+    project_id = None if target == "global" else target
     svc = _get_service(cfg, project_id)
 
-    try:
-        item = svc.get(last["id"])
-        if not item:
-            console.print("[yellow]Todo already removed[/yellow]")
-            _clear_last_action()
-            raise typer.Exit(0)
+    restored = 0
 
-        svc.delete(last["id"])
-        _clear_last_action()
+    if action == "add":
+        # Undo add: delete the added items
+        for item_data in items:
+            item_id = item_data.get("id")
+            if item_id:
+                try:
+                    svc.delete(item_id)
+                    restored += 1
+                except Exception:
+                    pass
+        console.print(f"[yellow]↩[/yellow] Undid add: removed {restored} item(s)")
 
-        dest = (
-            f"[cyan]{last['target']}[/cyan]" if last["target"] != "global" else "[dim]global[/dim]"
-        )
-        console.print(f"[yellow]↩[/yellow] Undid add from {dest}: {item.text}")
+    elif action == "done":
+        # Undo done: restore to pending status
+        for item_data in items:
+            item_id = item_data.get("id")
+            if item_id:
+                try:
+                    # Update status back to pending
+                    svc._backend.update(item_id, Status.PENDING)
+                    restored += 1
+                except Exception:
+                    pass
+        console.print(f"[yellow]↩[/yellow] Undid done: restored {restored} item(s) to pending")
 
-    except KeyError:
-        console.print("[yellow]Todo already removed[/yellow]")
-        _clear_last_action()
+    elif action == "rm":
+        # Undo rm: re-create the deleted items
+        for item_data in items:
+            try:
+                # Re-create with original data
+                priority = None
+                if item_data.get("priority"):
+                    try:
+                        priority = Priority(item_data["priority"])
+                    except ValueError:
+                        pass
+
+                svc._backend.add(
+                    text=item_data.get("text", ""),
+                    project=project_id,
+                    priority=priority,
+                    tags=item_data.get("tags"),
+                )
+                restored += 1
+            except Exception:
+                pass
+        console.print(f"[yellow]↩[/yellow] Undid rm: restored {restored} item(s)")
+
+    elif action == "edit":
+        # Undo edit: restore original values
+        for item_data in items:
+            item_id = item_data.get("id")
+            if item_id:
+                try:
+                    if "priority" in item_data:
+                        priority = None
+                        if item_data["priority"]:
+                            try:
+                                priority = Priority(item_data["priority"])
+                            except ValueError:
+                                pass
+                        svc.update_priority(item_id, priority)
+                    if "tags" in item_data:
+                        svc.update_tags(item_id, item_data.get("tags"))
+                    if "text" in item_data:
+                        svc.update_text(item_id, item_data["text"])
+                    restored += 1
+                except Exception:
+                    pass
+        console.print(f"[yellow]↩[/yellow] Undid edit: restored {restored} item(s)")
+
+    else:
+        console.print(f"[yellow]Unknown action: {action}[/yellow]")
+
+    _clear_last_action()
 
 
 @app.command()
@@ -536,30 +627,50 @@ def new(
 ):
     """Create a new dodo.
 
-    When run from a git directory, automatically links the project to this dodo
-    so that 'dodo list' uses it. Use --no-link to skip this.
+    Auto-names from git repo or current directory if no name given.
+    With --local, creates at project root (git root if in repo, else current dir).
     """
     from pathlib import Path
-
+    from dodo.project import _get_git_root
     from dodo.project_config import ProjectConfig
 
     cfg = _get_config()
     backend_name = backend or cfg.default_backend
+    cwd = Path.cwd()
+
+    # Detect git root
+    git_root = _get_git_root(cwd)
+
+    # Auto-name from git repo or directory if not provided
+    auto_name = None
+    if not name:
+        if git_root:
+            auto_name = git_root.name
+        else:
+            auto_name = cwd.name
+
+    # Determine the dodo name
+    dodo_name = name or auto_name
+
+    # Determine base directory for local storage
+    project_root = git_root if git_root else cwd
 
     # Determine target directory
     if local:
-        # Local storage in .dodo/
-        base = Path.cwd() / ".dodo"
+        # Local storage at project root
+        base = project_root / ".dodo"
         if name:
             target_dir = base / name
         else:
             target_dir = base
     else:
         # Centralized in ~/.config/dodo/
-        if name:
-            target_dir = cfg.config_dir / name
-        else:
-            target_dir = cfg.config_dir
+        target_dir = cfg.config_dir / dodo_name
+
+    # Print detection message
+    if git_root and not name:
+        git_path = str(git_root).replace(str(Path.home()), "~")
+        console.print(f"Detected git repo '{git_root.name}' at {git_path}")
 
     # Check if already exists
     config_file = target_dir / "dodo.json"
@@ -586,17 +697,23 @@ def new(
         (target_dir / "dodo.md").write_text("")
 
     location = str(target_dir).replace(str(Path.home()), "~")
-    console.print(f"[green]✓[/green] Created dodo in {location}")
+    if local:
+        if name:
+            console.print(f"[green]✓[/green] Created local dodo '{name}' at {location}")
+        else:
+            console.print(f"[green]✓[/green] Created local dodo at {location}")
+    else:
+        console.print(f"[green]✓[/green] Created dodo '{dodo_name}' at {location}")
 
     # Link current directory to this dodo via config mapping
-    if link and not local and name:
-        cwd = str(Path.cwd())
-        existing = cfg.get_directory_mapping(cwd)
+    if link and not local and dodo_name:
+        cwd_str = str(cwd)
+        existing = cfg.get_directory_mapping(cwd_str)
         if existing:
             console.print(f"[dim]  Directory already mapped to '{existing}'[/dim]")
         else:
-            cfg.set_directory_mapping(cwd, name)
-            console.print(f"[dim]  Mapped {Path.cwd().name} → {name}[/dim]")
+            cfg.set_directory_mapping(cwd_str, dodo_name)
+            console.print(f"[dim]  Mapped {cwd.name} → {dodo_name}[/dim]")
 
 
 @app.command()
@@ -707,6 +824,63 @@ def unlink():
 
 
 @app.command()
+def use(
+    name: Annotated[str, typer.Argument(help="Name of the dodo to use")],
+):
+    """Set current directory to use a specific dodo.
+
+    This stores a mapping so commands from this directory use the specified dodo.
+    """
+    from pathlib import Path
+
+    cfg = _get_config()
+    cwd = str(Path.cwd())
+
+    # Check if the named dodo exists (local or central)
+    found = False
+
+    # Check local
+    local_path = Path.cwd() / ".dodo" / name
+    if local_path.exists():
+        found = True
+
+    # Check central
+    if not found:
+        central_path = cfg.config_dir / name
+        if central_path.exists():
+            found = True
+
+    if not found:
+        console.print(f"[red]Error:[/red] Dodo '{name}' not found")
+        console.print(f"  Create it first with: dodo new {name}")
+        raise typer.Exit(1)
+
+    # Check if already mapped
+    existing = cfg.get_directory_mapping(cwd)
+    if existing:
+        console.print(f"[yellow]Directory already uses '{existing}'[/yellow]")
+        console.print("  Use 'dodo unuse' to remove the mapping first")
+        raise typer.Exit(1)
+
+    cfg.set_directory_mapping(cwd, name)
+    console.print(f"[green]✓[/green] Now using '{name}' for {Path.cwd().name}")
+
+
+@app.command()
+def unuse():
+    """Remove the dodo mapping for current directory."""
+    from pathlib import Path
+
+    cfg = _get_config()
+    cwd = str(Path.cwd())
+
+    if cfg.remove_directory_mapping(cwd):
+        console.print(f"[green]✓[/green] Removed mapping for {Path.cwd().name}")
+    else:
+        console.print("[yellow]No mapping exists for this directory[/yellow]")
+
+
+@app.command()
 def config():
     """Open interactive config editor."""
     from dodo.ui.interactive import interactive_config
@@ -773,6 +947,83 @@ def info(
     console.print(f"[bold]Backend:[/bold] {svc.backend_name}")
     console.print(f"[bold]Storage:[/bold] {svc.storage_path}")
     console.print(f"[bold]Todos:[/bold] {len(items)} total ({pending} pending, {done} done)")
+
+
+@app.command()
+def show():
+    """Show detected dodos and current default."""
+    from pathlib import Path
+    from dodo.models import Status
+    from dodo.project import _get_git_root
+
+    cfg = _get_config()
+    cwd = Path.cwd()
+
+    # Detect context
+    git_root = _get_git_root(cwd)
+
+    console.print("[bold]Context:[/bold]")
+    if git_root:
+        console.print(f"  Git repo: {git_root.name} ({git_root})")
+    console.print(f"  Directory: {cwd}")
+    console.print()
+
+    # Find available dodos
+    console.print("[bold]Available dodos:[/bold]")
+
+    available = []
+
+    # Check local .dodo/
+    local_dodo = cwd / ".dodo"
+    if not local_dodo.exists() and git_root:
+        local_dodo = git_root / ".dodo"
+
+    if local_dodo.exists():
+        # Default local dodo
+        if (local_dodo / "dodo.json").exists() or (local_dodo / "dodo.db").exists():
+            available.append(("local", str(local_dodo), "local"))
+        # Named local dodos
+        for subdir in local_dodo.iterdir():
+            if subdir.is_dir() and (subdir / "dodo.json").exists():
+                available.append((subdir.name, str(subdir), "local"))
+
+    # Check central dodos
+    if cfg.config_dir.exists():
+        for item in cfg.config_dir.iterdir():
+            if item.is_dir() and item.name not in ("projects", ".last_action"):
+                if (item / "dodo.json").exists() or (item / "dodo.db").exists():
+                    available.append((item.name, str(item), "central"))
+
+    # Determine current default
+    dodo_id, explicit_path = _resolve_dodo(cfg)
+    current = dodo_id or "global"
+
+    if not available:
+        console.print("  [dim](none created yet)[/dim]")
+        console.print()
+        console.print("[bold]Current:[/bold] global (fallback)")
+        console.print("[dim]Hint: Run 'dodo new' to create a dodo for this project[/dim]")
+        return
+
+    for name, path, location in available:
+        marker = "→ " if name == current else "  "
+        path_short = path.replace(str(Path.home()), "~")
+        hint = "(default)" if name == current else f"(use: dodo -d {name})"
+        console.print(f"  {marker}[cyan]{name}[/cyan]  {path_short}  [dim]{hint}[/dim]")
+
+    console.print()
+
+    # Show stats for current
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
+    else:
+        svc = _get_service(cfg, dodo_id)
+
+    items = svc.list()
+    pending = sum(1 for i in items if i.status == Status.PENDING)
+    done_count = sum(1 for i in items if i.status == Status.DONE)
+
+    console.print(f"[bold]Current:[/bold] {current} ({pending} pending, {done_count} done)")
 
 
 @app.command()
@@ -886,6 +1137,10 @@ def _register_plugins_subapp() -> None:
 
 _register_plugins_subapp()
 
+# Register bulk subcommand
+from dodo.cli_bulk import bulk_app
+app.add_typer(bulk_app, name="bulk")
+
 
 # Helpers
 
@@ -944,12 +1199,39 @@ def _find_item_by_partial_id(svc: TodoService, partial_id: str):
         raise typer.Exit(1)
 
 
-def _save_last_action(action: str, id: str, target: str) -> None:
-    """Save last action for undo."""
+def _save_last_action(action: str, id_or_items, target: str) -> None:
+    """Save last action for undo.
+
+    Args:
+        action: The action type (add, done, rm, edit)
+        id_or_items: Either a single ID string or a list of TodoItem snapshots
+        target: The dodo target name
+    """
     cfg = _get_config()
     state_file = cfg.config_dir / ".last_action"
     state_file.parent.mkdir(parents=True, exist_ok=True)
-    state_file.write_text(json.dumps({"action": action, "id": id, "target": target}))
+
+    # Handle both old format (single ID) and new format (item snapshots)
+    if isinstance(id_or_items, str):
+        # Old format for backward compatibility with add
+        items_data = [{"id": id_or_items}]
+    elif isinstance(id_or_items, list):
+        items_data = []
+        for item in id_or_items:
+            if hasattr(item, "to_dict"):
+                items_data.append(item.to_dict())
+            elif isinstance(item, dict):
+                items_data.append(item)
+            else:
+                items_data.append({"id": str(item)})
+    else:
+        items_data = [{"id": str(id_or_items)}]
+
+    state_file.write_text(json.dumps({
+        "action": action,
+        "target": target,
+        "items": items_data,
+    }))
 
 
 def _load_last_action() -> dict | None:
