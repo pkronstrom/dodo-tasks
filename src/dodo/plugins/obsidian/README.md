@@ -32,10 +32,10 @@ Install the **Local REST API** plugin in Obsidian:
    - `obsidian_api_key`: Your API key from the Obsidian plugin
    - `obsidian_vault_path`: Path to todo file in vault (default: `dodo/todos.md`)
 
-3. Set as your adapter:
+3. Set as your backend:
    ```bash
    dodo config
-   # Navigate to "Adapter" and select "obsidian"
+   # Navigate to "Backend" and select "obsidian"
    ```
 
 ## Usage

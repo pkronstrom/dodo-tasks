@@ -11,20 +11,19 @@ Track dependencies between todos - block tasks until their prerequisites are don
 
 ## Prerequisites
 
-Requires the **sqlite backend**. The graph plugin stores dependency relationships in the same SQLite database as your todos.
+Requires the **sqlite backend** (the default). The graph plugin stores dependency relationships in the same SQLite database as your todos.
 
 ## Setup
 
-1. Enable both plugins:
+1. Enable the plugin:
    ```bash
-   dodo plugins enable sqlite
    dodo plugins enable graph
    ```
 
-2. Set sqlite as your backend:
+2. Ensure sqlite is your backend (it's the default):
    ```bash
    dodo config
-   # Navigate to "Backend" and select "sqlite"
+   # Check "Backend" is set to "sqlite"
    ```
 
 ## Usage
