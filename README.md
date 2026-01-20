@@ -37,19 +37,45 @@ dodo done abc123                    # Mark done (partial ID works)
 dodo                                # Interactive menu
 ```
 
-## Project Routing
+## How Dodo Finds Your Todos
 
-Dodo automatically detects which todo list to use:
-
-1. **Local** `.dodo/` directory in current or parent folder
-2. **Mapped** directories via `dodo link`
-3. **Git-based** project detection (fallback)
-4. **Global** `~/.config/dodo/` (with `-g` flag)
+**Default behavior** - Dodo picks the right list automatically:
 
 ```bash
-dodo link                           # Map current dir to a dodo
-dodo -d work add "Task"             # Target specific dodo by name
+~/projects/webapp $ dodo list    # uses webapp (if dodo exists)
+~/random-folder   $ dodo list    # uses global
 ```
+
+**Detection order:**
+
+| Priority | Source | How it works |
+|----------|--------|--------------|
+| 1 | **Local** | `.dodo/` in current dir or parents |
+| 2 | **Mapped** | Directory set via `dodo use` |
+| 3 | **Global** | `~/.config/dodo/` fallback |
+
+**Notes:**
+- Dodos must be explicitly created with `dodo new`
+- `dodo add` without existing dodo uses global (with one-time hint)
+- Use `dodo show` to see what dodo would be used
+
+**Commands:**
+
+| Command | Effect |
+|---------|--------|
+| `dodo new` | Create dodo (auto-named from git/dir) |
+| `dodo new --local` | Create `.dodo/` at project root |
+| `dodo new myname` | Create named dodo |
+| `dodo use myname` | Point this dir to existing dodo |
+| `dodo unuse` | Remove the pointer |
+| `dodo show` | Show detected dodos and current default |
+
+**Override flags:**
+
+| Flag | Effect |
+|------|--------|
+| `-g` / `--global` | Force global, skip detection |
+| `-d name` | Target specific dodo by name |
 
 ## Plugins
 

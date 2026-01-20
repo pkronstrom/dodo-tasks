@@ -189,6 +189,43 @@ class TestCliUndo:
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "Undid" in result.stdout
 
+    def test_undo_done(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            r = runner.invoke(app, ["add", "Task"])
+            id_ = r.stdout.split("(")[1].split(")")[0]
+            runner.invoke(app, ["done", id_])
+            result = runner.invoke(app, ["undo"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Undid" in result.stdout
+        assert "pending" in result.stdout.lower()
+
+    def test_undo_rm(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            r = runner.invoke(app, ["add", "Task to delete"])
+            id_ = r.stdout.split("(")[1].split(")")[0]
+            runner.invoke(app, ["rm", id_])
+            result = runner.invoke(app, ["undo"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Undid" in result.stdout
+        assert "restored" in result.stdout.lower()
+
+    def test_undo_nothing(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            result = runner.invoke(app, ["undo"])
+
+        assert result.exit_code == 0
+        assert "Nothing to undo" in result.stdout
+
+    def test_undo_clears_after_use(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "Task"])
+            runner.invoke(app, ["undo"])
+            result = runner.invoke(app, ["undo"])
+
+        assert "Nothing to undo" in result.stdout
+
 
 class TestCliRm:
     def test_rm_deletes_todo(self, cli_env):
@@ -204,6 +241,97 @@ class TestCliRm:
 
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "Removed" in result.stdout
+
+
+class TestCliShow:
+    def test_show_global_fallback(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            with patch("dodo.project._get_git_root", return_value=None):
+                result = runner.invoke(app, ["show"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "global" in result.stdout.lower()
+
+    def test_show_with_dodo(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            with patch("dodo.project._get_git_root", return_value=None):
+                runner.invoke(app, ["new", "testdodo"])
+                result = runner.invoke(app, ["show"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "testdodo" in result.stdout
+
+
+class TestCliUse:
+    def test_use_existing_dodo(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            # Create dodo (will auto-link), then unlink, then use
+            new_result = runner.invoke(app, ["new", "testdodo"])
+            assert new_result.exit_code == 0, f"New failed: {new_result.output}"
+            runner.invoke(app, ["unlink"])
+            result = runner.invoke(app, ["use", "testdodo"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+
+    def test_use_nonexistent_dodo(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            result = runner.invoke(app, ["use", "nonexistent"])
+
+        assert result.exit_code == 1
+
+    def test_unuse(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["new", "testdodo"])
+            runner.invoke(app, ["use", "testdodo"])
+            result = runner.invoke(app, ["unuse"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+
+
+class TestCliNew:
+    def test_new_auto_names_from_dir(self, cli_env, tmp_path, monkeypatch):
+        test_dir = tmp_path / "myproject"
+        test_dir.mkdir()
+        monkeypatch.chdir(test_dir)
+
+        with patch("dodo.project.detect_project", return_value=None):
+            with patch("dodo.project._get_git_root", return_value=None):
+                result = runner.invoke(app, ["new"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "myproject" in result.stdout
+
+    def test_new_local_creates_dodo_dir(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            with patch("dodo.project._get_git_root", return_value=None):
+                result = runner.invoke(app, ["new", "--local"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert ".dodo" in result.stdout
+
+    def test_new_with_name(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            result = runner.invoke(app, ["new", "customname"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "customname" in result.stdout
+
+
+class TestCliAddOutput:
+    def test_add_shows_dodo_name(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            result = runner.invoke(app, ["add", "Test task"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Added to" in result.stdout
+
+    def test_add_shows_priority_and_tags(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            result = runner.invoke(app, ["add", "Task", "-p", "high", "-t", "work"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "!high" in result.stdout
+        assert "#work" in result.stdout
 
 
 class TestGetServiceContext:
@@ -238,16 +366,21 @@ class TestGetServiceContext:
         assert project_id is None
 
 
-class TestCliNew:
-    def test_new_creates_default_dodo(self, cli_env):
-        """dodo new creates default dodo in ~/.config/dodo/"""
-        result = runner.invoke(app, ["new"])
+class TestCliNewOld:
+    def test_new_creates_default_dodo(self, cli_env, tmp_path, monkeypatch):
+        """dodo new creates dodo named after current directory in ~/.config/dodo/<dirname>/"""
+        test_dir = tmp_path / "testproject"
+        test_dir.mkdir()
+        monkeypatch.chdir(test_dir)
+
+        with patch("dodo.project._get_git_root", return_value=None):
+            result = runner.invoke(app, ["new"])
 
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "Created dodo" in result.stdout
-        # Check file was created
+        # Check file was created in subdirectory named after the current dir
         config_dir = cli_env
-        assert (config_dir / "dodo.db").exists() or (config_dir / "dodo.md").exists()
+        assert (config_dir / "testproject" / "dodo.db").exists() or (config_dir / "testproject" / "dodo.md").exists()
 
     def test_new_creates_named_dodo(self, cli_env):
         """dodo new <name> creates named dodo in ~/.config/dodo/<name>/"""
@@ -283,10 +416,15 @@ class TestCliNew:
         config_dir = cli_env
         assert (config_dir / "test-proj" / "dodo.db").exists()
 
-    def test_new_idempotent_shows_hint(self, cli_env):
+    def test_new_idempotent_shows_hint(self, cli_env, tmp_path, monkeypatch):
         """dodo new when dodo exists shows hint to use name"""
-        runner.invoke(app, ["new"])
-        result = runner.invoke(app, ["new"])
+        test_dir = tmp_path / "testproject2"
+        test_dir.mkdir()
+        monkeypatch.chdir(test_dir)
+
+        with patch("dodo.project._get_git_root", return_value=None):
+            runner.invoke(app, ["new"])
+            result = runner.invoke(app, ["new"])
 
         assert result.exit_code == 0
         assert "already exists" in result.stdout.lower()
