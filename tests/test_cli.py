@@ -265,10 +265,10 @@ class TestCliShow:
 class TestCliUse:
     def test_use_existing_dodo(self, cli_env):
         with patch("dodo.project.detect_project", return_value=None):
-            # Create dodo (will auto-link), then unlink, then use
+            # Create dodo (will auto-link), then unuse, then use
             new_result = runner.invoke(app, ["new", "testdodo"])
             assert new_result.exit_code == 0, f"New failed: {new_result.output}"
-            runner.invoke(app, ["unlink"])
+            runner.invoke(app, ["unuse"])
             result = runner.invoke(app, ["use", "testdodo"])
 
         assert result.exit_code == 0, f"Failed: {result.output}"
