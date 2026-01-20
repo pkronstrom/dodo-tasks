@@ -155,6 +155,11 @@ class Config:
     def _save(self) -> None:
         self._config_dir.mkdir(parents=True, exist_ok=True)
         self._config_file.write_text(json.dumps(self._data, indent=2))
+        # Set restrictive permissions (user read/write only) - config may contain API keys
+        try:
+            self._config_file.chmod(0o600)
+        except OSError:
+            pass  # Ignore permission errors (e.g., Windows)
 
     def _apply_env_overrides(self) -> None:
         """Apply DODO_* env vars (highest priority)."""
