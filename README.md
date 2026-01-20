@@ -4,6 +4,8 @@
 
 A fast, flexible todo manager with smart project routing and plugin support.
 
+Part of [**Nest-Driven Development**](https://github.com/pkronstrom/nest-driven-development) — the minimum vibable workflow.
+
 ## Features
 
 - **Smart routing**: Todos automatically go to the right project based on your current directory
