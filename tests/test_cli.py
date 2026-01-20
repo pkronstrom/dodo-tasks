@@ -424,3 +424,56 @@ class TestCliDodoFlag:
         result = runner.invoke(app, ["list"])
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "Auto detected task" in result.stdout
+
+
+class TestCliAddFlags:
+    def test_add_priority_short_flag(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            result = runner.invoke(app, ["add", "Task", "-p", "high"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Task" in result.stdout
+
+    def test_add_tag_short_flag(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            result = runner.invoke(app, ["add", "Task", "-t", "work"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Task" in result.stdout
+
+    def test_add_tag_comma_separated(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "Task", "-t", "work,urgent"])
+            result = runner.invoke(app, ["export", "-f", "txt"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "#work" in result.stdout
+        assert "#urgent" in result.stdout
+
+    def test_add_tag_multiple_flags(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "Task", "-t", "work", "-t", "urgent"])
+            result = runner.invoke(app, ["export", "-f", "txt"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "#work" in result.stdout
+        assert "#urgent" in result.stdout
+
+    def test_add_tag_mixed(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "Task", "-t", "work,urgent", "-t", "home"])
+            result = runner.invoke(app, ["export", "-f", "txt"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "#work" in result.stdout
+        assert "#urgent" in result.stdout
+        assert "#home" in result.stdout
+
+    def test_add_priority_and_tags(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "Task", "-p", "high", "-t", "work"])
+            result = runner.invoke(app, ["export", "-f", "txt"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "!high" in result.stdout
+        assert "#work" in result.stdout

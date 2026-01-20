@@ -189,9 +189,14 @@ def add(
     dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
     priority: Annotated[
         str | None,
-        typer.Option("--priority", "-P", help="Priority: critical/high/normal/low/someday"),
+        typer.Option("-p", "--priority", help="Priority: critical/high/normal/low/someday"),
     ] = None,
-    tags: Annotated[str | None, typer.Option("--tags", "-t", help="Comma-separated tags")] = None,
+    tag: Annotated[
+        list[str] | None,
+        typer.Option("-t", "--tag", help="Tag (can repeat, comma-separated)"),
+    ] = None,
+    # Keep old --tags for backward compatibility
+    tags: Annotated[str | None, typer.Option("--tags", help="Comma-separated tags (deprecated, use -t)")] = None,
 ):
     """Add a todo item."""
     from dodo.models import Priority
@@ -217,10 +222,27 @@ def add(
             )
             raise typer.Exit(1)
 
-    # Parse tags
-    parsed_tags = None
+    # Parse tags - merge from multiple sources
+    parsed_tags = []
+
+    # Handle new -t/--tag flags (list of potentially comma-separated values)
+    if tag:
+        for t in tag:
+            parsed_tags.extend(x.strip() for x in t.split(",") if x.strip())
+
+    # Handle old --tags flag for backward compatibility
     if tags:
-        parsed_tags = [t.strip() for t in tags.split(",") if t.strip()]
+        parsed_tags.extend(x.strip() for x in tags.split(",") if x.strip())
+
+    # Deduplicate while preserving order
+    seen = set()
+    unique_tags = []
+    for t in parsed_tags:
+        if t not in seen:
+            seen.add(t)
+            unique_tags.append(t)
+
+    parsed_tags = unique_tags if unique_tags else None
 
     item = svc.add(text, priority=parsed_priority, tags=parsed_tags)
 
