@@ -1,5 +1,7 @@
 """Markdown file backend."""
 
+from __future__ import annotations
+
 import fcntl
 from collections.abc import Iterator
 from contextlib import contextmanager
