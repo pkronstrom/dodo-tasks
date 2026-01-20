@@ -120,17 +120,6 @@ def add_dep(
     console.print(f"[green]Added:[/green] {blocker} blocks {blocked}")
 
 
-@dep_app.command(name="add-bulk", hidden=True)
-def add_dep_bulk(
-    global_: Annotated[bool, typer.Option("-g", "--global", help="Use global list")] = False,
-    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
-    quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Minimal output")] = False,
-) -> None:
-    """Deprecated: Use 'dodo bulk dep' instead."""
-    console.print("[yellow]Warning:[/yellow] 'dodo dep add-bulk' is deprecated. Use 'dodo bulk dep' instead.")
-    raise typer.Exit(1)
-
-
 @dep_app.command(name="rm")
 def remove_dep(
     blocker: Annotated[str, typer.Argument(help="ID of blocking todo")],
