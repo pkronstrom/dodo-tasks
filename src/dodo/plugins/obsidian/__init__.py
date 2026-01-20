@@ -39,5 +39,10 @@ def register_config() -> list[ConfigVar]:
             description="REST API endpoint",
         ),
         ConfigVar("api_key", "", label="API Key", description="authentication key"),
-        ConfigVar("vault_path", "dodo/todos.md", label="Vault path", description="path in vault"),
+        ConfigVar(
+            "vault_path",
+            "dodo/{project}.md",
+            label="Vault path",
+            description="path in vault (use {project} for named dodos, e.g. dodo/{project}.md)",
+        ),
     ]

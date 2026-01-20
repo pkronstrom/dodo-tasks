@@ -1241,7 +1241,7 @@ def _build_settings_items(
                 # Pass plugin.name to mark this as a plugin setting (for indentation)
                 items.append((env.name, label, kind, options, plugin.name, desc))
                 # For toggle kind, convert string value to bool
-                val = getattr(cfg, env.name, env.default) or ""
+                val = cfg.get_plugin_config(plugin.name, env.name, env.default) or ""
                 if kind == "toggle":
                     pending[env.name] = str(val).lower() in ("true", "1", "yes")
                 else:

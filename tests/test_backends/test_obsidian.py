@@ -84,3 +84,47 @@ class TestObsidianBackendDelete:
         put_content = call_kwargs.kwargs.get("content", "")
         assert "Todo 1" not in put_content
         assert "Todo 2" in put_content
+
+
+class TestObsidianBackendProjectTemplate:
+    def test_template_with_project(self, mock_client):
+        """Project name should be substituted in vault_path template."""
+        backend = ObsidianBackend(
+            api_key="test-key",
+            vault_path="dodo/{project}.md",
+            project="work",
+        )
+        assert backend._vault_path == "dodo/work.md"
+
+    def test_template_without_project_uses_default(self, mock_client):
+        """Without project, {project} template should resolve to 'default'."""
+        backend = ObsidianBackend(
+            api_key="test-key",
+            vault_path="dodo/{project}.md",
+            project=None,
+        )
+        assert backend._vault_path == "dodo/default.md"
+
+    def test_no_template_placeholder(self, mock_client):
+        """Without {project} in path, vault_path should be used as-is."""
+        backend = ObsidianBackend(
+            api_key="test-key",
+            vault_path="dodo/todos.md",
+            project="work",
+        )
+        assert backend._vault_path == "dodo/todos.md"
+
+    def test_api_uses_resolved_path(self, mock_client):
+        """API calls should use the resolved vault_path."""
+        mock_client.get.return_value = MagicMock(status_code=404)
+
+        backend = ObsidianBackend(
+            api_key="test-key",
+            vault_path="dodo/{project}.md",
+            project="personal",
+        )
+        backend.list()
+
+        # Check the GET call used the resolved path
+        call_args = mock_client.get.call_args
+        assert "dodo/personal.md" in call_args[0][0]
