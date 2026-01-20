@@ -8,12 +8,14 @@ from .csv import CsvFormatter
 from .jsonl import JsonlFormatter
 from .table import TableFormatter
 from .tsv import TsvFormatter
+from .txt import TxtFormatter
 
 FORMATTERS: dict[str, type] = {
     "table": TableFormatter,
     "jsonl": JsonlFormatter,
     "tsv": TsvFormatter,
     "csv": CsvFormatter,
+    "txt": TxtFormatter,
 }
 
 DEFAULT_DATETIME_FMT = "%m-%d %H:%M"
@@ -93,6 +95,7 @@ __all__ = [
     "JsonlFormatter",
     "TsvFormatter",
     "CsvFormatter",
+    "TxtFormatter",
     "FORMATTERS",
     "get_formatter",
 ]
