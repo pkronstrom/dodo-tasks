@@ -6,6 +6,7 @@ from pathlib import Path
 from .base import FormatterProtocol
 from .csv import CsvFormatter
 from .jsonl import JsonlFormatter
+from .markdown import MarkdownFormatter
 from .table import TableFormatter
 from .tsv import TsvFormatter
 from .txt import TxtFormatter
@@ -16,6 +17,7 @@ FORMATTERS: dict[str, type] = {
     "tsv": TsvFormatter,
     "csv": CsvFormatter,
     "txt": TxtFormatter,
+    "md": MarkdownFormatter,
 }
 
 DEFAULT_DATETIME_FMT = "%m-%d %H:%M"
@@ -96,6 +98,7 @@ __all__ = [
     "TsvFormatter",
     "CsvFormatter",
     "TxtFormatter",
+    "MarkdownFormatter",
     "FORMATTERS",
     "get_formatter",
 ]

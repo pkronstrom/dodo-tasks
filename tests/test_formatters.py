@@ -288,3 +288,68 @@ class TestTxtFormatter:
         formatter = TxtFormatter()
         output = formatter.format([item])
         assert output == "Full task !critical #work"
+
+
+class TestMarkdownFormatter:
+    def test_format_empty(self):
+        from dodo.formatters.markdown import MarkdownFormatter
+
+        formatter = MarkdownFormatter()
+        output = formatter.format([])
+        assert output == ""
+
+    def test_format_pending(self):
+        from dodo.formatters.markdown import MarkdownFormatter
+        from dodo.models import Status, TodoItem
+        from datetime import datetime
+
+        item = TodoItem(
+            id="test1",
+            text="Pending task",
+            status=Status.PENDING,
+            created_at=datetime.now(),
+        )
+        formatter = MarkdownFormatter()
+        output = formatter.format([item])
+        assert output == "- [ ] Pending task"
+
+    def test_format_done(self):
+        from dodo.formatters.markdown import MarkdownFormatter
+        from dodo.models import Status, TodoItem
+        from datetime import datetime
+
+        item = TodoItem(
+            id="test1",
+            text="Done task",
+            status=Status.DONE,
+            created_at=datetime.now(),
+        )
+        formatter = MarkdownFormatter()
+        output = formatter.format([item])
+        assert output == "- [x] Done task"
+
+    def test_format_with_priority_and_tags(self):
+        from dodo.formatters.markdown import MarkdownFormatter
+        from dodo.models import Priority, Status, TodoItem
+        from datetime import datetime
+
+        item = TodoItem(
+            id="test1",
+            text="Full task",
+            status=Status.PENDING,
+            priority=Priority.HIGH,
+            tags=["work", "urgent"],
+            created_at=datetime.now(),
+        )
+        formatter = MarkdownFormatter()
+        output = formatter.format([item])
+        assert output == "- [ ] Full task !high #work #urgent"
+
+    def test_format_multiple(self, sample_items):
+        from dodo.formatters.markdown import MarkdownFormatter
+
+        formatter = MarkdownFormatter()
+        output = formatter.format(sample_items)
+        lines = output.strip().split("\n")
+        assert lines[0] == "- [x] Buy milk"
+        assert lines[1] == "- [ ] Call dentist"
