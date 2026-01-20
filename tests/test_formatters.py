@@ -221,3 +221,70 @@ class TestCsvFormatter:
         output = formatter.format([item])
         lines = output.strip().split("\n")
         assert lines[1] == 'test2,pending,"Say ""hello"""'
+
+
+class TestTxtFormatter:
+    def test_format_empty(self):
+        from dodo.formatters.txt import TxtFormatter
+
+        formatter = TxtFormatter()
+        output = formatter.format([])
+        assert output == ""
+
+    def test_format_simple(self, sample_items):
+        from dodo.formatters.txt import TxtFormatter
+
+        formatter = TxtFormatter()
+        output = formatter.format(sample_items)
+        lines = output.strip().split("\n")
+        assert lines[0] == "Buy milk"
+        assert lines[1] == "Call dentist"
+
+    def test_format_with_priority(self):
+        from dodo.formatters.txt import TxtFormatter
+        from dodo.models import Priority, Status, TodoItem
+        from datetime import datetime
+
+        item = TodoItem(
+            id="test1",
+            text="Important task",
+            status=Status.PENDING,
+            priority=Priority.HIGH,
+            created_at=datetime.now(),
+        )
+        formatter = TxtFormatter()
+        output = formatter.format([item])
+        assert output == "Important task !high"
+
+    def test_format_with_tags(self):
+        from dodo.formatters.txt import TxtFormatter
+        from dodo.models import Status, TodoItem
+        from datetime import datetime
+
+        item = TodoItem(
+            id="test1",
+            text="Tagged task",
+            status=Status.PENDING,
+            tags=["work", "urgent"],
+            created_at=datetime.now(),
+        )
+        formatter = TxtFormatter()
+        output = formatter.format([item])
+        assert output == "Tagged task #work #urgent"
+
+    def test_format_with_priority_and_tags(self):
+        from dodo.formatters.txt import TxtFormatter
+        from dodo.models import Priority, Status, TodoItem
+        from datetime import datetime
+
+        item = TodoItem(
+            id="test1",
+            text="Full task",
+            status=Status.PENDING,
+            priority=Priority.CRITICAL,
+            tags=["work"],
+            created_at=datetime.now(),
+        )
+        formatter = TxtFormatter()
+        output = formatter.format([item])
+        assert output == "Full task !critical #work"
