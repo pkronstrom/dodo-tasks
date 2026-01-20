@@ -404,19 +404,22 @@ def dep(
     dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
     quiet: Annotated[bool, typer.Option("-q", "--quiet", help="Minimal output")] = False,
 ):
-    """Bulk add dependencies from JSONL stdin.
+    """Bulk add dependencies from stdin.
 
-    Each line should be a JSON object with fields:
+    Accepts JSONL or JSON array with fields:
     - blocker: ID of blocking todo
     - blocked: ID of blocked todo
 
-    Example:
-        echo '{"blocker": "abc123", "blocked": "def456"}
-        {"blocker": "abc123", "blocked": "ghi789"}' | dodo bulk dep
-    """
-    import json
+    Examples:
+        # JSONL format
+        echo '{"blocker": "abc", "blocked": "def"}
+        {"blocker": "abc", "blocked": "ghi"}' | dodo bulk dep
 
+        # JSON array format
+        echo '[{"blocker": "abc", "blocked": "def"}]' | dodo bulk dep
+    """
     from dodo.backends.base import GraphCapable
+    from dodo.bulk import parse_bulk_input
     from dodo.core import TodoService
     from dodo.resolve import resolve_dodo
 
@@ -435,22 +438,21 @@ def dep(
         raise typer.Exit(1)
 
     if sys.stdin.isatty():
-        console.print("[yellow]No input provided. Pipe JSONL to stdin.[/yellow]")
+        console.print("[yellow]No input provided. Pipe JSON to stdin.[/yellow]")
         raise typer.Exit(1)
+
+    text = sys.stdin.read().strip()
+    if not text:
+        console.print("[yellow]Empty input[/yellow]")
+        raise typer.Exit(1)
+
+    result = parse_bulk_input(text)
 
     added = 0
     errors = 0
 
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-
-        try:
-            data = json.loads(line)
-        except json.JSONDecodeError as e:
-            if not quiet:
-                console.print(f"[red]Error:[/red] Invalid JSON: {e}")
+    for data in result.items:
+        if not isinstance(data, dict):
             errors += 1
             continue
 
