@@ -339,6 +339,48 @@ class TestCliDestroy:
         assert not (tmp_path / ".dodo").exists()
 
 
+class TestCliExport:
+    def test_export_default_jsonl(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "Test todo"])
+            result = runner.invoke(app, ["export"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert '"text": "Test todo"' in result.stdout
+
+    def test_export_format_txt(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "Test todo"])
+            result = runner.invoke(app, ["export", "--format", "txt"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert result.stdout.strip() == "Test todo"
+
+    def test_export_format_md(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "Test todo"])
+            result = runner.invoke(app, ["export", "--format", "md"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert result.stdout.strip() == "- [ ] Test todo"
+
+    def test_export_format_csv(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "Test todo"])
+            result = runner.invoke(app, ["export", "--format", "csv"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "id,status,text" in result.stdout
+
+    def test_export_format_short_flag(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            runner.invoke(app, ["add", "Test todo"])
+            result = runner.invoke(app, ["export", "-f", "txt"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert result.stdout.strip() == "Test todo"
+
+
 class TestCliDodoFlag:
     def test_add_with_dodo_flag(self, cli_env):
         """dodo add --dodo <name> adds to specific dodo"""

@@ -696,20 +696,26 @@ def config():
 def export(
     output: Annotated[str | None, typer.Option("-o", "--output", help="Output file")] = None,
     global_: Annotated[bool, typer.Option("-g", "--global", help="Global todos")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d", help="Target dodo name")] = None,
+    format_: Annotated[str, typer.Option("-f", "--format", help="Output format: jsonl, csv, tsv, txt, md")] = "jsonl",
 ):
-    """Export todos to jsonl format."""
-    from dodo.formatters.jsonl import JsonlFormatter
+    """Export todos to various formats."""
+    from dodo.formatters import get_formatter
 
     cfg = _get_config()
-    dodo_id, explicit_path = _resolve_dodo(cfg, global_=global_)
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
     if explicit_path:
         svc = _get_service_with_path(cfg, explicit_path)
     else:
         svc = _get_service(cfg, dodo_id)
     items = svc.list()
 
-    # JsonlFormatter uses to_dict() which includes plugin fields like blocked_by
-    formatter = JsonlFormatter()
+    try:
+        formatter = get_formatter(format_)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(1)
+
     content = formatter.format(items)
 
     if output:
