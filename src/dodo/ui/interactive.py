@@ -1447,9 +1447,12 @@ def _unified_settings_loop(
                 status_msg = "[yellow]Backend switched to markdown[/yellow]"
         cfg.set("enabled_plugins", ",".join(sorted(current)))
 
-    def save_item(key: str, val: object) -> None:
+    def save_item(key: str, val: object, plugin: str | None = None) -> None:
         """Save single item immediately."""
-        if getattr(cfg, key, None) != val:
+        if plugin:
+            # Plugin config var - save under plugins.<name>.<key>
+            cfg.set_plugin_config(plugin, key, val)
+        elif getattr(cfg, key, None) != val:
             cfg.set(key, val)
 
     def rebuild_backend_options() -> None:
@@ -1562,7 +1565,7 @@ def _unified_settings_loop(
                         pending[item_key] = not pending[item_key]
                         # Plugin config vars save as strings, general toggles as booleans
                         if plugin_name:
-                            save_item(item_key, "true" if pending[item_key] else "false")
+                            save_item(item_key, "true" if pending[item_key] else "false", plugin_name)
                         else:
                             save_item(item_key, pending[item_key])
                     elif kind == "cycle" and options:
@@ -1572,7 +1575,7 @@ def _unified_settings_loop(
                         else:
                             idx = -1
                         pending[item_key] = options[(idx + 1) % len(options)]
-                        save_item(item_key, pending[item_key])
+                        save_item(item_key, pending[item_key], plugin_name)
                         # If backend changed, rebuild migrate options
                         if item_key == "default_backend":
                             rebuild_migrate_options()
@@ -1600,7 +1603,7 @@ def _unified_settings_loop(
                 render()
 
         if edit_triggered:
-            item_key = items[cursor][0]
+            item_key, _, _, _, plugin_name, _ = items[cursor]
             new_val = _edit_in_editor(
                 str(pending[item_key]),
                 [f"Edit: {items[cursor][1].strip()}"],
@@ -1613,7 +1616,7 @@ def _unified_settings_loop(
                     except ValueError:
                         new_val = 120  # Default on invalid input
                 pending[item_key] = new_val
-                save_item(item_key, new_val)
+                save_item(item_key, new_val, plugin_name)
             continue
 
         break
