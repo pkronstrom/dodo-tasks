@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
 import httpx
 
-from dodo.backends.utils import (
-    format_todo_line,
-    generate_todo_id,
-    parse_todo_line,
-)
 from dodo.models import Priority, Status, TodoItem
+from dodo.plugins.obsidian.formatter import (
+    ObsidianDocument,
+    ObsidianFormatter,
+    ParsedTask,
+    Section,
+    format_header,
+)
+from dodo.plugins.obsidian.sync import SyncManager, normalize_text
 
 
 class ObsidianBackend:
@@ -32,6 +36,15 @@ class ObsidianBackend:
         vault_path: str = DEFAULT_VAULT_PATH,
         project: str | None = None,
         verify_ssl: bool | None = None,
+        # Formatter options
+        priority_syntax: str = "symbols",
+        timestamp_syntax: str = "hidden",
+        tags_syntax: str = "hashtags",
+        group_by_tags: bool = True,
+        default_header_level: int = 3,
+        sort_by: str = "priority",
+        # Sync file path (optional, defaults to vault-adjacent)
+        sync_file: Path | None = None,
     ):
         """Initialize Obsidian backend.
 
@@ -45,6 +58,13 @@ class ObsidianBackend:
             verify_ssl: Whether to verify SSL certificates. Default: True for remote
                         connections, False for localhost (Obsidian Local REST API
                         typically uses self-signed certificates on localhost).
+            priority_syntax: How to display priority ("hidden", "symbols", "emoji", "dataview")
+            timestamp_syntax: How to display timestamp ("hidden", "plain", "emoji", "dataview")
+            tags_syntax: How to display tags ("hidden", "hashtags", "dataview")
+            group_by_tags: Whether to organize tasks under headers by tag
+            default_header_level: Header level for new sections (1-4)
+            sort_by: Task ordering within sections
+            sync_file: Path to sync file for ID mappings (defaults to ~/.dodo/obsidian-sync.json)
 
         Security note: When verify_ssl=False, the connection is vulnerable to
         man-in-the-middle attacks. This is acceptable for localhost connections
@@ -77,6 +97,21 @@ class ObsidianBackend:
             timeout=10.0,
         )
 
+        # Formatter configuration
+        self._formatter = ObsidianFormatter(
+            priority_syntax=priority_syntax,
+            timestamp_syntax=timestamp_syntax,
+            tags_syntax=tags_syntax,
+        )
+        self._group_by_tags = group_by_tags
+        self._default_header_level = default_header_level
+        self._sort_by = sort_by
+
+        # Sync manager for ID tracking
+        if sync_file is None:
+            sync_file = Path.home() / ".dodo" / "obsidian-sync.json"
+        self._sync_manager = SyncManager(sync_file)
+
     def _resolve_vault_path(self, template: str, project: str | None) -> str:
         """Resolve vault path template with project name.
 
@@ -107,8 +142,10 @@ class ObsidianBackend:
         tags: list[str] | None = None,
     ) -> TodoItem:
         timestamp = datetime.now()
+        item_id = self._sync_manager.get_or_create_id(text)
+
         item = TodoItem(
-            id=generate_todo_id(text, timestamp),
+            id=item_id,
             text=text,
             status=Status.PENDING,
             created_at=timestamp,
@@ -117,8 +154,39 @@ class ObsidianBackend:
             tags=tags,
         )
 
-        line = format_todo_line(item)
-        self._append_to_note(line)
+        # Read existing content
+        content = self._read_note()
+
+        # Parse existing document
+        doc = ObsidianDocument.parse(content, self._formatter) if content else ObsidianDocument()
+
+        # Add task to appropriate section
+        task = ParsedTask(
+            text=text,
+            status=Status.PENDING,
+            priority=priority,
+            tags=tags or [],
+        )
+
+        if self._group_by_tags and tags:
+            # Add to section based on first tag
+            section_tag = tags[0].lower()
+            if section_tag not in doc.sections:
+                header = format_header(section_tag, self._default_header_level)
+                doc.sections[section_tag] = Section(tag=section_tag, header=header)
+            doc.sections[section_tag].tasks.append(task)
+        else:
+            # Add to default section
+            if "_default" not in doc.sections:
+                doc.sections["_default"] = Section(tag="_default", header="")
+            doc.sections["_default"].tasks.append(task)
+
+        # Write updated content
+        self._write_note(doc.render(self._formatter))
+
+        # Save sync data
+        self._sync_manager.save()
+
         return item
 
     def list(
@@ -138,121 +206,162 @@ class ObsidianBackend:
 
     def update(self, id: str, status: Status) -> TodoItem:
         content = self._read_note()
-        lines = content.splitlines()
+        doc = ObsidianDocument.parse(content, self._formatter)
         updated_item = None
 
-        for idx, line in enumerate(lines):
-            item = parse_todo_line(line)
-            if item and item.id == id:
-                updated_item = TodoItem(
-                    id=item.id,
-                    text=item.text,
-                    status=status,
-                    created_at=item.created_at,
-                    completed_at=datetime.now() if status == Status.DONE else None,
-                    project=item.project,
-                    priority=item.priority,
-                    tags=item.tags,
-                )
-                lines[idx] = format_todo_line(updated_item)
+        # Find and update task
+        for section in doc.sections.values():
+            for task in section.tasks:
+                # Use legacy ID if present, otherwise use sync manager
+                task_id = task.legacy_id if task.legacy_id else self._sync_manager.get_or_create_id(task.text)
+                if task_id == id:
+                    task.status = status
+                    updated_item = TodoItem(
+                        id=task_id,
+                        text=task.text,
+                        status=status,
+                        created_at=datetime.now(),
+                        completed_at=datetime.now() if status == Status.DONE else None,
+                        priority=task.priority,
+                        tags=task.tags if task.tags else None,
+                    )
+                    break
+            if updated_item:
                 break
 
         if not updated_item:
             raise KeyError(f"Todo not found: {id}")
 
-        self._write_note("\n".join(lines))
+        self._write_note(doc.render(self._formatter))
+        self._sync_manager.save()
         return updated_item
 
     def update_text(self, id: str, text: str) -> TodoItem:
         content = self._read_note()
-        lines = content.splitlines()
+        doc = ObsidianDocument.parse(content, self._formatter)
         updated_item = None
 
-        for idx, line in enumerate(lines):
-            item = parse_todo_line(line)
-            if item and item.id == id:
-                updated_item = TodoItem(
-                    id=item.id,
-                    text=text,
-                    status=item.status,
-                    created_at=item.created_at,
-                    completed_at=item.completed_at,
-                    project=item.project,
-                    priority=item.priority,
-                    tags=item.tags,
-                )
-                lines[idx] = format_todo_line(updated_item)
+        # Find and update task
+        for section in doc.sections.values():
+            for task in section.tasks:
+                # Use legacy ID if present, otherwise use sync manager
+                task_id = task.legacy_id if task.legacy_id else self._sync_manager.get_or_create_id(task.text)
+                if task_id == id:
+                    # Update the sync manager with new text
+                    old_normalized = normalize_text(task.text)
+                    if old_normalized in self._sync_manager.ids:
+                        del self._sync_manager.ids[old_normalized]
+                    self._sync_manager.ids[normalize_text(text)] = id
+
+                    task.text = text
+                    task.legacy_id = None  # Clear legacy ID, now tracked in sync manager
+                    updated_item = TodoItem(
+                        id=id,
+                        text=text,
+                        status=task.status,
+                        created_at=datetime.now(),
+                        priority=task.priority,
+                        tags=task.tags if task.tags else None,
+                    )
+                    break
+            if updated_item:
                 break
 
         if not updated_item:
             raise KeyError(f"Todo not found: {id}")
 
-        self._write_note("\n".join(lines))
+        self._write_note(doc.render(self._formatter))
+        self._sync_manager.save()
         return updated_item
 
     def update_priority(self, id: str, priority: Priority | None) -> TodoItem:
         content = self._read_note()
-        lines = content.splitlines()
+        doc = ObsidianDocument.parse(content, self._formatter)
         updated_item = None
 
-        for idx, line in enumerate(lines):
-            item = parse_todo_line(line)
-            if item and item.id == id:
-                updated_item = TodoItem(
-                    id=item.id,
-                    text=item.text,
-                    status=item.status,
-                    created_at=item.created_at,
-                    completed_at=item.completed_at,
-                    project=item.project,
-                    priority=priority,
-                    tags=item.tags,
-                )
-                lines[idx] = format_todo_line(updated_item)
+        # Find and update task
+        for section in doc.sections.values():
+            for task in section.tasks:
+                # Use legacy ID if present, otherwise use sync manager
+                task_id = task.legacy_id if task.legacy_id else self._sync_manager.get_or_create_id(task.text)
+                if task_id == id:
+                    task.priority = priority
+                    updated_item = TodoItem(
+                        id=task_id,
+                        text=task.text,
+                        status=task.status,
+                        created_at=datetime.now(),
+                        priority=priority,
+                        tags=task.tags if task.tags else None,
+                    )
+                    break
+            if updated_item:
                 break
 
         if not updated_item:
             raise KeyError(f"Todo not found: {id}")
 
-        self._write_note("\n".join(lines))
+        self._write_note(doc.render(self._formatter))
+        self._sync_manager.save()
         return updated_item
 
     def update_tags(self, id: str, tags: list[str] | None) -> TodoItem:
         content = self._read_note()
-        lines = content.splitlines()
+        doc = ObsidianDocument.parse(content, self._formatter)
         updated_item = None
 
-        for idx, line in enumerate(lines):
-            item = parse_todo_line(line)
-            if item and item.id == id:
-                updated_item = TodoItem(
-                    id=item.id,
-                    text=item.text,
-                    status=item.status,
-                    created_at=item.created_at,
-                    completed_at=item.completed_at,
-                    project=item.project,
-                    priority=item.priority,
-                    tags=tags,
-                )
-                lines[idx] = format_todo_line(updated_item)
+        # Find and update task
+        for section in doc.sections.values():
+            for task in section.tasks:
+                # Use legacy ID if present, otherwise use sync manager
+                task_id = task.legacy_id if task.legacy_id else self._sync_manager.get_or_create_id(task.text)
+                if task_id == id:
+                    task.tags = tags or []
+                    updated_item = TodoItem(
+                        id=task_id,
+                        text=task.text,
+                        status=task.status,
+                        created_at=datetime.now(),
+                        priority=task.priority,
+                        tags=tags,
+                    )
+                    break
+            if updated_item:
                 break
 
         if not updated_item:
             raise KeyError(f"Todo not found: {id}")
 
-        self._write_note("\n".join(lines))
+        self._write_note(doc.render(self._formatter))
+        self._sync_manager.save()
         return updated_item
 
     def delete(self, id: str) -> None:
         content = self._read_note()
-        lines = content.splitlines()
-        new_lines = [ln for ln in lines if not self._line_matches_id(ln, id)]
+        doc = ObsidianDocument.parse(content, self._formatter)
+        found = False
 
-        if len(new_lines) == len(lines):
+        # Find and remove task
+        for section in doc.sections.values():
+            for i, task in enumerate(section.tasks):
+                # Use legacy ID if present, otherwise use sync manager
+                task_id = task.legacy_id if task.legacy_id else self._sync_manager.get_or_create_id(task.text)
+                if task_id == id:
+                    section.tasks.pop(i)
+                    found = True
+                    # Remove from sync manager
+                    normalized = normalize_text(task.text)
+                    if normalized in self._sync_manager.ids:
+                        del self._sync_manager.ids[normalized]
+                    break
+            if found:
+                break
+
+        if not found:
             raise KeyError(f"Todo not found: {id}")
 
-        self._write_note("\n".join(new_lines))
+        self._write_note(doc.render(self._formatter))
+        self._sync_manager.save()
 
     def export_all(self) -> list[TodoItem]:
         """Export all todos for migration."""
@@ -266,8 +375,13 @@ class ObsidianBackend:
             if item.id in existing_ids:
                 skipped += 1
             else:
-                line = format_todo_line(item)
-                self._append_to_note(line)
+                # Use add method with the full item details
+                self.add(
+                    text=item.text,
+                    project=item.project,
+                    priority=item.priority,
+                    tags=item.tags,
+                )
                 imported += 1
         return imported, skipped
 
@@ -308,8 +422,52 @@ class ObsidianBackend:
     # Helper methods
 
     def _parse_content(self, content: str) -> list[TodoItem]:
-        return [item for ln in content.splitlines() if (item := parse_todo_line(ln))]
+        """Parse content using the new formatter."""
+        if not content:
+            return []
+
+        doc = ObsidianDocument.parse(content, self._formatter)
+        items = []
+
+        for section in doc.sections.values():
+            # Infer section tag to use for tasks without explicit tags
+            section_tag = section.tag if section.tag != "_default" else None
+
+            for task in section.tasks:
+                # Use legacy ID if present (for backward compat), otherwise generate
+                if task.legacy_id:
+                    task_id = task.legacy_id
+                    # Also register in sync manager for future lookups
+                    normalized = normalize_text(task.text)
+                    if normalized not in self._sync_manager.ids:
+                        self._sync_manager.ids[normalized] = task_id
+                else:
+                    task_id = self._sync_manager.get_or_create_id(task.text)
+
+                # Combine explicit task tags with section tag
+                tags = list(task.tags) if task.tags else []
+                if section_tag and section_tag not in [t.lower() for t in tags]:
+                    tags.insert(0, section_tag)
+
+                items.append(TodoItem(
+                    id=task_id,
+                    text=task.text,
+                    status=task.status,
+                    created_at=datetime.now(),
+                    priority=task.priority,
+                    tags=tags if tags else None,
+                ))
+
+        return items
 
     def _line_matches_id(self, line: str, id: str) -> bool:
-        item = parse_todo_line(line)
-        return item is not None and item.id == id
+        """Check if a line matches a given ID."""
+        result = self._formatter.parse_line(line)
+        if result is None:
+            return False
+        text, _, _, _, legacy_id = result
+        # Use legacy ID if present, otherwise check sync manager
+        if legacy_id:
+            return legacy_id == id
+        task_id = self._sync_manager.get_or_create_id(text)
+        return task_id == id

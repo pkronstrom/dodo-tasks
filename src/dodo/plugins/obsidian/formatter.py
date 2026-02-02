@@ -249,10 +249,11 @@ class ObsidianFormatter:
 
         return " ".join(parts)
 
-    def parse_line(self, line: str) -> tuple[str, Status, Priority | None, list[str]] | None:
-        """Parse a markdown line into (text, status, priority, tags).
+    def parse_line(self, line: str) -> tuple[str, Status, Priority | None, list[str], str | None] | None:
+        """Parse a markdown line into (text, status, priority, tags, legacy_id).
 
         Returns None if line is not a task.
+        The legacy_id is extracted from old format [id] but not used in new format.
         """
         line = line.strip()
 
@@ -283,6 +284,13 @@ class ObsidianFormatter:
         # Also handle dataview timestamp
         rest = re.sub(r"\[created::\s*[^\]]+\]", "", rest).strip()
 
+        # Handle legacy format with embedded ID: [abc12345] - text
+        legacy_id = None
+        legacy_match = re.match(r"^\[([a-f0-9]{8})\]\s*-\s*", rest)
+        if legacy_match:
+            legacy_id = legacy_match.group(1)
+            rest = rest[len(legacy_match.group(0)):].strip()
+
         # Parse tags (removes from text)
         tags, rest = parse_tags(rest, self.tags_syntax)
         # Also try other formats if no tags found
@@ -301,7 +309,7 @@ class ObsidianFormatter:
         if priority is None:
             priority, rest = parse_priority(rest, "dataview")
 
-        return rest.strip(), status, priority, tags
+        return rest.strip(), status, priority, tags, legacy_id
 
 
 @dataclass
@@ -313,6 +321,7 @@ class ParsedTask:
     priority: Priority | None
     tags: list[str]
     indent: int = 0  # For dependency tracking
+    legacy_id: str | None = None  # ID from old format [id] if present
 
 
 @dataclass
@@ -349,7 +358,7 @@ class ObsidianDocument:
             # Check for task
             task_result = formatter.parse_line(line)
             if task_result:
-                text, status, priority, tags = task_result
+                text, status, priority, tags, legacy_id = task_result
                 # Calculate indentation
                 indent = len(line) - len(line.lstrip())
                 task = ParsedTask(
@@ -358,6 +367,7 @@ class ObsidianDocument:
                     priority=priority,
                     tags=tags,
                     indent=indent,
+                    legacy_id=legacy_id,
                 )
 
                 if current_section is None:

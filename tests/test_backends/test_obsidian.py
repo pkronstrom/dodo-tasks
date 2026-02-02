@@ -18,15 +18,16 @@ def mock_client():
 
 
 class TestObsidianBackendAdd:
-    def test_add_posts_to_api(self, mock_client):
+    def test_add_puts_to_api(self, mock_client):
+        """Add now uses PUT to write the full document (not append)."""
         mock_client.get.return_value = MagicMock(status_code=404)  # File doesn't exist
-        mock_client.post.return_value = MagicMock(status_code=200)
+        mock_client.put.return_value = MagicMock(status_code=200)
 
         backend = ObsidianBackend(api_key="test-key")
         item = backend.add("Test todo")
 
         assert item.text == "Test todo"
-        assert mock_client.post.called
+        assert mock_client.put.called
 
 
 class TestObsidianBackendList:
@@ -128,3 +129,26 @@ class TestObsidianBackendProjectTemplate:
         # Check the GET call used the resolved path
         call_args = mock_client.get.call_args
         assert "dodo/personal.md" in call_args[0][0]
+
+
+class TestObsidianBackendNewFormat:
+    """Tests for new Obsidian format without visible IDs."""
+
+    def test_list_parses_new_format(self, mock_client):
+        """New format without visible IDs should parse correctly."""
+        content = """### work
+- [ ] First todo !!
+- [x] Done todo
+
+### home
+- [ ] Buy groceries
+"""
+        mock_client.get.return_value = MagicMock(status_code=200, text=content)
+
+        backend = ObsidianBackend(api_key="test-key")
+        items = backend.list()
+
+        assert len(items) == 3
+        assert items[0].text == "First todo"
+        assert items[0].priority.value == "high"
+        assert items[1].status == Status.DONE

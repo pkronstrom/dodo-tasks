@@ -198,19 +198,31 @@ class TestObsidianFormatter:
         formatter = ObsidianFormatter()
         result = formatter.parse_line("- [ ] Buy groceries !! #home")
         assert result is not None
-        text, status, priority, tags = result
+        text, status, priority, tags, legacy_id = result
         assert text == "Buy groceries"
         assert status == Status.PENDING
         assert priority == Priority.HIGH
         assert tags == ["home"]
+        assert legacy_id is None
 
     def test_parse_line_done(self):
         formatter = ObsidianFormatter()
         result = formatter.parse_line("- [x] Done task")
         assert result is not None
-        text, status, priority, tags = result
+        text, status, priority, tags, legacy_id = result
         assert text == "Done task"
         assert status == Status.DONE
+        assert legacy_id is None
+
+    def test_parse_line_legacy_format(self):
+        """Test parsing old format with embedded ID."""
+        formatter = ObsidianFormatter()
+        result = formatter.parse_line("- [ ] 2024-01-09 10:30 [abc12345] - First todo")
+        assert result is not None
+        text, status, priority, tags, legacy_id = result
+        assert text == "First todo"
+        assert status == Status.PENDING
+        assert legacy_id == "abc12345"
 
     def test_parse_line_not_a_task(self):
         formatter = ObsidianFormatter()
