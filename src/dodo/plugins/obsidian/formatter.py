@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 from dodo.models import Priority
 
@@ -91,3 +92,80 @@ def parse_priority(text: str, syntax: str) -> tuple[Priority | None, str]:
         return None, text
 
     return None, text
+
+
+def format_timestamp(ts: datetime | None, syntax: str) -> str:
+    """Format timestamp according to syntax style.
+
+    Args:
+        ts: Timestamp or None
+        syntax: One of "hidden", "plain", "emoji", "dataview"
+
+    Returns:
+        Formatted timestamp string (may be empty)
+    """
+    if ts is None or syntax == "hidden":
+        return ""
+
+    if syntax == "plain":
+        return ts.strftime("%Y-%m-%d %H:%M")
+    elif syntax == "emoji":
+        return f"📅 {ts.strftime('%Y-%m-%d')}"
+    elif syntax == "dataview":
+        return f"[created:: {ts.strftime('%Y-%m-%d')}]"
+
+    return ""
+
+
+def format_tags(tags: list[str] | None, syntax: str) -> str:
+    """Format tags according to syntax style.
+
+    Args:
+        tags: List of tag strings or None
+        syntax: One of "hidden", "hashtags", "dataview"
+
+    Returns:
+        Formatted tags string (may be empty)
+    """
+    if not tags or syntax == "hidden":
+        return ""
+
+    if syntax == "hashtags":
+        return " ".join(f"#{tag}" for tag in tags)
+    elif syntax == "dataview":
+        return f"[tags:: {', '.join(tags)}]"
+
+    return ""
+
+
+def parse_tags(text: str, syntax: str) -> tuple[list[str], str]:
+    """Parse tags from text and return (tags, clean_text).
+
+    Tries to parse tags in the given syntax style.
+    Returns ([], original_text) if no tags found.
+
+    Args:
+        text: Text potentially containing tags
+        syntax: One of "hidden", "hashtags", "dataview"
+
+    Returns:
+        Tuple of (list of tag strings, text with tags removed)
+    """
+    if syntax == "hidden":
+        return [], text
+
+    if syntax == "hashtags":
+        tags = re.findall(r"#([\w-]+)", text)
+        clean = re.sub(r"\s*#[\w-]+", "", text).strip()
+        return tags, clean
+
+    elif syntax == "dataview":
+        match = re.search(r"\[tags::\s*([^\]]+)\]", text)
+        if match:
+            tag_str = match.group(1)
+            tags = [t.strip() for t in tag_str.split(",")]
+            clean = re.sub(r"\[tags::\s*[^\]]+\]", "", text).strip()
+            return tags, clean
+        return [], text
+
+    return [], text
