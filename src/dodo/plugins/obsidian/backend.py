@@ -7,7 +7,7 @@ from pathlib import Path
 
 import httpx
 
-from dodo.models import Priority, Status, TodoItem
+from dodo.models import Priority, Status, TodoItem, TodoItemView
 from dodo.plugins.obsidian.formatter import (
     ObsidianDocument,
     ObsidianFormatter,
@@ -448,15 +448,24 @@ class ObsidianBackend:
 
     # Helper methods
 
-    def _parse_content(self, content: str) -> list[TodoItem]:
-        """Parse content using the new formatter."""
+    def _parse_content(self, content: str) -> list[TodoItemView]:
+        """Parse content using the new formatter.
+
+        Returns TodoItemView objects with blocked_by set based on indentation.
+        Indented tasks are considered blocked by their parent (less-indented) task.
+        """
         if not content:
             return []
 
         doc = ObsidianDocument.parse(content, self._formatter)
-        items = []
+        items: list[TodoItemView] = []
+        # Track parent stack: list of (indent_level, task_id)
+        parent_stack: list[tuple[int, str]] = []
 
         for section in doc.sections.values():
+            # Reset parent stack for each section
+            parent_stack = []
+
             # Infer section tag to use for tasks without explicit tags
             section_tag = section.tag if section.tag != "_default" else None
 
@@ -476,14 +485,26 @@ class ObsidianBackend:
                 if section_tag and section_tag not in [t.lower() for t in tags]:
                     tags.insert(0, section_tag)
 
-                items.append(TodoItem(
+                # Determine parent based on indentation
+                # Pop parents that are at same or deeper indentation
+                while parent_stack and parent_stack[-1][0] >= task.indent:
+                    parent_stack.pop()
+
+                # If there's a parent, this task is blocked by it
+                blocked_by = [parent_stack[-1][1]] if parent_stack else None
+
+                todo_item = TodoItem(
                     id=task_id,
                     text=task.text,
                     status=task.status,
-                    created_at=datetime.now(),
+                    created_at=task.created_at or datetime.now(),
                     priority=task.priority,
                     tags=tags if tags else None,
-                ))
+                )
+                items.append(TodoItemView(item=todo_item, blocked_by=blocked_by))
+
+                # Push this task as potential parent for subsequent indented tasks
+                parent_stack.append((task.indent, task_id))
 
         # Persist any ID mappings created during parsing
         self._sync_manager.save()

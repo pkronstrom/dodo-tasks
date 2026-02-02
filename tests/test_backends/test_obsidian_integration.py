@@ -591,6 +591,32 @@ class TestDependencyIndentation:
         assert tasks[2].indent == 4
         assert tasks[3].indent == 8
 
+    def test_indentation_creates_blocked_by(self, backend_factory, mock_client):
+        """Indented tasks should have blocked_by set to their parent."""
+        initial = """- [ ] Parent task !!
+    - [ ] Child task one
+    - [ ] Child task two
+        - [ ] Grandchild
+"""
+        backend = backend_factory(initial_content=initial)
+        items = backend.list()
+
+        # Find items by text
+        parent = next(i for i in items if i.text == "Parent task")
+        child1 = next(i for i in items if i.text == "Child task one")
+        child2 = next(i for i in items if i.text == "Child task two")
+        grandchild = next(i for i in items if i.text == "Grandchild")
+
+        # Parent has no blockers
+        assert parent.blocked_by is None
+
+        # Children are blocked by parent
+        assert child1.blocked_by == [parent.id]
+        assert child2.blocked_by == [parent.id]
+
+        # Grandchild is blocked by child2 (most recent sibling at parent level)
+        assert grandchild.blocked_by == [child2.id]
+
     def test_indentation_preserved_on_round_trip(self, backend_factory, mock_client):
         """Indentation should be preserved when reading and writing."""
         initial = """- [ ] Parent task
