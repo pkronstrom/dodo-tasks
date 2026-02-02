@@ -97,7 +97,7 @@ def register_config() -> list[ConfigVar]:
             "priority",
             label="Sort by",
             kind="cycle",
-            options=["priority", "date", "content", "tags", "status", "manual"],
+            options=["priority", "content", "tags", "status", "manual"],
             description="Task ordering within sections",
         ),
     ]

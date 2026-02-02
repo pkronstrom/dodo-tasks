@@ -14,6 +14,7 @@ from dodo.plugins.obsidian.formatter import (
     ParsedTask,
     Section,
     format_header,
+    sort_tasks,
 )
 from dodo.plugins.obsidian.sync import SyncManager, normalize_text
 
@@ -124,6 +125,19 @@ class ObsidianBackend:
         project_name = project or "default"
         return template.format(project=project_name)
 
+    def _sort_and_render(self, doc: ObsidianDocument) -> str:
+        """Sort tasks in all sections and render the document.
+
+        Args:
+            doc: The ObsidianDocument to sort and render
+
+        Returns:
+            Rendered markdown content with sorted tasks
+        """
+        for section in doc.sections.values():
+            section.tasks = sort_tasks(section.tasks, self._sort_by)
+        return doc.render(self._formatter)
+
     def close(self) -> None:
         """Close the HTTP client."""
         self._client.close()
@@ -181,8 +195,8 @@ class ObsidianBackend:
                 doc.sections["_default"] = Section(tag="_default", header="")
             doc.sections["_default"].tasks.append(task)
 
-        # Write updated content
-        self._write_note(doc.render(self._formatter))
+        # Write updated content (sorted)
+        self._write_note(self._sort_and_render(doc))
 
         # Save sync data
         self._sync_manager.save()
@@ -232,7 +246,7 @@ class ObsidianBackend:
         if not updated_item:
             raise KeyError(f"Todo not found: {id}")
 
-        self._write_note(doc.render(self._formatter))
+        self._write_note(self._sort_and_render(doc))
         self._sync_manager.save()
         return updated_item
 
@@ -270,7 +284,7 @@ class ObsidianBackend:
         if not updated_item:
             raise KeyError(f"Todo not found: {id}")
 
-        self._write_note(doc.render(self._formatter))
+        self._write_note(self._sort_and_render(doc))
         self._sync_manager.save()
         return updated_item
 
@@ -301,7 +315,7 @@ class ObsidianBackend:
         if not updated_item:
             raise KeyError(f"Todo not found: {id}")
 
-        self._write_note(doc.render(self._formatter))
+        self._write_note(self._sort_and_render(doc))
         self._sync_manager.save()
         return updated_item
 
@@ -332,7 +346,7 @@ class ObsidianBackend:
         if not updated_item:
             raise KeyError(f"Todo not found: {id}")
 
-        self._write_note(doc.render(self._formatter))
+        self._write_note(self._sort_and_render(doc))
         self._sync_manager.save()
         return updated_item
 
@@ -360,7 +374,7 @@ class ObsidianBackend:
         if not found:
             raise KeyError(f"Todo not found: {id}")
 
-        self._write_note(doc.render(self._formatter))
+        self._write_note(self._sort_and_render(doc))
         self._sync_manager.save()
 
     def export_all(self) -> list[TodoItem]:
