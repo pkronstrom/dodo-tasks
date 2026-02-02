@@ -102,7 +102,7 @@ Control how tasks are organized in the file.
 
 **Plain:**
 ```markdown
-- [ ] Review PR 2024-01-15
+- [ ] Review PR 2024-01-15 10:30
 ```
 
 **Emoji:**
@@ -112,7 +112,7 @@ Control how tasks are organized in the file.
 
 **Dataview:**
 ```markdown
-- [ ] Review PR [due:: 2024-01-15]
+- [ ] Review PR [created:: 2024-01-15]
 ```
 
 ### Tags Display
@@ -129,9 +129,12 @@ Control how tasks are organized in the file.
 
 ### Tag-Based Organization
 
-When `group_by_tags` is enabled, tasks are grouped under headers by their first tag:
+When `group_by_tags` is enabled, tasks are grouped under headers by their first tag.
+Tasks without tags appear at the top of the file without a header:
 
 ```markdown
+- [ ] Random thought
+
 ### work
 - [ ] Review PR !!
 - [ ] Update documentation
@@ -139,9 +142,6 @@ When `group_by_tags` is enabled, tasks are grouped under headers by their first 
 ### home
 - [ ] Buy groceries
 - [ ] Call plumber ~
-
-### Untagged
-- [ ] Random thought
 ```
 
 ## Migration Notes
