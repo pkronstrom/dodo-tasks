@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from dodo.models import Priority
+from dodo.models import Priority, Status
+
+if TYPE_CHECKING:
+    from dodo.models import TodoItem
 
 # Priority symbol mappings
 PRIORITY_SYMBOLS = {
@@ -169,3 +173,100 @@ def parse_tags(text: str, syntax: str) -> tuple[list[str], str]:
         return [], text
 
     return [], text
+
+
+class ObsidianFormatter:
+    """Formats TodoItems for Obsidian with configurable syntax.
+
+    Handles bidirectional conversion between TodoItem and markdown lines.
+    """
+
+    def __init__(
+        self,
+        priority_syntax: str = "symbols",
+        timestamp_syntax: str = "hidden",
+        tags_syntax: str = "hashtags",
+    ):
+        self.priority_syntax = priority_syntax
+        self.timestamp_syntax = timestamp_syntax
+        self.tags_syntax = tags_syntax
+
+    def format_line(self, item: TodoItem) -> str:
+        """Format a TodoItem as a markdown checkbox line."""
+        checkbox = "[x]" if item.status == Status.DONE else "[ ]"
+
+        parts = [f"- {checkbox}"]
+
+        # Timestamp (if enabled, goes after checkbox)
+        ts = format_timestamp(item.created_at, self.timestamp_syntax)
+        if ts:
+            parts.append(ts)
+
+        # Task text
+        parts.append(item.text)
+
+        # Priority (at end)
+        prio = format_priority(item.priority, self.priority_syntax)
+        if prio:
+            parts.append(prio)
+
+        # Tags (at end)
+        tags = format_tags(item.tags, self.tags_syntax)
+        if tags:
+            parts.append(tags)
+
+        return " ".join(parts)
+
+    def parse_line(self, line: str) -> tuple[str, Status, Priority | None, list[str]] | None:
+        """Parse a markdown line into (text, status, priority, tags).
+
+        Returns None if line is not a task.
+        """
+        line = line.strip()
+
+        # Must start with checkbox
+        if not line.startswith("- ["):
+            return None
+
+        # Extract checkbox state
+        if line.startswith("- [x]") or line.startswith("- [X]"):
+            status = Status.DONE
+            rest = line[5:].strip()
+        elif line.startswith("- [ ]"):
+            status = Status.PENDING
+            rest = line[5:].strip()
+        else:
+            return None
+
+        # Parse timestamp if present (skip it for now, just remove)
+        # Pattern: YYYY-MM-DD HH:MM at start
+        ts_match = re.match(r"^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s+", rest)
+        if ts_match:
+            rest = rest[len(ts_match.group(0)) :].strip()
+
+        # Also handle emoji timestamp
+        if rest.startswith("\U0001f4c5"):
+            rest = re.sub(r"^\U0001f4c5\s*\d{4}-\d{2}-\d{2}\s*", "", rest).strip()
+
+        # Also handle dataview timestamp
+        rest = re.sub(r"\[created::\s*[^\]]+\]", "", rest).strip()
+
+        # Parse tags (removes from text)
+        tags, rest = parse_tags(rest, self.tags_syntax)
+        # Also try other formats if no tags found
+        if not tags:
+            tags, rest = parse_tags(rest, "hashtags")
+        if not tags:
+            tags, rest = parse_tags(rest, "dataview")
+
+        # Parse priority (removes from text)
+        priority, rest = parse_priority(rest, self.priority_syntax)
+        # Also try other formats if no priority found
+        if priority is None:
+            priority, rest = parse_priority(rest, "symbols")
+        if priority is None:
+            priority, rest = parse_priority(rest, "emoji")
+        if priority is None:
+            priority, rest = parse_priority(rest, "dataview")
+
+        return rest.strip(), status, priority, tags

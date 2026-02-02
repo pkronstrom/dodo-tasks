@@ -4,8 +4,9 @@ from datetime import datetime
 
 import pytest
 
-from dodo.models import Priority
+from dodo.models import Priority, Status, TodoItem
 from dodo.plugins.obsidian.formatter import (
+    ObsidianFormatter,
     format_priority,
     format_tags,
     format_timestamp,
@@ -114,3 +115,75 @@ class TestParseTags:
         tags, clean = parse_tags("task text", "hashtags")
         assert tags == []
         assert clean == "task text"
+
+
+class TestObsidianFormatter:
+    def test_format_minimal_default(self):
+        formatter = ObsidianFormatter()
+        item = TodoItem(
+            id="abc12345",
+            text="Buy groceries",
+            status=Status.PENDING,
+            created_at=datetime(2024, 1, 15, 10, 30),
+            priority=Priority.HIGH,
+            tags=["home", "errand"],
+        )
+        line = formatter.format_line(item)
+        assert line == "- [ ] Buy groceries !! #home #errand"
+
+    def test_format_done_task(self):
+        formatter = ObsidianFormatter()
+        item = TodoItem(
+            id="abc12345",
+            text="Done task",
+            status=Status.DONE,
+            created_at=datetime(2024, 1, 15, 10, 30),
+        )
+        line = formatter.format_line(item)
+        assert line == "- [x] Done task"
+
+    def test_format_with_timestamp(self):
+        formatter = ObsidianFormatter(timestamp_syntax="plain")
+        item = TodoItem(
+            id="abc12345",
+            text="Task",
+            status=Status.PENDING,
+            created_at=datetime(2024, 1, 15, 10, 30),
+        )
+        line = formatter.format_line(item)
+        assert line == "- [ ] 2024-01-15 10:30 Task"
+
+    def test_format_emoji_priority(self):
+        formatter = ObsidianFormatter(priority_syntax="emoji")
+        item = TodoItem(
+            id="abc12345",
+            text="Task",
+            status=Status.PENDING,
+            created_at=datetime(2024, 1, 15, 10, 30),
+            priority=Priority.CRITICAL,
+        )
+        line = formatter.format_line(item)
+        assert line == "- [ ] Task ⏫"
+
+    def test_parse_line_minimal(self):
+        formatter = ObsidianFormatter()
+        result = formatter.parse_line("- [ ] Buy groceries !! #home")
+        assert result is not None
+        text, status, priority, tags = result
+        assert text == "Buy groceries"
+        assert status == Status.PENDING
+        assert priority == Priority.HIGH
+        assert tags == ["home"]
+
+    def test_parse_line_done(self):
+        formatter = ObsidianFormatter()
+        result = formatter.parse_line("- [x] Done task")
+        assert result is not None
+        text, status, priority, tags = result
+        assert text == "Done task"
+        assert status == Status.DONE
+
+    def test_parse_line_not_a_task(self):
+        formatter = ObsidianFormatter()
+        assert formatter.parse_line("Just some text") is None
+        assert formatter.parse_line("## Header") is None
