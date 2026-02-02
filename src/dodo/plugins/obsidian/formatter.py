@@ -33,6 +33,37 @@ SYMBOLS_TO_PRIORITY = {v: k for k, v in PRIORITY_SYMBOLS.items() if v}
 EMOJI_TO_PRIORITY = {v: k for k, v in PRIORITY_EMOJI.items() if v}
 
 
+def parse_header(line: str) -> tuple[int, str] | None:
+    """Parse a markdown header line.
+
+    Returns (level, text) or None if not a header.
+    """
+    line = line.strip()
+    match = re.match(r'^(#{1,6})\s+(.+)$', line)
+    if match:
+        level = len(match.group(1))
+        text = match.group(2).strip()
+        return level, text
+    return None
+
+
+def get_tag_from_header(header_text: str) -> str:
+    """Extract tag name from header text.
+
+    Uses first word, lowercased.
+    "Work Projects" -> "work"
+    "home" -> "home"
+    """
+    first_word = header_text.split()[0] if header_text.split() else header_text
+    return first_word.lower()
+
+
+def format_header(tag: str, level: int = 3) -> str:
+    """Format a tag as a markdown header."""
+    hashes = "#" * level
+    return f"{hashes} {tag}"
+
+
 def format_priority(priority: Priority | None, syntax: str) -> str:
     """Format priority according to syntax style.
 

@@ -7,12 +7,40 @@ import pytest
 from dodo.models import Priority, Status, TodoItem
 from dodo.plugins.obsidian.formatter import (
     ObsidianFormatter,
+    format_header,
     format_priority,
     format_tags,
     format_timestamp,
+    get_tag_from_header,
+    parse_header,
     parse_priority,
     parse_tags,
 )
+
+
+class TestHeaderParsing:
+    def test_parse_h1(self):
+        level, text = parse_header("# Work")
+        assert level == 1
+        assert text == "Work"
+
+    def test_parse_h3(self):
+        level, text = parse_header("### home tasks")
+        assert level == 3
+        assert text == "home tasks"
+
+    def test_not_a_header(self):
+        assert parse_header("- [ ] task") is None
+        assert parse_header("just text") is None
+
+    def test_get_tag_from_header(self):
+        assert get_tag_from_header("Work Projects") == "work"
+        assert get_tag_from_header("home") == "home"
+        assert get_tag_from_header("My Work Tasks") == "my"
+
+    def test_format_header(self):
+        assert format_header("work", 3) == "### work"
+        assert format_header("home", 2) == "## home"
 
 
 class TestFormatPriority:
