@@ -213,6 +213,8 @@ class ObsidianFormatter:
     Handles bidirectional conversion between TodoItem and markdown lines.
     """
 
+    INDENT = "    "  # 4 spaces per level
+
     def __init__(
         self,
         priority_syntax: str = "symbols",
@@ -248,6 +250,30 @@ class ObsidianFormatter:
             parts.append(tags)
 
         return " ".join(parts)
+
+    def format_with_children(
+        self,
+        item: TodoItem,
+        children: list[TodoItem],
+        depth: int = 0,
+    ) -> str:
+        """Format a task with its children indented below.
+
+        Args:
+            item: The parent task to format
+            children: List of child tasks to format below the parent
+            depth: Nesting depth (0 = root level, 1 = first indent level, etc.)
+
+        Returns:
+            Formatted markdown string with parent and children properly indented
+        """
+        indent = self.INDENT * depth
+        lines = [f"{indent}{self.format_line(item)}"]
+
+        for child in children:
+            lines.append(f"{self.INDENT * (depth + 1)}{self.format_line(child)}")
+
+        return "\n".join(lines)
 
     def parse_line(self, line: str) -> tuple[str, Status, Priority | None, list[str], str | None] | None:
         """Parse a markdown line into (text, status, priority, tags, legacy_id).

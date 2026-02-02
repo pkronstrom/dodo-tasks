@@ -277,3 +277,121 @@ class TestObsidianDocument:
         assert "### home" in rendered
         assert "Task one" in rendered
         assert "Buy groceries" in rendered
+
+
+class TestDependencyRendering:
+    def test_format_with_children(self):
+        formatter = ObsidianFormatter()
+        parent = TodoItem(
+            id="parent01",
+            text="Parent task",
+            status=Status.PENDING,
+            created_at=datetime(2024, 1, 15),
+            priority=Priority.HIGH,
+        )
+        child1 = TodoItem(
+            id="child001",
+            text="Child one",
+            status=Status.PENDING,
+            created_at=datetime(2024, 1, 15),
+        )
+        child2 = TodoItem(
+            id="child002",
+            text="Child two",
+            status=Status.PENDING,
+            created_at=datetime(2024, 1, 15),
+        )
+
+        result = formatter.format_with_children(parent, [child1, child2])
+        lines = result.split("\n")
+
+        assert lines[0] == "- [ ] Parent task !!"
+        assert lines[1] == "    - [ ] Child one"
+        assert lines[2] == "    - [ ] Child two"
+
+    def test_format_with_children_nested_depth(self):
+        """Test formatting at different nesting depths."""
+        formatter = ObsidianFormatter()
+        parent = TodoItem(
+            id="parent01",
+            text="Parent task",
+            status=Status.PENDING,
+            created_at=datetime(2024, 1, 15),
+        )
+        child = TodoItem(
+            id="child001",
+            text="Child task",
+            status=Status.PENDING,
+            created_at=datetime(2024, 1, 15),
+        )
+
+        # At depth 1, parent is indented once, child twice
+        result = formatter.format_with_children(parent, [child], depth=1)
+        lines = result.split("\n")
+
+        assert lines[0] == "    - [ ] Parent task"  # 4 spaces
+        assert lines[1] == "        - [ ] Child task"  # 8 spaces
+
+    def test_format_with_children_no_children(self):
+        """Test formatting parent with empty children list."""
+        formatter = ObsidianFormatter()
+        parent = TodoItem(
+            id="parent01",
+            text="Standalone task",
+            status=Status.PENDING,
+            created_at=datetime(2024, 1, 15),
+            priority=Priority.CRITICAL,
+        )
+
+        result = formatter.format_with_children(parent, [])
+
+        assert result == "- [ ] Standalone task !!!"
+
+    def test_parse_indentation(self):
+        content = """- [ ] Parent !!
+    - [ ] Child one
+    - [ ] Child two
+        - [ ] Grandchild
+"""
+        formatter = ObsidianFormatter()
+        doc = ObsidianDocument.parse(content, formatter)
+
+        tasks = doc.sections["_default"].tasks
+        assert tasks[0].indent == 0
+        assert tasks[1].indent == 4
+        assert tasks[2].indent == 4
+        assert tasks[3].indent == 8
+
+    def test_parse_indentation_mixed_sections(self):
+        """Test that indentation is preserved across sections."""
+        content = """### work
+- [ ] Work parent
+    - [ ] Work child
+
+### home
+- [ ] Home task
+"""
+        formatter = ObsidianFormatter()
+        doc = ObsidianDocument.parse(content, formatter)
+
+        work_tasks = doc.sections["work"].tasks
+        assert work_tasks[0].indent == 0
+        assert work_tasks[1].indent == 4
+
+        home_tasks = doc.sections["home"].tasks
+        assert home_tasks[0].indent == 0
+
+    def test_render_preserves_indentation(self):
+        """Test that rendering preserves task indentation."""
+        content = """- [ ] Parent
+    - [ ] Child
+"""
+        formatter = ObsidianFormatter()
+        doc = ObsidianDocument.parse(content, formatter)
+        rendered = doc.render(formatter)
+
+        lines = rendered.strip().split("\n")
+        # Filter out empty lines
+        lines = [l for l in lines if l.strip()]
+        assert lines[0] == "- [ ] Parent"
+        assert lines[1] == "    - [ ] Child"
