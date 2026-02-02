@@ -567,7 +567,14 @@ class ObsidianDocument:
                     priority=task.priority,
                     tags=task.tags,
                 )
-                indent = " " * task.indent
+                # Normalize indent to multiples of INDENT (4 spaces)
+                # Convert any non-zero indent to proper nesting level
+                if task.indent > 0:
+                    # Calculate nesting level: round up any indent to at least level 1
+                    level = max(1, (task.indent + 3) // 4)  # +3 to round up
+                    indent = formatter.INDENT * level
+                else:
+                    indent = ""
                 lines.append(f"{indent}{formatter.format_line(item)}")
 
             # Emit trailing content (notes, blank lines)
