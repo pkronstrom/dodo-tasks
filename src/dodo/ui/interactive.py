@@ -1553,9 +1553,11 @@ def _unified_settings_loop(
                         navigable_indices[:] = [
                             idx for idx, (_, _, k, *_) in enumerate(items) if k != "divider"
                         ]
-                        # Keep cursor valid
-                        if cursor >= len(navigable_indices):
-                            cursor = max(0, len(navigable_indices) - 1)
+                        # Find the plugin's new position (it moved after config vars removed)
+                        for new_idx, (key, *_) in enumerate(items):
+                            if key == item_key:
+                                cursor = new_idx
+                                break
                     elif kind == "toggle":
                         pending[item_key] = not pending[item_key]
                         # Plugin config vars save as strings, general toggles as booleans
