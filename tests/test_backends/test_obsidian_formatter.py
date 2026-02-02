@@ -8,6 +8,7 @@ from dodo.models import Priority, Status, TodoItem
 from dodo.plugins.obsidian.formatter import (
     ObsidianDocument,
     ObsidianFormatter,
+    ParsedTask,
     format_header,
     format_priority,
     format_tags,
@@ -16,6 +17,7 @@ from dodo.plugins.obsidian.formatter import (
     parse_header,
     parse_priority,
     parse_tags,
+    sort_tasks,
 )
 
 
@@ -395,3 +397,118 @@ class TestDependencyRendering:
         lines = [l for l in lines if l.strip()]
         assert lines[0] == "- [ ] Parent"
         assert lines[1] == "    - [ ] Child"
+
+
+class TestSortTasks:
+    def test_sort_by_priority(self):
+        tasks = [
+            ParsedTask("Low", Status.PENDING, Priority.LOW, []),
+            ParsedTask("Critical", Status.PENDING, Priority.CRITICAL, []),
+            ParsedTask("High", Status.PENDING, Priority.HIGH, []),
+        ]
+        sorted_tasks = sort_tasks(tasks, "priority")
+        assert [t.text for t in sorted_tasks] == ["Critical", "High", "Low"]
+
+    def test_sort_by_priority_with_none(self):
+        """Tasks with no priority sort last."""
+        tasks = [
+            ParsedTask("No priority", Status.PENDING, None, []),
+            ParsedTask("Critical", Status.PENDING, Priority.CRITICAL, []),
+            ParsedTask("Someday", Status.PENDING, Priority.SOMEDAY, []),
+        ]
+        sorted_tasks = sort_tasks(tasks, "priority")
+        assert [t.text for t in sorted_tasks] == ["Critical", "Someday", "No priority"]
+
+    def test_sort_by_priority_all_levels(self):
+        """Test all priority levels sort correctly."""
+        tasks = [
+            ParsedTask("Someday", Status.PENDING, Priority.SOMEDAY, []),
+            ParsedTask("Normal", Status.PENDING, Priority.NORMAL, []),
+            ParsedTask("Low", Status.PENDING, Priority.LOW, []),
+            ParsedTask("Critical", Status.PENDING, Priority.CRITICAL, []),
+            ParsedTask("High", Status.PENDING, Priority.HIGH, []),
+        ]
+        sorted_tasks = sort_tasks(tasks, "priority")
+        assert [t.text for t in sorted_tasks] == [
+            "Critical",
+            "High",
+            "Normal",
+            "Low",
+            "Someday",
+        ]
+
+    def test_sort_by_content(self):
+        tasks = [
+            ParsedTask("Zebra", Status.PENDING, None, []),
+            ParsedTask("Apple", Status.PENDING, None, []),
+            ParsedTask("Mango", Status.PENDING, None, []),
+        ]
+        sorted_tasks = sort_tasks(tasks, "content")
+        assert [t.text for t in sorted_tasks] == ["Apple", "Mango", "Zebra"]
+
+    def test_sort_by_content_case_insensitive(self):
+        """Content sorting should be case-insensitive."""
+        tasks = [
+            ParsedTask("banana", Status.PENDING, None, []),
+            ParsedTask("Apple", Status.PENDING, None, []),
+            ParsedTask("CHERRY", Status.PENDING, None, []),
+        ]
+        sorted_tasks = sort_tasks(tasks, "content")
+        assert [t.text for t in sorted_tasks] == ["Apple", "banana", "CHERRY"]
+
+    def test_sort_manual_preserves_order(self):
+        tasks = [
+            ParsedTask("First", Status.PENDING, None, []),
+            ParsedTask("Second", Status.PENDING, None, []),
+        ]
+        sorted_tasks = sort_tasks(tasks, "manual")
+        assert [t.text for t in sorted_tasks] == ["First", "Second"]
+
+    def test_sort_by_tags(self):
+        """Sort by first tag alphabetically."""
+        tasks = [
+            ParsedTask("Task Z", Status.PENDING, None, ["zebra"]),
+            ParsedTask("Task A", Status.PENDING, None, ["apple"]),
+            ParsedTask("Task M", Status.PENDING, None, ["mango"]),
+        ]
+        sorted_tasks = sort_tasks(tasks, "tags")
+        assert [t.text for t in sorted_tasks] == ["Task A", "Task M", "Task Z"]
+
+    def test_sort_by_tags_empty_tags_last(self):
+        """Tasks without tags sort last."""
+        tasks = [
+            ParsedTask("No tags", Status.PENDING, None, []),
+            ParsedTask("Has tag", Status.PENDING, None, ["work"]),
+        ]
+        sorted_tasks = sort_tasks(tasks, "tags")
+        assert [t.text for t in sorted_tasks] == ["Has tag", "No tags"]
+
+    def test_sort_by_status(self):
+        """Pending tasks before done tasks."""
+        tasks = [
+            ParsedTask("Done task", Status.DONE, None, []),
+            ParsedTask("Pending task", Status.PENDING, None, []),
+        ]
+        sorted_tasks = sort_tasks(tasks, "status")
+        assert [t.text for t in sorted_tasks] == ["Pending task", "Done task"]
+
+    def test_sort_unknown_preserves_order(self):
+        """Unknown sort option preserves original order."""
+        tasks = [
+            ParsedTask("First", Status.PENDING, None, []),
+            ParsedTask("Second", Status.PENDING, None, []),
+        ]
+        sorted_tasks = sort_tasks(tasks, "unknown_sort_option")
+        assert [t.text for t in sorted_tasks] == ["First", "Second"]
+
+    def test_sort_empty_list(self):
+        """Sorting empty list returns empty list."""
+        sorted_tasks = sort_tasks([], "priority")
+        assert sorted_tasks == []
+
+    def test_sort_single_task(self):
+        """Sorting single task returns that task."""
+        tasks = [ParsedTask("Only one", Status.PENDING, None, [])]
+        sorted_tasks = sort_tasks(tasks, "priority")
+        assert len(sorted_tasks) == 1
+        assert sorted_tasks[0].text == "Only one"

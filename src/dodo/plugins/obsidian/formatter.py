@@ -29,6 +29,16 @@ PRIORITY_EMOJI = {
     Priority.SOMEDAY: "⏬",
 }
 
+# Priority sort order (lower number = higher priority)
+PRIORITY_ORDER = {
+    Priority.CRITICAL: 0,
+    Priority.HIGH: 1,
+    Priority.NORMAL: 2,
+    Priority.LOW: 3,
+    Priority.SOMEDAY: 4,
+    None: 5,
+}
+
 # Reverse mappings for parsing
 SYMBOLS_TO_PRIORITY = {v: k for k, v in PRIORITY_SYMBOLS.items() if v}
 EMOJI_TO_PRIORITY = {v: k for k, v in PRIORITY_EMOJI.items() if v}
@@ -348,6 +358,35 @@ class ParsedTask:
     tags: list[str]
     indent: int = 0  # For dependency tracking
     legacy_id: str | None = None  # ID from old format [id] if present
+
+
+def sort_tasks(tasks: list[ParsedTask], sort_by: str) -> list[ParsedTask]:
+    """Sort tasks according to sort_by setting.
+
+    Args:
+        tasks: List of ParsedTask objects to sort
+        sort_by: Sort mode - one of "priority", "content", "tags", "status", "manual"
+
+    Returns:
+        Sorted list of tasks (new list, original not modified)
+    """
+    if sort_by == "manual":
+        return tasks
+
+    if sort_by == "priority":
+        return sorted(tasks, key=lambda t: PRIORITY_ORDER.get(t.priority, 5))
+
+    if sort_by == "content":
+        return sorted(tasks, key=lambda t: t.text.lower())
+
+    if sort_by == "tags":
+        return sorted(tasks, key=lambda t: (t.tags[0].lower() if t.tags else "zzz"))
+
+    if sort_by == "status":
+        return sorted(tasks, key=lambda t: 0 if t.status == Status.PENDING else 1)
+
+    # Default: no sorting (unknown sort option)
+    return tasks
 
 
 @dataclass
