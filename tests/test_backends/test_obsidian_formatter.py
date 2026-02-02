@@ -6,6 +6,7 @@ import pytest
 
 from dodo.models import Priority, Status, TodoItem
 from dodo.plugins.obsidian.formatter import (
+    ObsidianDocument,
     ObsidianFormatter,
     format_header,
     format_priority,
@@ -215,3 +216,52 @@ class TestObsidianFormatter:
         formatter = ObsidianFormatter()
         assert formatter.parse_line("Just some text") is None
         assert formatter.parse_line("## Header") is None
+
+
+class TestObsidianDocument:
+    def test_parse_simple(self):
+        content = """### work
+- [ ] Task one !!
+- [ ] Task two
+
+### home
+- [ ] Buy groceries
+"""
+        doc = ObsidianDocument.parse(content, ObsidianFormatter())
+
+        assert len(doc.sections) == 2
+        assert doc.sections["work"].header == "### work"
+        assert len(doc.sections["work"].tasks) == 2
+        assert doc.sections["home"].header == "### home"
+        assert len(doc.sections["home"].tasks) == 1
+
+    def test_parse_preserves_header_style(self):
+        content = """## Work Projects
+- [ ] Task one
+"""
+        doc = ObsidianDocument.parse(content, ObsidianFormatter())
+        assert doc.sections["work"].header == "## Work Projects"
+
+    def test_parse_tasks_without_header(self):
+        content = """- [ ] Orphan task
+"""
+        doc = ObsidianDocument.parse(content, ObsidianFormatter())
+        # Tasks without header go to "_default" section
+        assert "_default" in doc.sections
+        assert len(doc.sections["_default"].tasks) == 1
+
+    def test_render(self):
+        content = """### work
+- [ ] Task one !!
+
+### home
+- [ ] Buy groceries
+"""
+        formatter = ObsidianFormatter()
+        doc = ObsidianDocument.parse(content, formatter)
+        rendered = doc.render(formatter)
+
+        assert "### work" in rendered
+        assert "### home" in rendered
+        assert "Task one" in rendered
+        assert "Buy groceries" in rendered

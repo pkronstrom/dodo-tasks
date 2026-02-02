@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from dodo.models import Priority, Status
+from dodo.models import Priority, Status, TodoItem
 
 if TYPE_CHECKING:
-    from dodo.models import TodoItem
+    pass
 
 # Priority symbol mappings
 PRIORITY_SYMBOLS = {
@@ -301,3 +302,95 @@ class ObsidianFormatter:
             priority, rest = parse_priority(rest, "dataview")
 
         return rest.strip(), status, priority, tags
+
+
+@dataclass
+class ParsedTask:
+    """A parsed task from Obsidian markdown."""
+
+    text: str
+    status: Status
+    priority: Priority | None
+    tags: list[str]
+    indent: int = 0  # For dependency tracking
+
+
+@dataclass
+class Section:
+    """A section (header + tasks) in an Obsidian document."""
+
+    tag: str
+    header: str  # Full header line (e.g., "## Work Projects")
+    tasks: list[ParsedTask] = field(default_factory=list)
+
+
+@dataclass
+class ObsidianDocument:
+    """Parsed representation of an Obsidian todo file."""
+
+    sections: dict[str, Section] = field(default_factory=dict)
+
+    @classmethod
+    def parse(cls, content: str, formatter: ObsidianFormatter) -> ObsidianDocument:
+        """Parse Obsidian markdown content into structured document."""
+        doc = cls()
+        current_section: Section | None = None
+
+        for line in content.splitlines():
+            # Check for header
+            header_result = parse_header(line)
+            if header_result:
+                level, text = header_result
+                tag = get_tag_from_header(text)
+                current_section = Section(tag=tag, header=line.strip())
+                doc.sections[tag] = current_section
+                continue
+
+            # Check for task
+            task_result = formatter.parse_line(line)
+            if task_result:
+                text, status, priority, tags = task_result
+                # Calculate indentation
+                indent = len(line) - len(line.lstrip())
+                task = ParsedTask(
+                    text=text,
+                    status=status,
+                    priority=priority,
+                    tags=tags,
+                    indent=indent,
+                )
+
+                if current_section is None:
+                    # Create default section for orphan tasks
+                    if "_default" not in doc.sections:
+                        doc.sections["_default"] = Section(tag="_default", header="")
+                    doc.sections["_default"].tasks.append(task)
+                else:
+                    current_section.tasks.append(task)
+
+        return doc
+
+    def render(self, formatter: ObsidianFormatter) -> str:
+        """Render document back to markdown."""
+        lines = []
+
+        for tag, section in self.sections.items():
+            if section.header:
+                lines.append(section.header)
+
+            for task in section.tasks:
+                # Create minimal TodoItem for formatting
+                item = TodoItem(
+                    id="",  # ID not shown in output
+                    text=task.text,
+                    status=task.status,
+                    created_at=datetime.now(),  # Not used if timestamp hidden
+                    priority=task.priority,
+                    tags=task.tags,
+                )
+                indent = " " * task.indent
+                lines.append(f"{indent}{formatter.format_line(item)}")
+
+            lines.append("")  # Blank line after section
+
+        return "\n".join(lines).strip() + "\n"
