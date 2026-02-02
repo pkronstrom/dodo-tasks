@@ -58,10 +58,21 @@ def parse_header(line: str) -> tuple[int, str] | None:
     return None
 
 
-def get_tag_from_header(header_text: str) -> str:
-    """Extract tag name from header text.
+def get_section_key(header_text: str) -> str:
+    """Get unique key for a section from its header text.
 
-    Uses first word, lowercased.
+    Uses full header text (normalized) to avoid collisions.
+    "Work Projects" -> "work projects"
+    "Work Meetings" -> "work meetings"
+    "home" -> "home"
+    """
+    return header_text.lower().strip()
+
+
+def get_tag_from_header(header_text: str) -> str:
+    """Extract primary tag name from header text.
+
+    Uses first word, lowercased. Used for task-to-section matching.
     "Work Projects" -> "work"
     "home" -> "home"
     """
@@ -285,11 +296,12 @@ class ObsidianFormatter:
 
         return "\n".join(lines)
 
-    def parse_line(self, line: str) -> tuple[str, Status, Priority | None, list[str], str | None] | None:
-        """Parse a markdown line into (text, status, priority, tags, legacy_id).
+    def parse_line(self, line: str) -> tuple[str, Status, Priority | None, list[str], str | None, datetime | None] | None:
+        """Parse a markdown line into (text, status, priority, tags, legacy_id, created_at).
 
         Returns None if line is not a task.
         The legacy_id is extracted from old format [id] but not used in new format.
+        The created_at timestamp is preserved if present in any format.
         """
         line = line.strip()
 
@@ -307,18 +319,35 @@ class ObsidianFormatter:
         else:
             return None
 
-        # Parse timestamp if present (skip it for now, just remove)
+        # Parse timestamp if present - preserve it!
+        created_at = None
+
         # Pattern: YYYY-MM-DD HH:MM at start
-        ts_match = re.match(r"^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})\s+", rest)
+        ts_match = re.match(r"^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s+", rest)
         if ts_match:
-            rest = rest[len(ts_match.group(0)) :].strip()
+            try:
+                created_at = datetime.strptime(f"{ts_match.group(1)} {ts_match.group(2)}", "%Y-%m-%d %H:%M")
+            except ValueError:
+                pass
+            rest = rest[len(ts_match.group(0)):].strip()
 
-        # Also handle emoji timestamp
-        if rest.startswith("\U0001f4c5"):
-            rest = re.sub(r"^\U0001f4c5\s*\d{4}-\d{2}-\d{2}\s*", "", rest).strip()
+        # Handle emoji timestamp: 📅 YYYY-MM-DD
+        emoji_match = re.match(r"^\U0001f4c5\s*(\d{4}-\d{2}-\d{2})\s*", rest)
+        if emoji_match and created_at is None:
+            try:
+                created_at = datetime.strptime(emoji_match.group(1), "%Y-%m-%d")
+            except ValueError:
+                pass
+            rest = rest[len(emoji_match.group(0)):].strip()
 
-        # Also handle dataview timestamp
-        rest = re.sub(r"\[created::\s*[^\]]+\]", "", rest).strip()
+        # Handle dataview timestamp: [created:: YYYY-MM-DD]
+        dv_match = re.search(r"\[created::\s*(\d{4}-\d{2}-\d{2})\]", rest)
+        if dv_match and created_at is None:
+            try:
+                created_at = datetime.strptime(dv_match.group(1), "%Y-%m-%d")
+            except ValueError:
+                pass
+            rest = re.sub(r"\[created::\s*[^\]]+\]", "", rest).strip()
 
         # Handle legacy format with embedded ID: [abc12345] - text
         legacy_id = None
@@ -345,7 +374,7 @@ class ObsidianFormatter:
         if priority is None:
             priority, rest = parse_priority(rest, "dataview")
 
-        return rest.strip(), status, priority, tags, legacy_id
+        return rest.strip(), status, priority, tags, legacy_id, created_at
 
 
 @dataclass
@@ -358,10 +387,14 @@ class ParsedTask:
     tags: list[str]
     indent: int = 0  # For dependency tracking
     legacy_id: str | None = None  # ID from old format [id] if present
+    created_at: datetime | None = None  # Preserved timestamp
 
 
 def sort_tasks(tasks: list[ParsedTask], sort_by: str) -> list[ParsedTask]:
-    """Sort tasks according to sort_by setting.
+    """Sort tasks while preserving parent-child relationships.
+
+    Only root-level tasks (indent=0) are sorted. Children stay attached
+    to their parent in their original relative order.
 
     Args:
         tasks: List of ParsedTask objects to sort
@@ -370,23 +403,46 @@ def sort_tasks(tasks: list[ParsedTask], sort_by: str) -> list[ParsedTask]:
     Returns:
         Sorted list of tasks (new list, original not modified)
     """
-    if sort_by == "manual":
+    if sort_by == "manual" or not tasks:
         return tasks
 
-    if sort_by == "priority":
-        return sorted(tasks, key=lambda t: PRIORITY_ORDER.get(t.priority, 5))
+    # Group tasks: each root task with its children
+    groups: list[list[ParsedTask]] = []
+    current_group: list[ParsedTask] = []
 
-    if sort_by == "content":
-        return sorted(tasks, key=lambda t: t.text.lower())
+    for task in tasks:
+        if task.indent == 0:
+            if current_group:
+                groups.append(current_group)
+            current_group = [task]
+        else:
+            # Child task - add to current group
+            if current_group:
+                current_group.append(task)
+            else:
+                # Orphan child (no parent) - treat as its own group
+                groups.append([task])
 
-    if sort_by == "tags":
-        return sorted(tasks, key=lambda t: (t.tags[0].lower() if t.tags else "zzz"))
+    if current_group:
+        groups.append(current_group)
 
-    if sort_by == "status":
-        return sorted(tasks, key=lambda t: 0 if t.status == Status.PENDING else 1)
+    # Sort groups by their root task
+    def get_sort_key(group: list[ParsedTask]) -> tuple:
+        root = group[0]
+        if sort_by == "priority":
+            return (PRIORITY_ORDER.get(root.priority, 5),)
+        elif sort_by == "content":
+            return (root.text.lower(),)
+        elif sort_by == "tags":
+            return (root.tags[0].lower() if root.tags else "zzz",)
+        elif sort_by == "status":
+            return (0 if root.status == Status.PENDING else 1,)
+        return (0,)
 
-    # Default: no sorting (unknown sort option)
-    return tasks
+    sorted_groups = sorted(groups, key=get_sort_key)
+
+    # Flatten back to list
+    return [task for group in sorted_groups for task in group]
 
 
 @dataclass
@@ -396,34 +452,53 @@ class Section:
     tag: str
     header: str  # Full header line (e.g., "## Work Projects")
     tasks: list[ParsedTask] = field(default_factory=list)
+    trailing_content: list[str] = field(default_factory=list)  # Non-task lines after tasks
 
 
 @dataclass
 class ObsidianDocument:
-    """Parsed representation of an Obsidian todo file."""
+    """Parsed representation of an Obsidian todo file.
 
+    Preserves non-task content (YAML frontmatter, notes, blank lines) for round-trip fidelity.
+    """
+
+    preamble: list[str] = field(default_factory=list)  # Content before first section
     sections: dict[str, Section] = field(default_factory=dict)
 
     @classmethod
     def parse(cls, content: str, formatter: ObsidianFormatter) -> ObsidianDocument:
-        """Parse Obsidian markdown content into structured document."""
+        """Parse Obsidian markdown content into structured document.
+
+        Preserves all content including non-task lines for round-trip fidelity.
+        """
         doc = cls()
         current_section: Section | None = None
+        in_preamble = True
+        pending_other_lines: list[str] = []
 
         for line in content.splitlines():
             # Check for header
             header_result = parse_header(line)
             if header_result:
+                in_preamble = False
+                # Save any pending other lines to previous section
+                if current_section is not None:
+                    current_section.trailing_content.extend(pending_other_lines)
+                pending_other_lines = []
+
                 level, text = header_result
-                tag = get_tag_from_header(text)
+                # Use full normalized text as key to avoid collisions
+                key = get_section_key(text)
+                tag = get_tag_from_header(text)  # Primary tag for matching
                 current_section = Section(tag=tag, header=line.strip())
-                doc.sections[tag] = current_section
+                doc.sections[key] = current_section
                 continue
 
             # Check for task
             task_result = formatter.parse_line(line)
             if task_result:
-                text, status, priority, tags, legacy_id = task_result
+                in_preamble = False
+                text, status, priority, tags, legacy_id, created_at = task_result
                 # Calculate indentation
                 indent = len(line) - len(line.lstrip())
                 task = ParsedTask(
@@ -433,7 +508,13 @@ class ObsidianDocument:
                     tags=tags,
                     indent=indent,
                     legacy_id=legacy_id,
+                    created_at=created_at,
                 )
+
+                # Append any pending other lines to section first
+                if current_section is not None and pending_other_lines:
+                    current_section.trailing_content.extend(pending_other_lines)
+                    pending_other_lines = []
 
                 if current_section is None:
                     # Create default section for orphan tasks
@@ -442,30 +523,59 @@ class ObsidianDocument:
                     doc.sections["_default"].tasks.append(task)
                 else:
                     current_section.tasks.append(task)
+                continue
+
+            # Non-task, non-header line - preserve it
+            if in_preamble:
+                doc.preamble.append(line)
+            else:
+                pending_other_lines.append(line)
+
+        # Don't forget trailing content after last section
+        if current_section is not None and pending_other_lines:
+            current_section.trailing_content.extend(pending_other_lines)
+        elif pending_other_lines and "_default" in doc.sections:
+            doc.sections["_default"].trailing_content.extend(pending_other_lines)
 
         return doc
 
     def render(self, formatter: ObsidianFormatter) -> str:
-        """Render document back to markdown."""
+        """Render document back to markdown.
+
+        Preserves preamble, section order, and trailing content for round-trip fidelity.
+        """
         lines = []
 
-        for tag, section in self.sections.items():
+        # Emit preamble (YAML frontmatter, etc.)
+        if self.preamble:
+            lines.extend(self.preamble)
+            # Add blank line after preamble if it doesn't end with one
+            if self.preamble and self.preamble[-1].strip():
+                lines.append("")
+
+        for key, section in self.sections.items():
             if section.header:
                 lines.append(section.header)
 
             for task in section.tasks:
-                # Create minimal TodoItem for formatting
+                # Create TodoItem for formatting, preserving timestamp
                 item = TodoItem(
                     id="",  # ID not shown in output
                     text=task.text,
                     status=task.status,
-                    created_at=datetime.now(),  # Not used if timestamp hidden
+                    created_at=task.created_at or datetime.now(),
                     priority=task.priority,
                     tags=task.tags,
                 )
                 indent = " " * task.indent
                 lines.append(f"{indent}{formatter.format_line(item)}")
 
-            lines.append("")  # Blank line after section
+            # Emit trailing content (notes, blank lines)
+            if section.trailing_content:
+                lines.extend(section.trailing_content)
+            elif section.tasks:
+                lines.append("")  # Default blank line after tasks
 
-        return "\n".join(lines).strip() + "\n"
+        result = "\n".join(lines)
+        # Ensure single trailing newline
+        return result.rstrip() + "\n"

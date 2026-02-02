@@ -14,6 +14,7 @@ from dodo.plugins.obsidian.formatter import (
     ParsedTask,
     Section,
     format_header,
+    get_section_key,
     sort_tasks,
 )
 from dodo.plugins.obsidian.sync import SyncManager, normalize_text
@@ -180,15 +181,27 @@ class ObsidianBackend:
             status=Status.PENDING,
             priority=priority,
             tags=tags or [],
+            created_at=timestamp,
         )
 
         if self._group_by_tags and tags:
-            # Add to section based on first tag
+            # Find or create section based on first tag
             section_tag = tags[0].lower()
-            if section_tag not in doc.sections:
+            section_key = None
+
+            # Look for existing section with matching tag or exact key
+            for key, section in doc.sections.items():
+                if section.tag == section_tag or key == section_tag:
+                    section_key = key
+                    break
+
+            if section_key is None:
+                # Create new section - key is the simple tag
                 header = format_header(section_tag, self._default_header_level)
-                doc.sections[section_tag] = Section(tag=section_tag, header=header)
-            doc.sections[section_tag].tasks.append(task)
+                section_key = section_tag
+                doc.sections[section_key] = Section(tag=section_tag, header=header)
+
+            doc.sections[section_key].tasks.append(task)
         else:
             # Add to default section
             if "_default" not in doc.sections:

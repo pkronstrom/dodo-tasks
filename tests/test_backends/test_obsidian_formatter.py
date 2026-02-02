@@ -13,6 +13,7 @@ from dodo.plugins.obsidian.formatter import (
     format_priority,
     format_tags,
     format_timestamp,
+    get_section_key,
     get_tag_from_header,
     parse_header,
     parse_priority,
@@ -200,31 +201,37 @@ class TestObsidianFormatter:
         formatter = ObsidianFormatter()
         result = formatter.parse_line("- [ ] Buy groceries !! #home")
         assert result is not None
-        text, status, priority, tags, legacy_id = result
+        text, status, priority, tags, legacy_id, created_at = result
         assert text == "Buy groceries"
         assert status == Status.PENDING
         assert priority == Priority.HIGH
         assert tags == ["home"]
         assert legacy_id is None
+        assert created_at is None
 
     def test_parse_line_done(self):
         formatter = ObsidianFormatter()
         result = formatter.parse_line("- [x] Done task")
         assert result is not None
-        text, status, priority, tags, legacy_id = result
+        text, status, priority, tags, legacy_id, created_at = result
         assert text == "Done task"
         assert status == Status.DONE
         assert legacy_id is None
+        assert created_at is None
 
     def test_parse_line_legacy_format(self):
         """Test parsing old format with embedded ID."""
         formatter = ObsidianFormatter()
         result = formatter.parse_line("- [ ] 2024-01-09 10:30 [abc12345] - First todo")
         assert result is not None
-        text, status, priority, tags, legacy_id = result
+        text, status, priority, tags, legacy_id, created_at = result
         assert text == "First todo"
         assert status == Status.PENDING
         assert legacy_id == "abc12345"
+        assert created_at is not None
+        assert created_at.year == 2024
+        assert created_at.month == 1
+        assert created_at.day == 9
 
     def test_parse_line_not_a_task(self):
         formatter = ObsidianFormatter()
@@ -254,7 +261,8 @@ class TestObsidianDocument:
 - [ ] Task one
 """
         doc = ObsidianDocument.parse(content, ObsidianFormatter())
-        assert doc.sections["work"].header == "## Work Projects"
+        # Section key is full normalized header text to avoid collisions
+        assert doc.sections["work projects"].header == "## Work Projects"
 
     def test_parse_tasks_without_header(self):
         content = """- [ ] Orphan task
@@ -512,3 +520,165 @@ class TestSortTasks:
         sorted_tasks = sort_tasks(tasks, "priority")
         assert len(sorted_tasks) == 1
         assert sorted_tasks[0].text == "Only one"
+
+    def test_sort_preserves_parent_child_relationships(self):
+        """Sorting should keep children attached to their parents."""
+        tasks = [
+            ParsedTask("Low parent", Status.PENDING, Priority.LOW, [], indent=0),
+            ParsedTask("Low child 1", Status.PENDING, None, [], indent=4),
+            ParsedTask("Low child 2", Status.PENDING, None, [], indent=4),
+            ParsedTask("High parent", Status.PENDING, Priority.HIGH, [], indent=0),
+            ParsedTask("High child", Status.PENDING, None, [], indent=4),
+        ]
+        sorted_tasks = sort_tasks(tasks, "priority")
+        texts = [t.text for t in sorted_tasks]
+        # High parent comes first, then its children
+        assert texts[0] == "High parent"
+        assert texts[1] == "High child"
+        # Then low parent with its children
+        assert texts[2] == "Low parent"
+        assert texts[3] == "Low child 1"
+        assert texts[4] == "Low child 2"
+
+    def test_sort_orphan_children_treated_as_own_group(self):
+        """Children without a preceding parent are treated as their own group."""
+        tasks = [
+            ParsedTask("Orphan child", Status.PENDING, Priority.HIGH, [], indent=4),
+            ParsedTask("Root task", Status.PENDING, Priority.LOW, [], indent=0),
+        ]
+        sorted_tasks = sort_tasks(tasks, "priority")
+        # Orphan child (HIGH) should come before root task (LOW)
+        assert sorted_tasks[0].text == "Orphan child"
+        assert sorted_tasks[1].text == "Root task"
+
+
+class TestSectionKeyCollisions:
+    """Test that section keys avoid collisions."""
+
+    def test_get_section_key_full_text(self):
+        """Section key uses full normalized header text."""
+        assert get_section_key("Work Projects") == "work projects"
+        assert get_section_key("Work Meetings") == "work meetings"
+        assert get_section_key("home") == "home"
+
+    def test_different_headers_same_first_word(self):
+        """Headers with same first word should have different keys."""
+        content = """### Work Projects
+- [ ] Project task
+
+### Work Meetings
+- [ ] Meeting task
+"""
+        doc = ObsidianDocument.parse(content, ObsidianFormatter())
+        # Both sections should exist - no collision
+        assert len(doc.sections) == 2
+        assert "work projects" in doc.sections
+        assert "work meetings" in doc.sections
+        assert doc.sections["work projects"].tasks[0].text == "Project task"
+        assert doc.sections["work meetings"].tasks[0].text == "Meeting task"
+
+
+class TestContentPreservation:
+    """Test preservation of non-task content."""
+
+    def test_preamble_preserved(self):
+        """YAML frontmatter and text before first section is preserved."""
+        content = """---
+title: My Todos
+---
+
+Some intro text here.
+
+### work
+- [ ] Task one
+"""
+        formatter = ObsidianFormatter()
+        doc = ObsidianDocument.parse(content, formatter)
+        rendered = doc.render(formatter)
+
+        assert "---" in rendered
+        assert "title: My Todos" in rendered
+        assert "Some intro text here." in rendered
+        assert "### work" in rendered
+        assert "Task one" in rendered
+
+    def test_trailing_content_preserved(self):
+        """Notes and blank lines after tasks are preserved."""
+        content = """### work
+- [ ] Task one
+
+Some notes about this section.
+
+### home
+- [ ] Task two
+"""
+        formatter = ObsidianFormatter()
+        doc = ObsidianDocument.parse(content, formatter)
+        rendered = doc.render(formatter)
+
+        assert "Some notes about this section." in rendered
+
+    def test_round_trip_preserves_structure(self):
+        """Parse and render should not lose content."""
+        content = """---
+type: todo
+---
+
+My daily tasks.
+
+### work
+- [ ] Task one !!
+- [ ] Task two
+
+Work notes here.
+
+### home
+- [ ] Buy groceries #errand
+"""
+        formatter = ObsidianFormatter()
+        doc = ObsidianDocument.parse(content, formatter)
+        rendered = doc.render(formatter)
+
+        # Key content preserved
+        assert "type: todo" in rendered
+        assert "My daily tasks." in rendered
+        assert "Work notes here." in rendered
+        assert "### work" in rendered
+        assert "### home" in rendered
+        assert "Task one" in rendered
+        assert "Buy groceries" in rendered
+
+
+class TestTimestampPreservation:
+    """Test that timestamps are preserved through parse/render cycles."""
+
+    def test_parse_preserves_plain_timestamp(self):
+        """Plain timestamp format is parsed and preserved."""
+        formatter = ObsidianFormatter(timestamp_syntax="plain")
+        result = formatter.parse_line("- [ ] 2024-01-15 10:30 Task text")
+        assert result is not None
+        text, status, priority, tags, legacy_id, created_at = result
+        assert created_at is not None
+        assert created_at.year == 2024
+        assert created_at.month == 1
+        assert created_at.day == 15
+        assert created_at.hour == 10
+        assert created_at.minute == 30
+
+    def test_parse_preserves_emoji_timestamp(self):
+        """Emoji timestamp format is parsed."""
+        formatter = ObsidianFormatter(timestamp_syntax="emoji")
+        result = formatter.parse_line("- [ ] \U0001f4c5 2024-01-15 Task text")
+        assert result is not None
+        text, status, priority, tags, legacy_id, created_at = result
+        assert created_at is not None
+        assert created_at.year == 2024
+
+    def test_parse_preserves_dataview_timestamp(self):
+        """Dataview timestamp format is parsed."""
+        formatter = ObsidianFormatter(timestamp_syntax="dataview")
+        result = formatter.parse_line("- [ ] Task text [created:: 2024-01-15]")
+        assert result is not None
+        text, status, priority, tags, legacy_id, created_at = result
+        assert created_at is not None
+        assert created_at.year == 2024
