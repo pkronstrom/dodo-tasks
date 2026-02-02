@@ -1328,6 +1328,7 @@ def _unified_settings_loop(
 
     cursor = 0
     status_msg: str | None = None
+    extra_clear = [0]  # Mutable container to track extra lines to clear after plugin toggle
 
     # Find navigable items (not dividers)
     navigable_indices = [i for i, (_, _, kind, *_) in enumerate(items) if kind != "divider"]
@@ -1419,10 +1420,13 @@ def _unified_settings_loop(
             sys.stdout.write("\033[K")
             console.print(line)
 
-        # Clear any remaining lines from previous render (e.g., after removing migrate row)
-        for _ in range(3):
+        # Clear any remaining lines from previous render (e.g., after plugin toggle)
+        # Use extra_clear[0] to handle shrinking item lists
+        lines_to_clear = 3 + extra_clear[0]
+        for _ in range(lines_to_clear):
             sys.stdout.write("\033[K\n")
-        sys.stdout.write("\033[3A")  # Move back up
+        sys.stdout.write(f"\033[{lines_to_clear}A")  # Move back up
+        extra_clear[0] = 0  # Reset after clearing
 
         # Status message
         if status_msg:
@@ -1539,9 +1543,13 @@ def _unified_settings_loop(
                         save_plugin_toggle(plugin_name, bool(pending[item_key]))
                         rebuild_backend_options()
                         # Rebuild entire items list to show/hide plugin config vars
+                        old_len = len(items)
                         items[:], pending_new = _build_settings_items(cfg, project_id)
                         pending.clear()
                         pending.update(pending_new)
+                        # Track max for clearing stale lines when list shrinks
+                        if old_len > len(items):
+                            extra_clear[0] = max(extra_clear[0], old_len - len(items))
                         navigable_indices[:] = [
                             idx for idx, (_, _, k, *_) in enumerate(items) if k != "divider"
                         ]
