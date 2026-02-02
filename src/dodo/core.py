@@ -213,6 +213,25 @@ class TodoService:
                     "obsidian", "vault_path", "dodo/{project}.md"
                 ),
                 project=project,
+                # Formatting settings
+                priority_syntax=self._config.get_plugin_config(
+                    "obsidian", "priority_syntax", "symbols"
+                ),
+                timestamp_syntax=self._config.get_plugin_config(
+                    "obsidian", "timestamp_syntax", "hidden"
+                ),
+                tags_syntax=self._config.get_plugin_config(
+                    "obsidian", "tags_syntax", "hashtags"
+                ),
+                group_by_tags=self._config.get_plugin_config(
+                    "obsidian", "group_by_tags", "true"
+                ) in ("true", "1", True),
+                default_header_level=int(self._config.get_plugin_config(
+                    "obsidian", "default_header_level", "3"
+                ) or 3),
+                sort_by=self._config.get_plugin_config(
+                    "obsidian", "sort_by", "priority"
+                ),
             )
         else:
             # For plugin backends, check constructor signature
