@@ -458,16 +458,7 @@ class ObsidianBackend:
                     tags=tags if tags else None,
                 ))
 
-        return items
+        # Persist any ID mappings created during parsing
+        self._sync_manager.save()
 
-    def _line_matches_id(self, line: str, id: str) -> bool:
-        """Check if a line matches a given ID."""
-        result = self._formatter.parse_line(line)
-        if result is None:
-            return False
-        text, _, _, _, legacy_id = result
-        # Use legacy ID if present, otherwise check sync manager
-        if legacy_id:
-            return legacy_id == id
-        task_id = self._sync_manager.get_or_create_id(text)
-        return task_id == id
+        return items
