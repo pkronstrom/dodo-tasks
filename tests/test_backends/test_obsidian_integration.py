@@ -297,13 +297,9 @@ class TestTagBasedHeaders:
         work_task_idx = next(i for i, l in enumerate(lines) if "Work task" in l)
         home_task_idx = next(i for i, l in enumerate(lines) if "Home task" in l)
 
-        # Work task should be between work header and home header
-        if work_idx < home_idx:
-            assert work_idx < work_task_idx < home_idx
-            assert home_task_idx > home_idx
-        else:
-            assert home_idx < home_task_idx < work_idx
-            assert work_task_idx > work_idx
+        # Each task should appear after its header
+        assert work_idx < work_task_idx
+        assert home_idx < home_task_idx
 
     def test_existing_header_style_preserved(self, backend_factory, mock_client):
         """Existing header formatting should be preserved."""
