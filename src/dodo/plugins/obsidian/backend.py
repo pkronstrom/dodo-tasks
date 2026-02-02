@@ -491,7 +491,7 @@ class ObsidianBackend:
                     parent_stack.pop()
 
                 # If there's a parent, this task is blocked by it
-                blocked_by = [parent_stack[-1][1]] if parent_stack else None
+                blocked_by = [parent_stack[-1][1]] if parent_stack else []
 
                 todo_item = TodoItem(
                     id=task_id,

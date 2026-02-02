@@ -608,7 +608,7 @@ class TestDependencyIndentation:
         grandchild = next(i for i in items if i.text == "Grandchild")
 
         # Parent has no blockers
-        assert parent.blocked_by is None
+        assert parent.blocked_by == []
 
         # Children are blocked by parent
         assert child1.blocked_by == [parent.id]
