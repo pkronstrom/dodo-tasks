@@ -2,124 +2,118 @@
 
 ## Use Case 1: Project Task Tracking
 
-Track your own work in the project's `.dodo/` at git root:
+Track your own work as you go:
 
 ```bash
-# Track progress as you work
 dodo add "Implement user auth"
 dodo add "Write tests" -p high
-dodo list -f jsonl                       # Machine-readable status
+dodo list -f jsonl                       # Machine-readable
 dodo done <id>                           # Mark complete
 ```
 
-Simple, persistent. Tasks live with the project.
+Tasks persist in the project's `.dodo/` directory.
 
 ---
 
-## Use Case 2: Agentic Workflow with Subagents
+## Use Case 2: Agentic Workflow with Dependencies
 
 Orchestrate parallel subagents with dependency-aware task distribution.
 
-### Step 1: Create ephemeral dodo
+### Setup
 
 ```bash
 dodo new workflow-abc --local -b sqlite
+dodo plugins enable graph
 ```
 
-### Step 2: Bulk insert tasks with dependencies
+### Bulk insert tasks
 
 ```bash
-# Add all tasks
 echo '{"text": "Setup database schema", "priority": "high", "tags": ["db"]}
 {"text": "Implement user model", "tags": ["backend"]}
 {"text": "Implement auth endpoints", "tags": ["backend"]}
-{"text": "Write integration tests", "tags": ["test"]}' | dodo bulk add -d workflow-abc -q > task_ids.txt
-
-# Add dependencies (auth depends on user model, tests depend on auth)
-echo '{"blocker": "<user-model-id>", "blocked": "<auth-endpoints-id>"}
-{"blocker": "<auth-endpoints-id>", "blocked": "<integration-tests-id>"}' | dodo bulk dep -d workflow-abc
+{"text": "Write integration tests", "tags": ["test"]}' | dodo bulk add -d workflow-abc -q
 ```
 
-### Step 3: Dispatch subagents with ready tasks
-
-Pass these instructions to each subagent:
-
+Output (IDs only with `-q`):
 ```
-Track your work with dodo:
-- See ready tasks: dodo graph ready -d workflow-abc
-- Mark done when complete: dodo done <id> -d workflow-abc
-
-Only work on tasks shown by 'dodo graph ready'. Dependencies are tracked automatically.
+a1b2c3
+d4e5f6
+g7h8i9
+j0k1l2
 ```
 
-Subagents pull ready tasks, complete them, and blocked tasks become unblocked.
+### Add dependencies
 
-### Step 4: Cleanup when done
+```bash
+echo '{"blocker": "d4e5f6", "blocked": "g7h8i9"}
+{"blocker": "g7h8i9", "blocked": "j0k1l2"}' | dodo bulk dep -d workflow-abc
+```
+
+### Query ready tasks
+
+```bash
+dodo graph ready -d workflow-abc -f jsonl
+```
+
+### Subagent instructions
+
+```
+Track work with dodo:
+- Get ready tasks: dodo graph ready -d workflow-abc -f jsonl
+- Mark done: dodo done <id> -d workflow-abc
+
+Only work on tasks from 'graph ready'. Blocked tasks auto-unblock when blockers complete.
+```
+
+### Cleanup
 
 ```bash
 dodo destroy workflow-abc --local
 ```
 
-Ephemeral dodos prevent stale task accumulation.
-
 ---
 
 ## JSONL Schema
 
-**bulk add** fields:
-- `text` (required): Todo text
-- `priority`: critical/high/normal/low/someday
-- `tags`: ["tag1", "tag2"]
-
-**bulk dep** fields:
-- `blocker` (required): ID of blocking todo
-- `blocked` (required): ID of blocked todo
-
-## Command Reference
-
-```bash
-# Single operations
-dodo add "task" [-d name] [-g] [-p priority] [-t tags]
-dodo list [-d name] [-g] [-f jsonl|table|tree]
-dodo done <id> [-d name] [-g]
-dodo rm <id> [-d name] [-g]
-dodo undo                                    # Undo last operation
-
-# Dependencies (requires graph plugin)
-dodo graph ready [-d name]                   # Tasks with no blockers
-dodo graph blocked [-d name]                 # Tasks that are blocked
-dodo dep add <blocker> <blocked> [-d name]
-dodo bulk dep [-d name]                  # JSONL stdin
-dodo dep rm <blocker> <blocked> [-d name]
-dodo dep list [-d name] [--tree]             # --tree for tree view
-
-# Bulk operations
-dodo bulk add [-d name] [-g] [-q]            # JSONL stdin
-dodo bulk done <id>... [-d name]             # Multiple IDs
-dodo bulk rm <id>... [-d name]               # Multiple IDs
-
-# Dodo management
-dodo new [name] [--local] [-b sqlite|markdown]
-dodo destroy <name> [--local]
-dodo use <name>                              # Map current dir to dodo
-dodo unuse                                   # Remove mapping
-dodo show                                    # Show detected dodos
-
-# Export
-dodo export [-f jsonl|txt|md|csv]
-
-# AI-assisted (requires ai plugin)
-dodo ai add "natural language tasks"
-dodo ai run "mark all docs tasks done"
-dodo ai prio                                 # Suggest priorities
-dodo ai tag                                  # Suggest tags
+**bulk add** input:
+```json
+{"text": "Task description", "priority": "high", "tags": ["tag1", "tag2"]}
 ```
 
-### Flags
+**bulk dep** input:
+```json
+{"blocker": "abc123", "blocked": "def456"}
+```
 
-- `-d, --dodo`: Target specific dodo by name
-- `-g, --global`: Use global dodo (~/.config/dodo/)
-- `-q, --quiet`: Minimal output (IDs only for bulk ops)
-- `-f, --format`: Output format (table/jsonl/tree/txt/md/csv)
-- `-p, --priority`: Priority level (critical/high/normal/low/someday)
-- `-t, --tag`: Tag (can repeat, or comma-separated)
+**list -f jsonl** output:
+```json
+{"id": "abc123", "text": "Task", "status": "pending", "priority": "high", "tags": ["work"], "blocked_by": []}
+```
+
+---
+
+## Quick Reference
+
+```bash
+# Core operations
+dodo add "task" [-p priority] [-t tag]
+dodo done <id>
+dodo list -f jsonl
+
+# Bulk (pipe JSONL to stdin, -q outputs IDs only)
+echo '<jsonl>' | dodo bulk add [-q]
+echo '<jsonl>' | dodo bulk dep
+
+# Dependencies (requires: dodo plugins enable graph)
+dodo graph ready [-f jsonl]              # Unblocked tasks
+dodo graph blocked [-f jsonl]            # Blocked tasks
+dodo dep add <blocker> <blocked>
+
+# Target specific dodo
+-d <name>                                # Use named dodo
+-g                                       # Use global dodo
+```
+
+### Priority levels
+`critical` > `high` > `normal` > `low` > `someday`
