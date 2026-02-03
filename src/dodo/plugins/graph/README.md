@@ -49,6 +49,10 @@ dodo graph ready
 
 # Show blocked tasks
 dodo graph blocked
+
+# Machine-readable output (for scripting/agents)
+dodo graph ready -f jsonl
+dodo graph blocked -f jsonl
 ```
 
 ### List Output
