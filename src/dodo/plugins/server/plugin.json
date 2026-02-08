@@ -1,0 +1,5 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "description": "REST API, Web UI, MCP endpoint, and remote backend for dodo"
+}

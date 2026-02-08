@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>dodo</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/milligram/1.4.1/milligram.min.css">
+    <style>
+        body { margin: 0; padding: 0; font-size: 15px; color: #333; background: #fafafa; }
+
+        header {
+            position: sticky; top: 0; z-index: 10;
+            background: #fff; border-bottom: 1px solid #e0e0e0;
+            padding: 0.5rem 1rem;
+        }
+        header nav {
+            display: flex; align-items: center; gap: 0.75rem;
+            max-width: 640px; margin: 0 auto;
+        }
+        header .logo { font-weight: 700; font-size: 1.2rem; margin: 0; }
+        header select { height: auto; margin: 0; padding: 0.3rem 0.5rem; font-size: 0.9rem; }
+        header .btn-add, header .btn-del {
+            margin: 0; padding: 0.3rem 0.8rem; height: auto;
+            font-size: 1.1rem; line-height: 1;
+        }
+        header .btn-del {
+            background: none; border: 1px solid #e53e3e; color: #e53e3e;
+            font-size: 0.8rem; padding: 0.3rem 0.6rem;
+        }
+        header .btn-del:hover { background: #e53e3e; color: #fff; }
+
+        main { padding: 1rem; max-width: 640px; margin: 0 auto; }
+
+        /* Quick add */
+        .add-form { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+        .add-form input { flex: 1; margin: 0; height: auto; padding: 0.5rem; }
+        .add-form button { margin: 0; white-space: nowrap; height: auto; padding: 0.5rem 1rem; }
+
+        .add-options {
+            display: none; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;
+        }
+        .add-options.open { display: flex; }
+        .add-options select, .add-options input {
+            margin: 0; flex: 1; height: auto; padding: 0.4rem;
+        }
+
+        /* Filter + sort row */
+        .toolbar { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; }
+        .filter-tabs {
+            display: flex; flex: 1; border: 1px solid #ccc; border-radius: 4px; overflow: hidden;
+        }
+        .filter-tabs button {
+            flex: 1; margin: 0; border: none; border-radius: 0;
+            padding: 0.4rem 0.5rem; font-size: 0.85rem;
+            background: #fff; color: #555; cursor: pointer;
+            font-weight: 400; text-transform: none; letter-spacing: 0;
+            line-height: 1.4; height: auto;
+        }
+        .filter-tabs button:hover { background: #f0f0f0; }
+        .filter-tabs button.active { background: #9b4dca; color: #fff; }
+        .filter-tabs button:not(:last-child) { border-right: 1px solid #ccc; }
+        .toolbar select {
+            width: auto; margin: 0; padding: 0.3rem 0.5rem;
+            font-size: 0.85rem; height: auto;
+        }
+
+        /* Todo list */
+        .todo-list { list-style: none; padding: 0; margin: 0; }
+        .todo-item {
+            display: flex; align-items: flex-start; gap: 0.5rem;
+            padding: 0.6rem 0; border-bottom: 1px solid #e0e0e0;
+            cursor: pointer;
+        }
+        .todo-item:last-child { border-bottom: none; }
+        .todo-item.done .todo-text { text-decoration: line-through; opacity: 0.4; }
+
+        .todo-check {
+            width: 1.3rem; height: 1.3rem; min-width: 1.3rem;
+            border: 2px solid #ccc; border-radius: 50%; margin-top: 0.15rem;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.7rem;
+        }
+        .todo-item.done .todo-check {
+            background: #9b4dca; border-color: #9b4dca; color: #fff;
+        }
+
+        .todo-body { flex: 1; min-width: 0; }
+        .todo-text { word-break: break-word; }
+        .todo-meta { font-size: 0.8rem; opacity: 0.5; margin-top: 0.15rem; }
+
+        .todo-priority { font-weight: 700; margin-right: 0.3rem; }
+        .priority-critical { color: #e53e3e; }
+        .priority-high { color: #ed8936; }
+        .priority-normal { color: #555; }
+        .priority-low { color: #999; }
+        .priority-someday { color: #999; font-style: italic; }
+
+        .todo-delete {
+            padding: 0.2rem 0.4rem; font-size: 0.8rem;
+            background: none; border: none; color: #e53e3e;
+            cursor: pointer; margin: 0; opacity: 0.4;
+            transition: opacity 0.15s; line-height: 1;
+            text-transform: none; letter-spacing: 0; font-weight: 400;
+        }
+        .todo-item:hover .todo-delete { opacity: 0.7; }
+        @media (hover: none) {
+            .todo-delete { opacity: 0.6; }
+        }
+
+        .hidden { display: none; }
+
+        .empty-state { text-align: center; padding: 3rem 1rem; color: #999; }
+        .loading { text-align: center; padding: 2rem; opacity: 0.5; }
+
+        /* Toast */
+        .toast {
+            position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
+            background: #e53e3e; color: #fff;
+            padding: 0.5rem 1.2rem; border-radius: 4px;
+            font-size: 0.9rem; z-index: 100; opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .toast.visible { opacity: 1; }
+
+        /* Dark mode */
+        @media (prefers-color-scheme: dark) {
+            body { background: #1a1a2e; color: #e0e0e0; }
+            header { background: #16213e; border-color: #333; }
+            .filter-tabs { border-color: #444; }
+            .filter-tabs button { background: #16213e; color: #ccc; }
+            .filter-tabs button:hover { background: #1a1a3e; }
+            .filter-tabs button.active { background: #9b4dca; color: #fff; }
+            .filter-tabs button:not(:last-child) { border-color: #444; }
+            .todo-item { border-color: #333; }
+            .todo-check { border-color: #555; }
+            .priority-normal { color: #ccc; }
+            .priority-low, .priority-someday { color: #777; }
+            .empty-state { color: #666; }
+            input, select { background: #0f3460; color: #e0e0e0; border-color: #444; }
+            .button, button { background-color: #9b4dca; border-color: #9b4dca; }
+            header .btn-del { background: none; border-color: #e53e3e; color: #e53e3e; }
+            header .btn-del:hover { background: #e53e3e; color: #fff; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <nav>
+            <span class="logo">dodo</span>
+            <select id="dodo-select" aria-label="Select dodo"></select>
+            <button class="btn-del hidden" id="btn-delete-dodo" onclick="deleteDodo()" title="Delete dodo">&times;</button>
+            <button class="btn-add" onclick="toggleOptions()">+</button>
+        </nav>
+    </header>
+
+    <main>
+        <section class="add-form">
+            <input type="text" id="add-input" placeholder="Add new todo..."
+                   aria-label="New todo text" autocomplete="off">
+            <button onclick="addTodo()">Add</button>
+        </section>
+
+        <section class="add-options" id="add-options">
+            <select id="add-priority" aria-label="Priority">
+                <option value="">No priority</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="normal">Normal</option>
+                <option value="low">Low</option>
+                <option value="someday">Someday</option>
+            </select>
+            <input type="text" id="add-tags" placeholder="Tags (space-separated)"
+                   aria-label="Tags">
+        </section>
+
+        <section class="toolbar">
+            <div class="filter-tabs">
+                <button class="active" onclick="setFilter('all', this)">All</button>
+                <button onclick="setFilter('pending', this)">Pending</button>
+                <button onclick="setFilter('done', this)">Done</button>
+            </div>
+            <select id="sort-select" aria-label="Sort" onchange="loadTodos()">
+                <option value="created">Newest</option>
+                <option value="priority">Priority</option>
+                <option value="text">Name</option>
+                <option value="tags">Tags</option>
+            </select>
+        </section>
+
+        <section id="todo-container">
+            <div class="loading">Loading...</div>
+        </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+    const API = '/api/v1';
+    let currentDodo = '_default';
+    let currentFilter = 'all';
+
+    // --- Init ---
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadDodos();
+        await loadTodos();
+        document.getElementById('add-input').addEventListener('keydown', e => {
+            if (e.key === 'Enter') addTodo();
+        });
+    });
+
+    // --- Dodo selector ---
+    async function loadDodos() {
+        try {
+            const resp = await apiFetch(`${API}/dodos`);
+            const dodos = await resp.json();
+            const select = document.getElementById('dodo-select');
+            select.innerHTML = dodos.map(d =>
+                `<option value="${esc(d.name)}">${esc(d.name === '_default' ? 'global' : d.name)}</option>`
+            ).join('');
+            select.value = currentDodo;
+            select.onchange = () => { currentDodo = select.value; loadTodos(); updateDeleteBtn(); };
+            updateDeleteBtn();
+        } catch (e) {
+            showError('Failed to load dodos');
+        }
+    }
+
+    // --- Todos ---
+    async function loadTodos() {
+        const container = document.getElementById('todo-container');
+        container.innerHTML = '<div class="loading">Loading...</div>';
+        try {
+            let url = `${API}/dodos/${encodeURIComponent(currentDodo)}/todos`;
+            if (currentFilter !== 'all') url += `?status=${currentFilter}`;
+            const resp = await apiFetch(url);
+            const todos = await resp.json();
+            renderTodos(todos);
+        } catch (e) {
+            container.innerHTML = `<div class="empty-state">Error loading todos</div>`;
+        }
+    }
+
+    const PRIO_ORDER = { critical: 0, high: 1, normal: 2, low: 3, someday: 4 };
+
+    function sortTodos(todos) {
+        const sortBy = document.getElementById('sort-select').value;
+        return [...todos].sort((a, b) => {
+            if (sortBy === 'priority') {
+                const pa = PRIO_ORDER[a.priority] ?? 5;
+                const pb = PRIO_ORDER[b.priority] ?? 5;
+                return pa - pb;
+            }
+            if (sortBy === 'text') return (a.text || '').localeCompare(b.text || '');
+            if (sortBy === 'tags') {
+                const ta = (a.tags || []).join(',');
+                const tb = (b.tags || []).join(',');
+                return ta.localeCompare(tb);
+            }
+            return (b.created_at || '').localeCompare(a.created_at || '');
+        });
+    }
+
+    function renderTodos(todos) {
+        todos = sortTodos(todos);
+        const container = document.getElementById('todo-container');
+        if (!todos.length) {
+            container.innerHTML = '<div class="empty-state">No todos yet</div>';
+            return;
+        }
+        const items = todos.map(t => {
+            const done = t.status === 'done';
+            const prio = priorityLabel(t.priority);
+            const tags = (t.tags || []).map(tag => `#${esc(tag)}`).join(' ');
+            return `
+                <div class="todo-item ${done ? 'done' : ''}" data-id="${esc(t.id)}">
+                    <div class="todo-check" onclick="toggleTodo('${esc(t.id)}')">${done ? '✓' : ''}</div>
+                    <div class="todo-body" onclick="toggleTodo('${esc(t.id)}')">
+                        <div class="todo-text">${prio}${esc(t.text)}</div>
+                        ${tags ? `<div class="todo-meta todo-tags">${tags}</div>` : ''}
+                    </div>
+                    <button class="todo-delete" onclick="deleteTodo('${esc(t.id)}')" title="Delete">&times;</button>
+                </div>`;
+        }).join('');
+        container.innerHTML = `<div class="todo-list">${items}</div>`;
+    }
+
+    function priorityLabel(p) {
+        const map = {
+            critical: ['!!!! ', 'priority-critical'],
+            high: ['!! ', 'priority-high'],
+            normal: ['! ', 'priority-normal'],
+            low: ['~ ', 'priority-low'],
+            someday: ['... ', 'priority-someday'],
+        };
+        if (!p || !map[p]) return '';
+        return `<span class="todo-priority ${map[p][1]}">${map[p][0]}</span>`;
+    }
+
+    // --- Actions ---
+    async function addTodo() {
+        const input = document.getElementById('add-input');
+        const text = input.value.trim();
+        if (!text) return;
+
+        const priority = document.getElementById('add-priority').value || undefined;
+        const tagsRaw = document.getElementById('add-tags').value.trim();
+        const tags = tagsRaw ? tagsRaw.split(/\s+/).filter(Boolean) : undefined;
+
+        const body = { text };
+        if (priority) body.priority = priority;
+        if (tags) body.tags = tags;
+
+        try {
+            await apiFetch(`${API}/dodos/${encodeURIComponent(currentDodo)}/todos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+            });
+            input.value = '';
+            document.getElementById('add-tags').value = '';
+            await loadTodos();
+        } catch (e) {
+            showError('Failed to add todo');
+        }
+    }
+
+    async function toggleTodo(id) {
+        try {
+            await apiFetch(`${API}/dodos/${encodeURIComponent(currentDodo)}/todos/${encodeURIComponent(id)}/toggle`, {
+                method: 'POST',
+            });
+            await loadTodos();
+        } catch (e) {
+            showError('Failed to update todo');
+        }
+    }
+
+    async function deleteTodo(id) {
+        if (!confirm('Delete this todo?')) return;
+        try {
+            await apiFetch(`${API}/dodos/${encodeURIComponent(currentDodo)}/todos/${encodeURIComponent(id)}`, {
+                method: 'DELETE',
+            });
+            await loadTodos();
+        } catch (e) {
+            showError('Failed to delete todo');
+        }
+    }
+
+    // --- Filter tabs ---
+    function setFilter(filter, btn) {
+        currentFilter = filter;
+        document.querySelectorAll('.filter-tabs button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        loadTodos();
+    }
+
+    // --- Options toggle ---
+    function toggleOptions() {
+        document.getElementById('add-options').classList.toggle('open');
+    }
+
+    // --- Delete dodo ---
+    function updateDeleteBtn() {
+        const btn = document.getElementById('btn-delete-dodo');
+        btn.classList.toggle('hidden', currentDodo === '_default');
+    }
+
+    async function deleteDodo() {
+        const label = currentDodo;
+        if (!confirm(`Delete dodo "${label}" and all its todos? This cannot be undone.`)) return;
+        try {
+            await apiFetch(`${API}/dodos/${encodeURIComponent(currentDodo)}`, { method: 'DELETE' });
+            currentDodo = '_default';
+            await loadDodos();
+            await loadTodos();
+        } catch (e) {
+            showError('Failed to delete dodo');
+        }
+    }
+
+    // --- Helpers ---
+    function apiFetch(url, opts = {}) {
+        return fetch(url, opts).then(resp => {
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return resp;
+        });
+    }
+
+    function showError(msg) {
+        const el = document.getElementById('toast');
+        el.textContent = msg;
+        el.classList.add('visible');
+        setTimeout(() => el.classList.remove('visible'), 3000);
+    }
+
+    function esc(str) {
+        if (!str) return '';
+        const div = document.createElement('div');
+        div.textContent = String(str);
+        return div.innerHTML;
+    }
+    </script>
+</body>
+</html>

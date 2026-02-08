@@ -21,6 +21,11 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.8.0",
 ]
+server = [
+    "uvicorn>=0.30.0",
+    "starlette>=0.38.0",
+    "mcp[cli]>=1.2.0",
+]
 
 [project.scripts]
 dodo = "dodo.cli:app"
