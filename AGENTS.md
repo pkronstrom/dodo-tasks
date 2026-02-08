@@ -29,7 +29,8 @@ src/dodo/
 │   ├── ai/            # AI-assisted todo management (add, prio, tag, run, dep)
 │   ├── graph/         # Dependency tracking (blocked_by, ready, blocked)
 │   ├── ntfy_inbox/    # ntfy.sh todo ingestion
-│   └── obsidian/      # Obsidian vault backend
+│   ├── obsidian/      # Obsidian vault backend
+│   └── server/        # REST API, Web UI, MCP endpoint, remote backend
 ├── formatters/        # Output formatters (table, jsonl, tree, txt, md, csv)
 └── ui/                # Interactive menus (interactive.py)
 ```

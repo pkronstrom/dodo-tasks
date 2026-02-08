@@ -9,8 +9,8 @@ Part of [**Nest-Driven Development**](https://github.com/pkronstrom/nest-driven-
 ## Features
 
 - **Smart routing**: Todos automatically go to the right project based on your current directory
-- **Multiple backends**: SQLite (default), Markdown, Obsidian
-- **Plugin system**: Extend with AI processing, dependency graphs, ntfy.sh integration
+- **Multiple backends**: SQLite (default), Markdown, Obsidian, Remote
+- **Plugin system**: Extend with AI processing, dependency graphs, server mode, ntfy.sh
 - **Interactive UI**: Full TUI with vim-style navigation
 - **Priority & tags**: Organize with `!!:` prefixes and `#hashtags`
 
@@ -113,8 +113,30 @@ dodo config                         # Configure plugins
 |--------|-------------|
 | `ai` | AI-assisted todo formatting (claude, gemini, llm) |
 | `graph` | Dependency tracking with `dodo dep add` |
+| `server` | REST API, Web UI, MCP endpoint, and remote backend |
 | `ntfy-inbox` | Receive todos via ntfy.sh (Siri integration) |
 | `obsidian` | Obsidian vault backend |
+
+### server (REST API / Web UI / MCP)
+
+```bash
+dodo plugins enable server
+pip install -e ".[server]"      # Server deps (starlette, uvicorn, mcp)
+dodo server start               # Start server
+dodo server start --host 0.0.0.0 --port 9090  # Remote access
+```
+
+Provides three channels (each individually toggleable):
+- **Web UI** at `/` — mobile-first task manager with dark mode
+- **REST API** at `/api/v1/` — full CRUD, multi-dodo
+- **MCP** at `/mcp` — AI agent integration
+
+Remote backend (no extra deps needed):
+```bash
+dodo config                     # Set remote_url under server plugin
+dodo new myproject --backend remote
+dodo add "synced task"          # Routed to remote server
+```
 
 ### ntfy-inbox (Siri Integration)
 
