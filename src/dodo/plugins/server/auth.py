@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import secrets
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -18,6 +19,7 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
 
     Health endpoint is exempt for monitoring.
     Browser shows native auth dialog (no custom login UI needed).
+    CORS preflight (OPTIONS) is allowed through without auth.
     """
 
     def __init__(self, app, api_key: str):
@@ -25,7 +27,8 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
         self._api_key = api_key
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        if request.url.path in _PUBLIC_PATHS:
+        # Allow CORS preflight and public paths through without auth
+        if request.method == "OPTIONS" or request.url.path in _PUBLIC_PATHS:
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization", "")
@@ -35,7 +38,7 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
         try:
             decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
             username, password = decoded.split(":", 1)
-        except (ValueError, UnicodeDecodeError):
+        except (ValueError, UnicodeDecodeError, binascii.Error):
             return _unauthorized()
 
         # Constant-time comparison to prevent timing attacks

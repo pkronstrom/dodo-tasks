@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -76,7 +77,11 @@ async def add_todo(request: Request) -> JSONResponse:
     if err:
         return err
 
-    body = await request.json()
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
     text = body.get("text", "").strip()
     if not text:
         return JSONResponse({"error": "text is required"}, status_code=400)
@@ -114,14 +119,29 @@ async def update_todo(request: Request) -> JSONResponse:
         return err
 
     todo_id = request.path_params["todo_id"]
-    body = await request.json()
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+
+    if not any(k in body for k in ("text", "priority", "tags")):
+        return JSONResponse({"error": "no fields to update"}, status_code=400)
+
+    # Validate all fields before applying any (atomic: no partial updates on error)
+    priority = None
+    if "priority" in body:
+        try:
+            priority = Priority(body["priority"]) if body["priority"] else None
+        except ValueError:
+            return JSONResponse(
+                {"error": f"Invalid priority: {body['priority']}"}, status_code=400,
+            )
 
     item = None
     try:
         if "text" in body:
             item = await asyncio.to_thread(svc.update_text, todo_id, body["text"])
         if "priority" in body:
-            priority = Priority(body["priority"]) if body["priority"] else None
             item = await asyncio.to_thread(svc.update_priority, todo_id, priority)
         if "tags" in body:
             item = await asyncio.to_thread(svc.update_tags, todo_id, body["tags"])
@@ -130,8 +150,6 @@ async def update_todo(request: Request) -> JSONResponse:
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
 
-    if item is None:
-        return JSONResponse({"error": "no fields to update"}, status_code=400)
     return JSONResponse(item.to_dict())
 
 

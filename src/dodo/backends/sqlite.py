@@ -222,7 +222,7 @@ class SqliteBackend:
         """Get database connection, reusing existing connection if available."""
         if self._conn is None:
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._conn = sqlite3.connect(self._path)
+            self._conn = sqlite3.connect(self._path, check_same_thread=False)
             # Pragmas for concurrent access (multiple agents)
             self._conn.execute("PRAGMA journal_mode = WAL")
             self._conn.execute("PRAGMA busy_timeout = 5000")

@@ -62,12 +62,12 @@ def start(
     app = create_app(cfg)
 
     # Startup banner
-    _print_banner(cfg, bind_host, bind_port)
+    _print_banner(cfg, bind_host, bind_port, mcp_active=app.state.mcp_active)
 
     uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")
 
 
-def _print_banner(cfg, host: str, port: int) -> None:
+def _print_banner(cfg, host: str, port: int, *, mcp_active: bool) -> None:
     """Print server startup info."""
     base_url = f"http://{host}:{port}"
 
@@ -84,7 +84,10 @@ def _print_banner(cfg, host: str, port: int) -> None:
     if enable_api:
         console.print(f"  REST API: [green]{base_url}/api/v1/[/green]")
     if enable_mcp:
-        console.print(f"  MCP:      [green]{base_url}/mcp[/green]")
+        if mcp_active:
+            console.print(f"  MCP:      [green]{base_url}/mcp[/green]")
+        else:
+            console.print("  MCP:      [yellow]enabled but deps missing[/yellow]")
     auth_status = "[green]enabled[/green]" if api_key else "[yellow]disabled[/yellow]"
     console.print(f"  Auth:     {auth_status}")
     console.print("\n[dim]Press Ctrl+C to stop.[/dim]\n")

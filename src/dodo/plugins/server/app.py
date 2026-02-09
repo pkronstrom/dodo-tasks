@@ -67,7 +67,11 @@ class ServiceRegistry:
                 entry.is_dir()
                 and not entry.name.startswith((".", "_"))
                 and entry.name not in ("projects", "plugins")
-                and ((entry / "dodo.db").exists() or (entry / "dodo.md").exists())
+                and (
+                    (entry / "dodo.db").exists()
+                    or (entry / "dodo.md").exists()
+                    or (entry / "dodo.json").exists()
+                )
             ):
                 if not any(d["name"] == entry.name for d in dodos):
                     dodos.append({"name": entry.name, "backend": self._get_backend(entry)})
@@ -163,14 +167,21 @@ def create_app(config: Config) -> Starlette:
             ),
         ])
 
+    mcp_mounted = False
     if enable_mcp:
         try:
             from dodo.plugins.server.mcp_server import create_mcp_app
 
             mcp_app = create_mcp_app(registry)
             routes.append(Mount("/mcp", app=mcp_app))
+            mcp_mounted = True
         except ImportError:
-            pass  # MCP deps not installed
+            import logging
+
+            logging.getLogger("dodo.server").warning(
+                "MCP enabled in config but mcp package not installed. "
+                "Install with: pip install dodo[server]"
+            )
 
     if enable_web:
         from pathlib import Path
@@ -200,7 +211,8 @@ def create_app(config: Config) -> Starlette:
 
     app = Starlette(routes=routes, middleware=middleware)
 
-    # Attach registry to app state for route handlers
+    # Attach registry and feature flags to app state
     app.state.registry = registry
+    app.state.mcp_active = mcp_mounted
 
     return app
