@@ -47,12 +47,18 @@ class RemoteBackend:
         project: str | None = None,
         priority: Priority | None = None,
         tags: list[str] | None = None,
+        due_at: datetime | None = None,
+        metadata: dict[str, str] | None = None,
     ) -> TodoItem:
         body: dict = {"text": text}
         if priority:
             body["priority"] = priority.value
         if tags:
             body["tags"] = tags
+        if due_at:
+            body["due_at"] = due_at.isoformat()
+        if metadata:
+            body["metadata"] = metadata
         resp = self._client.post(self._todos_url, json=body)
         resp.raise_for_status()
         return _parse_todo(resp.json())
@@ -105,6 +111,49 @@ class RemoteBackend:
         resp.raise_for_status()
         return _parse_todo(resp.json())
 
+    def update_due_at(self, id: str, due_at: datetime | None) -> TodoItem:
+        resp = self._client.patch(
+            f"{self._todos_url}/{id}",
+            json={"due_at": due_at.isoformat() if due_at else None},
+        )
+        resp.raise_for_status()
+        return _parse_todo(resp.json())
+
+    def update_metadata(self, id: str, metadata: dict[str, str] | None) -> TodoItem:
+        resp = self._client.patch(
+            f"{self._todos_url}/{id}", json={"metadata": metadata},
+        )
+        resp.raise_for_status()
+        return _parse_todo(resp.json())
+
+    def set_metadata_key(self, id: str, key: str, value: str) -> TodoItem:
+        resp = self._client.post(
+            f"{self._todos_url}/{id}/meta/set", json={"key": key, "value": value},
+        )
+        resp.raise_for_status()
+        return _parse_todo(resp.json())
+
+    def remove_metadata_key(self, id: str, key: str) -> TodoItem:
+        resp = self._client.post(
+            f"{self._todos_url}/{id}/meta/remove", json={"key": key},
+        )
+        resp.raise_for_status()
+        return _parse_todo(resp.json())
+
+    def add_tag(self, id: str, tag: str) -> TodoItem:
+        resp = self._client.post(
+            f"{self._todos_url}/{id}/tags/add", json={"tag": tag},
+        )
+        resp.raise_for_status()
+        return _parse_todo(resp.json())
+
+    def remove_tag(self, id: str, tag: str) -> TodoItem:
+        resp = self._client.post(
+            f"{self._todos_url}/{id}/tags/remove", json={"tag": tag},
+        )
+        resp.raise_for_status()
+        return _parse_todo(resp.json())
+
     def delete(self, id: str) -> None:
         resp = self._client.delete(f"{self._todos_url}/{id}")
         resp.raise_for_status()
@@ -128,4 +177,10 @@ def _parse_todo(data: dict) -> TodoItem:
         project=data.get("project"),
         priority=Priority(data["priority"]) if data.get("priority") else None,
         tags=data.get("tags"),
+        due_at=(
+            datetime.fromisoformat(data["due_at"])
+            if data.get("due_at")
+            else None
+        ),
+        metadata=data.get("metadata"),
     )
