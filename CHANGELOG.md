@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.7.0
+
+### New Features
+
+- **Python API** (`dodo.api`): Programmatic access to dodo from external Python tools — no subprocess overhead, native objects, type hints
+  - `Dodo.named("work")` / `Dodo.local("/path")` / `Dodo.auto()` — explicit construction, no implicit cwd magic
+  - Full CRUD: `add`, `list`, `get`, `complete`, `delete`, `update`
+  - Atomic ops: `add_tag`, `remove_tag`, `set_meta`, `remove_meta`
+  - String inputs for enums (`priority="high"`), standard exceptions (`KeyError`/`ValueError`)
+- **Scrollable config menu & dodos list**: Config and dodos menus now scroll properly with large lists
+
 ## v0.6.0
 
 ### New Features
