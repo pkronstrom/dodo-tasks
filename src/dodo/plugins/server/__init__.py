@@ -81,6 +81,17 @@ def register_config() -> list[ConfigVar]:
             label="Remote API Key",
             description="Matches api_key on the server",
         ),
+        # Webhook
+        ConfigVar(
+            "webhook_url", "",
+            label="Webhook URL",
+            description="POST on change (empty = disabled)",
+        ),
+        ConfigVar(
+            "webhook_secret", "",
+            label="Webhook Secret",
+            description="HMAC signing key",
+        ),
     ]
 
 
@@ -94,6 +105,16 @@ def register_commands(app: typer.Typer, config: Config) -> None:
     from dodo.plugins.server.cli import build_server_app
 
     app.add_typer(build_server_app(), name="server")
+
+
+def extend_backend(backend, config: Config):
+    """Wrap backend with webhook support if configured."""
+    url = config.get_plugin_config("server", "webhook_url", "")
+    if not url:
+        return backend
+    secret = config.get_plugin_config("server", "webhook_secret", "")
+    from dodo.plugins.server.webhook import WebhookWrapper
+    return WebhookWrapper(backend, url, secret, "default")
 
 
 def register_root_commands(app: typer.Typer, config: Config) -> None:
