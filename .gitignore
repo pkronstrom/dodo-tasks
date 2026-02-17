@@ -45,5 +45,8 @@ htmlcov/
 *.log
 .DS_Store
 
+# Plans (local design docs)
+docs/plans/
+
 # Worktrees
 .worktrees/
