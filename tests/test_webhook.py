@@ -1,13 +1,8 @@
 """Tests for webhook backend wrapper."""
-from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from dodo.backends.sqlite import SqliteBackend
-from dodo.config import Config
-from dodo.models import Status
 
 
 class TestWebhookWrapper:
@@ -16,7 +11,7 @@ class TestWebhookWrapper:
         backend = SqliteBackend(tmp_path / "dodo.db")
         wrapper = WebhookWrapper(backend, "http://example.com/hook", "", "test")
         with patch("dodo.plugins.server.webhook._fire_webhook") as mock_fire:
-            item = wrapper.add("Test")
+            wrapper.add("Test")
             mock_fire.assert_called_once()
             args = mock_fire.call_args
             assert args[0][1] == "todo.added"

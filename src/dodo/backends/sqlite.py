@@ -71,7 +71,9 @@ class SqliteBackend:
         )
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO todos (id, text, status, project, created_at, priority, tags, due_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO todos (id, text, status, project, created_at,"
+                " priority, tags, due_at, metadata)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     item.id,
                     item.text,
@@ -91,7 +93,10 @@ class SqliteBackend:
         project: str | None = None,
         status: Status | None = None,
     ) -> list[TodoItem]:
-        query = "SELECT id, text, status, project, created_at, completed_at, priority, tags, due_at, metadata FROM todos WHERE 1=1"
+        query = (
+            "SELECT id, text, status, project, created_at, completed_at,"
+            " priority, tags, due_at, metadata FROM todos WHERE 1=1"
+        )
         params: list[str] = []
 
         if project:
@@ -110,7 +115,8 @@ class SqliteBackend:
 
     def get(self, id: str) -> TodoItem | None:
         query = """
-            SELECT id, text, status, project, created_at, completed_at, priority, tags, due_at, metadata
+            SELECT id, text, status, project, created_at,
+                completed_at, priority, tags, due_at, metadata
             FROM todos WHERE id = ?
         """
         with self._connect() as conn:
@@ -270,7 +276,10 @@ class SqliteBackend:
                     continue
 
                 conn.execute(
-                    "INSERT INTO todos (id, text, status, project, created_at, completed_at, priority, tags, due_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO todos (id, text, status, project,"
+                    " created_at, completed_at, priority, tags,"
+                    " due_at, metadata)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         item.id,
                         item.text,

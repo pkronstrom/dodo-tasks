@@ -124,8 +124,9 @@ class TestTodoItemPriorityTags:
 
 class TestTodoItemDueAtMetadata:
     def test_todoitem_with_due_at(self):
-        from dodo.models import TodoItem, Status
         from datetime import datetime
+
+        from dodo.models import Status, TodoItem
         item = TodoItem(
             id="abc12345", text="Test", status=Status.PENDING,
             created_at=datetime.now(), due_at=datetime(2026, 3, 1),
@@ -133,8 +134,9 @@ class TestTodoItemDueAtMetadata:
         assert item.due_at == datetime(2026, 3, 1)
 
     def test_todoitem_with_metadata(self):
-        from dodo.models import TodoItem, Status
         from datetime import datetime
+
+        from dodo.models import Status, TodoItem
         item = TodoItem(
             id="abc12345", text="Test", status=Status.PENDING,
             created_at=datetime.now(), metadata={"status": "wip", "assignee": "agent"},
@@ -142,8 +144,9 @@ class TestTodoItemDueAtMetadata:
         assert item.metadata == {"status": "wip", "assignee": "agent"}
 
     def test_todoitem_defaults_none(self):
-        from dodo.models import TodoItem, Status
         from datetime import datetime
+
+        from dodo.models import Status, TodoItem
         item = TodoItem(
             id="abc12345", text="Test", status=Status.PENDING,
             created_at=datetime.now(),
@@ -152,8 +155,9 @@ class TestTodoItemDueAtMetadata:
         assert item.metadata is None
 
     def test_todoitem_to_dict_includes_new_fields(self):
-        from dodo.models import TodoItem, Status
         from datetime import datetime
+
+        from dodo.models import Status, TodoItem
         item = TodoItem(
             id="abc12345", text="Test", status=Status.PENDING,
             created_at=datetime(2024, 1, 15, 10, 30),
@@ -165,8 +169,9 @@ class TestTodoItemDueAtMetadata:
         assert d["metadata"] == {"status": "wip"}
 
     def test_todoitem_to_dict_none_fields(self):
-        from dodo.models import TodoItem, Status
         from datetime import datetime
+
+        from dodo.models import Status, TodoItem
         item = TodoItem(
             id="abc12345", text="Test", status=Status.PENDING,
             created_at=datetime(2024, 1, 15, 10, 30),
@@ -178,8 +183,9 @@ class TestTodoItemDueAtMetadata:
 
 class TestTodoItemViewNewFields:
     def test_view_delegates_due_at(self):
-        from dodo.models import TodoItem, TodoItemView, Status
         from datetime import datetime
+
+        from dodo.models import Status, TodoItem, TodoItemView
         item = TodoItem(
             id="abc12345", text="Test", status=Status.PENDING,
             created_at=datetime.now(), due_at=datetime(2026, 3, 1),
@@ -190,8 +196,9 @@ class TestTodoItemViewNewFields:
         assert view.metadata == {"k": "v"}
 
     def test_view_to_dict_includes_new_fields(self):
-        from dodo.models import TodoItem, TodoItemView, Status
         from datetime import datetime
+
+        from dodo.models import Status, TodoItem, TodoItemView
         item = TodoItem(
             id="abc12345", text="Test", status=Status.PENDING,
             created_at=datetime(2024, 1, 15, 10, 30),

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from dodo.models import Priority, Status, TodoItem
+    from dodo.models import TodoItem
 
 logger = logging.getLogger("dodo.webhook")
 

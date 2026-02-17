@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from dodo.models import Status, TodoItem
+from dodo.models import Priority, Status, TodoItem
 
 
 @runtime_checkable
@@ -19,7 +19,7 @@ class TodoBackend(Protocol):
         self,
         text: str,
         project: str | None = None,
-        priority: "Priority | None" = None,
+        priority: Priority | None = None,
         tags: list[str] | None = None,
         due_at: datetime | None = None,
         metadata: dict[str, str] | None = None,
@@ -47,7 +47,7 @@ class TodoBackend(Protocol):
         """Update todo text."""
         ...
 
-    def update_priority(self, id: str, priority: "Priority | None") -> TodoItem:
+    def update_priority(self, id: str, priority: Priority | None) -> TodoItem:
         """Update todo priority."""
         ...
 
