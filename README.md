@@ -13,6 +13,8 @@ Part of [**Nest-Driven Development**](https://github.com/pkronstrom/nest-driven-
 - **Plugin system**: Extend with AI processing, dependency graphs, server mode, ntfy.sh
 - **Interactive UI**: Full TUI with vim-style navigation
 - **Priority & tags**: Organize with `!!:` prefixes and `#hashtags`
+- **Due dates**: Track deadlines with `--due`, overdue highlighting in all formatters
+- **Metadata**: Arbitrary key-value pairs via `dodo meta set/rm/show`
 
 ## Installation
 
@@ -35,8 +37,12 @@ uv sync
 dodo add "Fix the bug"              # Add to current project's dodo
 dodo add -g "Buy groceries"         # Add to global dodo
 dodo add "Task" -p high -t work     # With priority and tags
+dodo add "Ship v2" --due 2026-03-01 # With due date
 dodo list                           # List todos
 dodo done abc123                    # Mark done (partial ID works)
+dodo due abc123 2026-06-15          # Set due date
+dodo meta set abc123 status wip     # Set metadata
+dodo tag add abc123 urgent          # Add tag atomically
 dodo                                # Interactive menu
 ```
 

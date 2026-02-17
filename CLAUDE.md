@@ -10,14 +10,14 @@ uv run ruff check src/   # Lint
 ## Structure
 ```
 src/dodo/
-├── models.py          # TodoItem, Status, Priority (frozen dataclasses)
+├── models.py          # TodoItem, Status, Priority (frozen dataclasses, with due_at/metadata)
 ├── config.py          # Config with nested plugin config (plugins.<name>.<key>)
 ├── resolve.py         # Dodo resolution (local, global, mapped, git-based)
 ├── core.py            # TodoService - routes to backends
-├── cli.py             # Typer commands (add, list, done, rm, new, destroy, etc.)
+├── cli.py             # Typer commands (add, list, done, rm, new, destroy, meta, tag, due, etc.)
 ├── cli_bulk.py        # Bulk operations (bulk add/done/rm/edit/dep)
 ├── backends/
-│   ├── base.py        # TodoBackend Protocol, GraphCapable Protocol
+│   ├── base.py        # TodoBackend Protocol (add_tag, set_metadata_key, etc.), GraphCapable
 │   ├── sqlite.py      # SQLite (default)
 │   └── markdown.py    # File-based (dodo.md)
 ├── plugins/           # Hook-based plugin system
@@ -32,6 +32,7 @@ src/dodo/
 
 ## Key Patterns
 
+- **TodoItem fields**: id, text, status, created_at, completed_at, project, priority, tags, due_at, metadata
 - **Plugin hooks** in `__init__.py`: `register_commands`, `register_root_commands`, `register_config`, `register_backend`, `extend_backend`, `extend_formatter`
 - **Plugin commands**: `register_commands` receives `plugins_app` (→ `dodo plugins <name> <cmd>`); `register_root_commands` receives root app. Declare `COMMANDS = ["plugins/<name>"]` for discoverability.
 - **Lazy loading**: Backends/plugins registered as strings, imported on first use

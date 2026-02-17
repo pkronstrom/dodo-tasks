@@ -81,7 +81,7 @@ Output:
 ○ jkl012   Update docs
 ```
 
-The `→N` indicator shows how many tasks are blocked by this one.
+The `→N` indicator shows how many tasks are blocked by this one. Due dates are shown as `@YYYY-MM-DD` (red if overdue).
 
 ## How It Works
 
