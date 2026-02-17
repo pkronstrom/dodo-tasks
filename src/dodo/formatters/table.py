@@ -1,5 +1,6 @@
 """Rich table formatter."""
 
+from datetime import datetime
 from typing import Any
 
 from rich.table import Table
@@ -38,13 +39,24 @@ class TableFormatter:
         # Table uses cyan for visibility in dedicated column
         return " ".join(f"[cyan]#{t}[/cyan]" for t in tags[:MAX_DISPLAY_TAGS])
 
+    def _format_due(self, due_at: datetime | None, status: Status) -> str:
+        if not due_at:
+            return ""
+        date_str = due_at.strftime("%Y-%m-%d")
+        if status == Status.DONE:
+            return f"[dim]{date_str}[/dim]"
+        if due_at < datetime.now():
+            return f"[red bold]{date_str}[/red bold]"
+        return date_str
+
     def format(self, items: list[TodoItem]) -> Any:
         if not items:
             return "[dim]No todos[/dim]"
 
-        # Check if any items have priority or tags
+        # Check if any items have priority, tags, or due dates
         has_priority = any(item.priority for item in items)
         has_tags = any(item.tags for item in items)
+        has_due = any(item.due_at for item in items)
 
         table = Table(show_header=True, header_style="bold")
 
@@ -55,6 +67,8 @@ class TableFormatter:
             table.add_column("Pri", width=5)
         table.add_column("Created", width=len(self._format_datetime(items[0].created_at)))
         table.add_column("Todo")
+        if has_due:
+            table.add_column("Due", width=12)
         if has_tags:
             table.add_column("Tags")
 
@@ -71,6 +85,8 @@ class TableFormatter:
                 row.append(self._format_priority(item.priority))
             row.append(created)
             row.append(item.text)
+            if has_due:
+                row.append(self._format_due(item.due_at, item.status))
             if has_tags:
                 row.append(self._format_tags(item.tags))
 

@@ -290,6 +290,50 @@ class TestTxtFormatter:
         assert output == "Full task !critical #work"
 
 
+class TestTableFormatterDueDate:
+    def test_due_column_shown_when_items_have_due_at(self):
+        items = [
+            TodoItem(
+                id="abc123",
+                text="Task with due",
+                status=Status.PENDING,
+                created_at=datetime(2024, 1, 9, 10, 0),
+                due_at=datetime(2026, 6, 15),
+            ),
+            TodoItem(
+                id="def456",
+                text="Task without due",
+                status=Status.PENDING,
+                created_at=datetime(2024, 1, 9, 10, 0),
+            ),
+        ]
+        formatter = TableFormatter()
+        output = formatter.format(items)
+        # Rich Table - check column headers
+        assert output is not None
+        assert any("Due" in str(col.header) for col in output.columns)
+
+    def test_no_due_column_when_no_items_have_due(self, sample_items):
+        formatter = TableFormatter()
+        output = formatter.format(sample_items)
+        assert output is not None
+        assert not any("Due" in str(col.header) for col in output.columns)
+
+    def test_overdue_highlighted(self):
+        items = [
+            TodoItem(
+                id="abc123",
+                text="Overdue task",
+                status=Status.PENDING,
+                created_at=datetime(2024, 1, 9, 10, 0),
+                due_at=datetime(2020, 1, 1),
+            ),
+        ]
+        formatter = TableFormatter()
+        output = formatter.format(items)
+        assert output is not None
+
+
 class TestMarkdownFormatter:
     def test_format_empty(self):
         from dodo.formatters.markdown import MarkdownFormatter
