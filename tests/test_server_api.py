@@ -305,6 +305,151 @@ class TestErrorPaths:
         assert resp.status_code == 400
 
 
+class TestTodosNewFields:
+    def test_add_todo_with_due_at(self, client):
+        resp = client.post("/api/v1/dodos/_default/todos", json={
+            "text": "Test", "due_at": "2026-03-01T00:00:00",
+        })
+        assert resp.status_code == 201
+        assert resp.json()["due_at"] == "2026-03-01T00:00:00"
+
+    def test_add_todo_with_metadata(self, client):
+        resp = client.post("/api/v1/dodos/_default/todos", json={
+            "text": "Test", "metadata": {"status": "wip"},
+        })
+        assert resp.status_code == 201
+        assert resp.json()["metadata"] == {"status": "wip"}
+
+    def test_update_todo_due_at(self, client):
+        resp = client.post("/api/v1/dodos/_default/todos", json={"text": "Test"})
+        todo_id = resp.json()["id"]
+        resp = client.patch(f"/api/v1/dodos/_default/todos/{todo_id}", json={
+            "due_at": "2026-06-15T00:00:00",
+        })
+        assert resp.status_code == 200
+        assert resp.json()["due_at"] == "2026-06-15T00:00:00"
+
+    def test_update_todo_metadata(self, client):
+        resp = client.post("/api/v1/dodos/_default/todos", json={"text": "Test"})
+        todo_id = resp.json()["id"]
+        resp = client.patch(f"/api/v1/dodos/_default/todos/{todo_id}", json={
+            "metadata": {"k": "v"},
+        })
+        assert resp.status_code == 200
+        assert resp.json()["metadata"] == {"k": "v"}
+
+    def test_get_todo_includes_new_fields(self, client):
+        resp = client.post("/api/v1/dodos/_default/todos", json={
+            "text": "Test", "due_at": "2026-03-01T00:00:00",
+            "metadata": {"k": "v"},
+        })
+        todo_id = resp.json()["id"]
+        resp = client.get(f"/api/v1/dodos/_default/todos/{todo_id}")
+        assert resp.json()["due_at"] == "2026-03-01T00:00:00"
+        assert resp.json()["metadata"] == {"k": "v"}
+
+    def test_list_todos_includes_new_fields(self, client):
+        client.post("/api/v1/dodos/_default/todos", json={
+            "text": "Test", "due_at": "2026-03-01T00:00:00",
+            "metadata": {"k": "v"},
+        })
+        resp = client.get("/api/v1/dodos/_default/todos")
+        items = resp.json()
+        assert items[0]["due_at"] == "2026-03-01T00:00:00"
+        assert items[0]["metadata"] == {"k": "v"}
+
+
+class TestAtomicTagEndpoints:
+    def test_add_tag(self, client):
+        resp = client.post("/api/v1/dodos/_default/todos", json={
+            "text": "Test", "tags": ["a"],
+        })
+        todo_id = resp.json()["id"]
+        resp = client.post(
+            f"/api/v1/dodos/_default/todos/{todo_id}/tags/add",
+            json={"tag": "b"},
+        )
+        assert resp.status_code == 200
+        assert "b" in resp.json()["tags"]
+        assert "a" in resp.json()["tags"]
+
+    def test_remove_tag(self, client):
+        resp = client.post("/api/v1/dodos/_default/todos", json={
+            "text": "Test", "tags": ["a", "b"],
+        })
+        todo_id = resp.json()["id"]
+        resp = client.post(
+            f"/api/v1/dodos/_default/todos/{todo_id}/tags/remove",
+            json={"tag": "a"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["tags"] == ["b"]
+
+    def test_add_tag_not_found(self, client):
+        resp = client.post(
+            "/api/v1/dodos/_default/todos/nonexistent/tags/add",
+            json={"tag": "x"},
+        )
+        assert resp.status_code == 404
+
+
+class TestAtomicMetaEndpoints:
+    def test_set_metadata(self, client):
+        resp = client.post("/api/v1/dodos/_default/todos", json={"text": "Test"})
+        todo_id = resp.json()["id"]
+        resp = client.post(
+            f"/api/v1/dodos/_default/todos/{todo_id}/meta/set",
+            json={"key": "status", "value": "wip"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["metadata"] == {"status": "wip"}
+
+    def test_remove_metadata(self, client):
+        resp = client.post("/api/v1/dodos/_default/todos", json={
+            "text": "Test", "metadata": {"a": "1", "b": "2"},
+        })
+        todo_id = resp.json()["id"]
+        resp = client.post(
+            f"/api/v1/dodos/_default/todos/{todo_id}/meta/remove",
+            json={"key": "a"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["metadata"] == {"b": "2"}
+
+    def test_set_metadata_not_found(self, client):
+        resp = client.post(
+            "/api/v1/dodos/_default/todos/nonexistent/meta/set",
+            json={"key": "k", "value": "v"},
+        )
+        assert resp.status_code == 404
+
+
+class TestListTodosFiltering:
+    def test_filter_overdue(self, client):
+        client.post("/api/v1/dodos/_default/todos", json={
+            "text": "Overdue", "due_at": "2020-01-01T00:00:00",
+        })
+        client.post("/api/v1/dodos/_default/todos", json={
+            "text": "Future", "due_at": "2099-01-01T00:00:00",
+        })
+        resp = client.get("/api/v1/dodos/_default/todos?overdue=true")
+        items = resp.json()
+        assert len(items) == 1
+        assert items[0]["text"] == "Overdue"
+
+    def test_filter_by_metadata(self, client):
+        client.post("/api/v1/dodos/_default/todos", json={
+            "text": "WIP", "metadata": {"status": "wip"},
+        })
+        client.post("/api/v1/dodos/_default/todos", json={
+            "text": "Normal",
+        })
+        resp = client.get("/api/v1/dodos/_default/todos?meta.status=wip")
+        items = resp.json()
+        assert len(items) == 1
+        assert items[0]["text"] == "WIP"
+
+
 class TestAuth:
     def test_auth_required_when_configured(self, tmp_path):
         cfg = Config.load(tmp_path / "config")

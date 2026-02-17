@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -68,6 +69,18 @@ async def list_todos(request: Request) -> JSONResponse:
         )
 
     items = await asyncio.to_thread(svc.list, status)
+
+    # Filter: overdue
+    if request.query_params.get("overdue") == "true":
+        now = datetime.now()
+        items = [i for i in items if i.due_at and i.due_at < now]
+
+    # Filter: meta.key=value
+    for key, value in request.query_params.items():
+        if key.startswith("meta."):
+            meta_key = key[5:]
+            items = [i for i in items if i.metadata and i.metadata.get(meta_key) == value]
+
     return JSONResponse([item.to_dict() for item in items])
 
 
@@ -95,7 +108,16 @@ async def add_todo(request: Request) -> JSONResponse:
         )
 
     tags = body.get("tags")
-    item = await asyncio.to_thread(svc.add, text, priority, tags)
+
+    due_at = None
+    if body.get("due_at"):
+        try:
+            due_at = datetime.fromisoformat(body["due_at"])
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "Invalid due_at format"}, status_code=400)
+
+    metadata = body.get("metadata")
+    item = await asyncio.to_thread(svc.add, text, priority, tags, due_at, metadata)
     return JSONResponse(item.to_dict(), status_code=201)
 
 
@@ -124,7 +146,7 @@ async def update_todo(request: Request) -> JSONResponse:
     except json.JSONDecodeError:
         return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
 
-    if not any(k in body for k in ("text", "priority", "tags")):
+    if not any(k in body for k in ("text", "priority", "tags", "due_at", "metadata")):
         return JSONResponse({"error": "no fields to update"}, status_code=400)
 
     # Validate all fields before applying any (atomic: no partial updates on error)
@@ -145,6 +167,16 @@ async def update_todo(request: Request) -> JSONResponse:
             item = await asyncio.to_thread(svc.update_priority, todo_id, priority)
         if "tags" in body:
             item = await asyncio.to_thread(svc.update_tags, todo_id, body["tags"])
+        if "due_at" in body:
+            due_at = None
+            if body["due_at"]:
+                try:
+                    due_at = datetime.fromisoformat(body["due_at"])
+                except (ValueError, TypeError):
+                    return JSONResponse({"error": "Invalid due_at format"}, status_code=400)
+            item = await asyncio.to_thread(svc.update_due_at, todo_id, due_at)
+        if "metadata" in body:
+            item = await asyncio.to_thread(svc.update_metadata, todo_id, body["metadata"])
     except KeyError:
         return JSONResponse({"error": "not found"}, status_code=404)
     except ValueError as e:
@@ -193,3 +225,84 @@ async def delete_todo(request: Request) -> JSONResponse:
     except KeyError:
         return JSONResponse({"error": "not found"}, status_code=404)
     return JSONResponse({"status": "deleted"})
+
+
+async def add_tag_endpoint(request: Request) -> JSONResponse:
+    """POST /api/v1/dodos/:name/todos/:id/tags/add"""
+    svc, err = await _get_service(request)
+    if err:
+        return err
+    todo_id = request.path_params["todo_id"]
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+    tag = body.get("tag", "").strip()
+    if not tag:
+        return JSONResponse({"error": "tag is required"}, status_code=400)
+    try:
+        item = await asyncio.to_thread(svc.add_tag, todo_id, tag)
+    except KeyError:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(item.to_dict())
+
+
+async def remove_tag_endpoint(request: Request) -> JSONResponse:
+    """POST /api/v1/dodos/:name/todos/:id/tags/remove"""
+    svc, err = await _get_service(request)
+    if err:
+        return err
+    todo_id = request.path_params["todo_id"]
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+    tag = body.get("tag", "").strip()
+    if not tag:
+        return JSONResponse({"error": "tag is required"}, status_code=400)
+    try:
+        item = await asyncio.to_thread(svc.remove_tag, todo_id, tag)
+    except KeyError:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(item.to_dict())
+
+
+async def set_metadata_endpoint(request: Request) -> JSONResponse:
+    """POST /api/v1/dodos/:name/todos/:id/meta/set"""
+    svc, err = await _get_service(request)
+    if err:
+        return err
+    todo_id = request.path_params["todo_id"]
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+    key = body.get("key", "").strip()
+    value = body.get("value", "")
+    if not key:
+        return JSONResponse({"error": "key is required"}, status_code=400)
+    try:
+        item = await asyncio.to_thread(svc.set_metadata_key, todo_id, key, str(value))
+    except KeyError:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(item.to_dict())
+
+
+async def remove_metadata_endpoint(request: Request) -> JSONResponse:
+    """POST /api/v1/dodos/:name/todos/:id/meta/remove"""
+    svc, err = await _get_service(request)
+    if err:
+        return err
+    todo_id = request.path_params["todo_id"]
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "Invalid JSON body"}, status_code=400)
+    key = body.get("key", "").strip()
+    if not key:
+        return JSONResponse({"error": "key is required"}, status_code=400)
+    try:
+        item = await asyncio.to_thread(svc.remove_metadata_key, todo_id, key)
+    except KeyError:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(item.to_dict())

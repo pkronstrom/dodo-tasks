@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from dodo.config import Config
 
 from dodo.plugins.server.api import (
+    add_tag_endpoint,
     add_todo,
     complete_todo,
     delete_dodo,
@@ -23,6 +24,9 @@ from dodo.plugins.server.api import (
     health,
     list_dodos,
     list_todos,
+    remove_metadata_endpoint,
+    remove_tag_endpoint,
+    set_metadata_endpoint,
     toggle_todo,
     update_todo,
 )
@@ -163,6 +167,26 @@ def create_app(config: Config) -> Starlette:
             Route(
                 "/api/v1/dodos/{name}/todos/{todo_id}/complete",
                 complete_todo,
+                methods=["POST"],
+            ),
+            Route(
+                "/api/v1/dodos/{name}/todos/{todo_id}/tags/add",
+                add_tag_endpoint,
+                methods=["POST"],
+            ),
+            Route(
+                "/api/v1/dodos/{name}/todos/{todo_id}/tags/remove",
+                remove_tag_endpoint,
+                methods=["POST"],
+            ),
+            Route(
+                "/api/v1/dodos/{name}/todos/{todo_id}/meta/set",
+                set_metadata_endpoint,
+                methods=["POST"],
+            ),
+            Route(
+                "/api/v1/dodos/{name}/todos/{todo_id}/meta/remove",
+                remove_metadata_endpoint,
                 methods=["POST"],
             ),
         ])
