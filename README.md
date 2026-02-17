@@ -2,21 +2,171 @@
 
 ![dodo banner](docs/dodo_banner.png)
 
-**The project-aware todo manager for developers and their AI agents — zero config, zero overhead.**
+[![PyPI version](https://img.shields.io/pypi/v/dodo-tasks)](https://pypi.org/project/dodo-tasks/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Part of NDD](https://img.shields.io/badge/NDD-minimum%20viable%20workflow-blue)](https://github.com/pkronstrom/nest-driven-development)
 
-Part of [**Nest-Driven Development**](https://github.com/pkronstrom/nest-driven-development) — the minimum vibable workflow.
+**The todo list that knows which project you're in.**
 
-Your todos pile up across projects because your tools don't know which project you're in. Dodo does — automatically, the moment you `cd`.
+Part of [**Nest-Driven Development**](https://github.com/pkronstrom/nest-driven-development) — the minimum viable workflow.
 
-No Jira. No setup. Just tasks that know where they belong, captured fast and routed right. Open a terminal in any directory and your task list is already scoped to that project. Your AI agents get the same context you do.
+---
+
+## The Problem
+
+You have todos scattered across sticky notes, a global task file, three different project READMEs, and a Jira board nobody updates. When you `cd` into a project, you have no idea what "in progress" even means.
+
+Your AI agents have it worse — they have no idea what you were working on, what's blocked, or what matters next.
+
+## The Solution
+
+Dodo routes tasks automatically based on where you are in the filesystem. Open a terminal in any project directory and your scoped task list is already there. Your AI agents get the same context you do — no setup, no configuration, no syncing.
+
+```bash
+~/projects/webapp $ dodo list    # shows webapp tasks
+~/random-folder   $ dodo list    # shows global tasks
+```
+
+No Jira. No setup. Just tasks that know where they belong.
+
+---
+
+## Quick Start
+
+```bash
+# Install (uv recommended)
+uv tool install git+https://github.com/pkronstrom/dodo-tasks
+
+# Add a task to the current project
+dodo add "Fix the bug"
+
+# List tasks
+dodo list
+
+# Mark done (partial ID works)
+dodo done abc123
+
+# Interactive TUI
+dodo
+```
+
+---
 
 ## Features
 
-- **Land in any directory, see the right tasks** — project routing is automatic, based on where you are
+- **Land in any directory, see the right tasks** — project routing is automatic, based on where you `cd`
 - **Capture fast, triage later** — add todos in seconds with priority prefixes (`!!:`) and `#hashtags`
-- **Works how your team stores things** — SQLite, Markdown, or Obsidian, your call
-- **A full TUI when you want to dig in** — vim-style navigation, no mouse required
-- **Extend it with AI** — plugin system lets your agents process, link, and act on tasks
+- **Works how your team stores things** — SQLite, Markdown, or Obsidian vault, your call
+- **A full TUI when you need to dig in** — vim-style navigation, no mouse required
+- **AI agents get the same context you do** — plugin system lets agents process, link, and act on tasks
+
+---
+
+## How Dodo Finds Your Todos
+
+**Detection order:**
+
+| Priority | Source | How it works |
+|----------|--------|--------------|
+| 1 | **Local** | `.dodo/` in current dir or parents |
+| 2 | **Mapped** | Directory set via `dodo use` |
+| 3 | **Global** | `~/.config/dodo/` fallback |
+
+```bash
+dodo new          # Create dodo (auto-named from git/dir)
+dodo new --local  # Create .dodo/ at project root
+dodo use myname   # Point this dir to existing dodo
+dodo show         # Show detected dodos and current default
+```
+
+**Override flags:**
+
+| Flag | Effect |
+|------|--------|
+| `-g` / `--global` | Force global, skip detection |
+| `-d name` | Target specific dodo by name |
+
+---
+
+## Bulk Operations (for AI agents)
+
+```bash
+# Bulk add from JSONL
+echo '{"text": "Task 1", "priority": "high"}
+{"text": "Task 2", "tags": ["work"]}' | dodo bulk add
+
+# Bulk done/rm with multiple IDs
+dodo bulk done abc123 def456
+dodo bulk rm abc123 def456
+```
+
+See [examples/dodo-command.md](examples/dodo-command.md) for agentic workflow patterns.
+
+---
+
+## Plugins
+
+```bash
+dodo plugins list           # Show available plugins
+dodo plugins enable ai      # Enable a plugin
+dodo config                 # Configure plugins
+```
+
+| Plugin | What it does |
+|--------|-------------|
+| `ai` | AI-assisted formatting (claude, gemini, llm) |
+| `graph` | Dependency tracking with `dodo dep add` |
+| `server` | REST API + Web UI + MCP endpoint |
+| `ntfy-inbox` | Receive todos via ntfy.sh (works with Siri) |
+| `obsidian` | Obsidian vault backend |
+
+### Server plugin (REST / Web UI / MCP)
+
+```bash
+dodo plugins enable server
+pip install -e ".[server]"
+dodo server start
+```
+
+Exposes three channels (each individually toggleable):
+- **Web UI** at `/` — mobile-first task manager with dark mode
+- **REST API** at `/api/v1/` — full CRUD, multi-dodo
+- **MCP** at `/mcp` — drop-in AI agent integration
+
+### ntfy-inbox (Siri integration)
+
+```bash
+dodo plugins enable ntfy-inbox
+dodo config                       # Set your ntfy topic
+dodo plugins ntfy-inbox run       # Start listener
+```
+
+Send todos from anywhere:
+```bash
+curl -d "Buy milk #errands" ntfy.sh/your-topic
+```
+
+---
+
+## Configuration
+
+```bash
+dodo config     # Interactive config menu
+```
+
+Config stored at `~/.config/dodo/config.json`:
+
+```json
+{
+  "default_backend": "sqlite",
+  "plugins": {
+    "ntfy-inbox": { "topic": "your-secret" },
+    "ai": { "command": "claude -p ..." }
+  }
+}
+```
+
+---
 
 ## Installation
 
@@ -33,146 +183,7 @@ cd dodo
 uv sync
 ```
 
-## Quick Start
-
-```bash
-dodo add "Fix the bug"              # Add to current project's dodo
-dodo add -g "Buy groceries"         # Add to global dodo
-dodo add "Task" -p high -t work     # With priority and tags
-dodo list                           # List todos
-dodo done abc123                    # Mark done (partial ID works)
-dodo                                # Interactive menu
-```
-
-## How Dodo Finds Your Todos
-
-**Default behavior** - Dodo picks the right list automatically:
-
-```bash
-~/projects/webapp $ dodo list    # uses webapp (if dodo exists)
-~/random-folder   $ dodo list    # uses global
-```
-
-**Detection order:**
-
-| Priority | Source | How it works |
-|----------|--------|--------------|
-| 1 | **Local** | `.dodo/` in current dir or parents |
-| 2 | **Mapped** | Directory set via `dodo use` |
-| 3 | **Global** | `~/.config/dodo/` fallback |
-
-**Notes:**
-- Dodos must be explicitly created with `dodo new`
-- `dodo add` without existing dodo uses global (with one-time hint)
-- Use `dodo show` to see what dodo would be used
-
-**Commands:**
-
-| Command | Effect |
-|---------|--------|
-| `dodo new` | Create dodo (auto-named from git/dir) |
-| `dodo new --local` | Create `.dodo/` at project root |
-| `dodo new myname` | Create named dodo |
-| `dodo use myname` | Point this dir to existing dodo |
-| `dodo unuse` | Remove the pointer |
-| `dodo show` | Show detected dodos and current default |
-
-**Override flags:**
-
-| Flag | Effect |
-|------|--------|
-| `-g` / `--global` | Force global, skip detection |
-| `-d name` | Target specific dodo by name |
-
-## Bulk Operations
-
-For scripting and AI agents:
-
-```bash
-# Bulk add from JSONL
-echo '{"text": "Task 1", "priority": "high"}
-{"text": "Task 2", "tags": ["work"]}' | dodo bulk add
-
-# Bulk done/rm with multiple IDs
-dodo bulk done abc123 def456
-dodo bulk rm abc123 def456
-
-# Bulk dependencies (requires graph plugin)
-echo '{"blocker": "abc", "blocked": "def"}' | dodo bulk dep
-```
-
-See [examples/dodo-command.md](examples/dodo-command.md) for agentic workflow patterns.
-
-## Plugins
-
-```bash
-dodo plugins list                   # Show available plugins
-dodo plugins enable ai              # Enable a plugin
-dodo config                         # Configure plugins
-```
-
-### Built-in Plugins
-
-| Plugin | Description |
-|--------|-------------|
-| `ai` | AI-assisted todo formatting (claude, gemini, llm) |
-| `graph` | Dependency tracking with `dodo dep add` |
-| `server` | REST API, Web UI, MCP endpoint, and remote backend |
-| `ntfy-inbox` | Receive todos via ntfy.sh (Siri integration) |
-| `obsidian` | Obsidian vault backend |
-
-### server (REST API / Web UI / MCP)
-
-```bash
-dodo plugins enable server
-pip install -e ".[server]"      # Server deps (starlette, uvicorn, mcp)
-dodo server start               # Start server
-dodo server start --host 0.0.0.0 --port 9090  # Remote access
-```
-
-Provides three channels (each individually toggleable):
-- **Web UI** at `/` — mobile-first task manager with dark mode
-- **REST API** at `/api/v1/` — full CRUD, multi-dodo
-- **MCP** at `/mcp` — AI agent integration
-
-Remote backend (no extra deps needed):
-```bash
-dodo config                     # Set remote_url under server plugin
-dodo new myproject --backend remote
-dodo add "synced task"          # Routed to remote server
-```
-
-### ntfy-inbox (Siri Integration)
-
-```bash
-dodo plugins enable ntfy-inbox
-dodo config                         # Set your ntfy topic
-dodo plugins ntfy-inbox run         # Start listener
-dodo plugins ntfy-inbox run -g      # Force global dodo
-```
-
-Send todos via curl or iOS Shortcuts:
-```bash
-curl -d "Buy milk #errands" ntfy.sh/your-topic
-curl -d '{"message":"Task","priority":4}' ntfy.sh/your-topic
-```
-
-## Configuration
-
-```bash
-dodo config                         # Interactive config menu
-```
-
-Config stored in `~/.config/dodo/config.json`. Plugin config uses nested structure:
-```json
-{
-  "default_backend": "sqlite",
-  "plugins": {
-    "ntfy-inbox": { "topic": "your-secret" },
-    "ai": { "command": "claude -p ..." }
-  }
-}
-```
+---
 
 ## License
 
