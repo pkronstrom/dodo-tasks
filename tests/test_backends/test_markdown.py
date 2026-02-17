@@ -212,3 +212,50 @@ class TestMarkdownBackendPriorityTags:
         assert updated.text == "New text"
         assert updated.priority == Priority.HIGH
         assert updated.tags == ["api"]
+
+
+class TestMarkdownBackendNewMethods:
+    def test_add_ignores_due_at_and_metadata(self, tmp_path: Path):
+        from datetime import datetime
+        backend = MarkdownBackend(tmp_path / "dodo.md")
+        item = backend.add("Test", due_at=datetime(2026, 3, 1), metadata={"k": "v"})
+        assert item.due_at is None
+        assert item.metadata is None
+
+    def test_add_tag(self, tmp_path: Path):
+        backend = MarkdownBackend(tmp_path / "dodo.md")
+        item = backend.add("Test", tags=["a"])
+        updated = backend.add_tag(item.id, "b")
+        assert "a" in updated.tags
+        assert "b" in updated.tags
+
+    def test_remove_tag(self, tmp_path: Path):
+        backend = MarkdownBackend(tmp_path / "dodo.md")
+        item = backend.add("Test", tags=["a", "b"])
+        updated = backend.remove_tag(item.id, "a")
+        assert updated.tags == ["b"]
+
+    def test_update_due_at_raises(self, tmp_path: Path):
+        from datetime import datetime
+        backend = MarkdownBackend(tmp_path / "dodo.md")
+        item = backend.add("Test")
+        with pytest.raises(NotImplementedError):
+            backend.update_due_at(item.id, datetime(2026, 3, 1))
+
+    def test_update_metadata_raises(self, tmp_path: Path):
+        backend = MarkdownBackend(tmp_path / "dodo.md")
+        item = backend.add("Test")
+        with pytest.raises(NotImplementedError):
+            backend.update_metadata(item.id, {"k": "v"})
+
+    def test_set_metadata_key_raises(self, tmp_path: Path):
+        backend = MarkdownBackend(tmp_path / "dodo.md")
+        item = backend.add("Test")
+        with pytest.raises(NotImplementedError):
+            backend.set_metadata_key(item.id, "k", "v")
+
+    def test_remove_metadata_key_raises(self, tmp_path: Path):
+        backend = MarkdownBackend(tmp_path / "dodo.md")
+        item = backend.add("Test")
+        with pytest.raises(NotImplementedError):
+            backend.remove_metadata_key(item.id, "k")
