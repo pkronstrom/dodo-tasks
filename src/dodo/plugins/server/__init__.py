@@ -50,7 +50,9 @@ def register_config() -> list[ConfigVar]:
         ),
         ConfigVar(
             "enable_mcp", "false",
-            label="MCP Server", kind="toggle",
+            label="MCP (SSE)",
+            kind="toggle",
+            description="Mount at /mcp. For stdio: dodo mcp",
         ),
         ConfigVar(
             "host", "127.0.0.1",

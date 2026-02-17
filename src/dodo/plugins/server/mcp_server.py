@@ -1,7 +1,8 @@
 """MCP server with FastMCP tools for dodo.
 
-Mounted at /mcp on the Starlette app.
-Connect: claude mcp add --transport http dodo http://host:port/mcp
+Two transports:
+- stdio: `dodo mcp` (for claude mcp add dodo -- dodo mcp)
+- SSE:   mounted at /mcp on the Starlette app
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from typing import TYPE_CHECKING
 from mcp.server.fastmcp import FastMCP
 
 if TYPE_CHECKING:
+    from dodo.config import Config
     from dodo.plugins.server.app import ServiceRegistry
 
 
@@ -25,8 +27,8 @@ def _validate_dodo(name: str) -> None:
             raise ValueError(f"Invalid dodo name: {name}")
 
 
-def create_mcp_app(registry: ServiceRegistry):
-    """Create an MCP ASGI app with dodo tools."""
+def _build_mcp(registry: ServiceRegistry) -> FastMCP:
+    """Create a FastMCP instance with all dodo tools registered."""
     mcp = FastMCP("dodo")
 
     @mcp.tool()
@@ -161,4 +163,22 @@ def create_mcp_app(registry: ServiceRegistry):
         svc = registry.get_service(dodo)
         return svc.remove_metadata_key(id, key).to_dict()
 
-    return mcp.sse_app()
+    return mcp
+
+
+def create_mcp_app(registry: ServiceRegistry):
+    """Create an MCP SSE/ASGI app for mounting on the web server."""
+    return _build_mcp(registry).sse_app()
+
+
+def run_stdio(config: Config) -> None:
+    """Run MCP server over stdio for direct AI agent integration.
+
+    Usage: dodo mcp
+    Config: claude mcp add dodo -- dodo mcp
+    """
+    from dodo.plugins.server.app import ServiceRegistry
+
+    registry = ServiceRegistry(config)
+    mcp = _build_mcp(registry)
+    mcp.run(transport="stdio")

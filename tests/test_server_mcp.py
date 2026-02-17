@@ -8,7 +8,11 @@ mcp = pytest.importorskip("mcp")
 
 from dodo.config import Config  # noqa: E402
 from dodo.plugins.server.app import ServiceRegistry  # noqa: E402
-from dodo.plugins.server.mcp_server import _validate_dodo, create_mcp_app  # noqa: E402
+from dodo.plugins.server.mcp_server import (  # noqa: E402
+    _build_mcp,
+    _validate_dodo,
+    create_mcp_app,
+)
 
 
 @pytest.fixture
@@ -133,3 +137,18 @@ class TestMcpServiceIntegration:
         """Smoke test that create_mcp_app returns an ASGI app."""
         app = create_mcp_app(registry)
         assert app is not None
+
+    def test_build_mcp_returns_fastmcp(self, registry):
+        """_build_mcp returns a FastMCP instance (not an ASGI app)."""
+        from mcp.server.fastmcp import FastMCP
+
+        mcp_instance = _build_mcp(registry)
+        assert isinstance(mcp_instance, FastMCP)
+
+    def test_build_mcp_has_tools(self, registry):
+        """_build_mcp registers all expected tools."""
+        mcp_instance = _build_mcp(registry)
+        tool_names = {t.name for t in mcp_instance._tool_manager.list_tools()}
+        assert "list_dodos" in tool_names
+        assert "add_todo" in tool_names
+        assert "list_todos" in tool_names

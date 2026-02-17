@@ -1278,6 +1278,24 @@ def tag_rm(
 app.add_typer(tag_app, name="tag")
 
 
+# --- mcp command ---
+
+
+@app.command(hidden=True)
+def mcp():
+    """Run as stdio MCP server for AI agent integration.
+
+    Add to Claude Code:  claude mcp add dodo -- dodo mcp
+    """
+    try:
+        from dodo.plugins.server.mcp_server import run_stdio
+    except ImportError:
+        console.print("[red]Error:[/red] MCP requires: pip install dodo-tasks[server]")
+        raise typer.Exit(1)
+    cfg = _get_config()
+    run_stdio(cfg)
+
+
 # --- due command ---
 
 @app.command()

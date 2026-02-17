@@ -9,6 +9,9 @@
   - Full CRUD: `add`, `list`, `get`, `complete`, `delete`, `update`
   - Atomic ops: `add_tag`, `remove_tag`, `set_meta`, `remove_meta`
   - String inputs for enums (`priority="high"`), standard exceptions (`KeyError`/`ValueError`)
+- **MCP stdio transport** (`dodo mcp`): Run MCP server over stdio for direct AI agent integration
+  - Add to Claude Code: `claude mcp add dodo -- dodo mcp`
+  - No web server required — works alongside the existing SSE transport on the web server
 - **Scrollable config menu & dodos list**: Config and dodos menus now scroll properly with large lists
 
 ## v0.6.0
