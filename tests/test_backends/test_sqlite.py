@@ -234,3 +234,98 @@ class TestSqliteBackendDueAtMetadata:
         from datetime import datetime
         updated = backend.update_due_at("abc12345", datetime(2026, 3, 1))
         assert updated.due_at is not None
+
+
+class TestSqliteBackendAtomicOps:
+    def test_add_tag(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        item = backend.add("Test", tags=["existing"])
+        updated = backend.add_tag(item.id, "new")
+        assert "new" in updated.tags
+        assert "existing" in updated.tags
+
+    def test_add_tag_to_empty(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        item = backend.add("Test")
+        updated = backend.add_tag(item.id, "first")
+        assert updated.tags == ["first"]
+
+    def test_add_tag_idempotent(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        item = backend.add("Test", tags=["existing"])
+        updated = backend.add_tag(item.id, "existing")
+        assert updated.tags == ["existing"]
+
+    def test_add_tag_nonexistent(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        with pytest.raises(KeyError):
+            backend.add_tag("nonexistent", "tag")
+
+    def test_remove_tag(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        item = backend.add("Test", tags=["a", "b"])
+        updated = backend.remove_tag(item.id, "a")
+        assert updated.tags == ["b"]
+
+    def test_remove_tag_last(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        item = backend.add("Test", tags=["only"])
+        updated = backend.remove_tag(item.id, "only")
+        assert updated.tags is None or updated.tags == []
+
+    def test_remove_tag_not_present(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        item = backend.add("Test", tags=["a"])
+        updated = backend.remove_tag(item.id, "missing")
+        assert updated.tags == ["a"]
+
+    def test_remove_tag_nonexistent(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        with pytest.raises(KeyError):
+            backend.remove_tag("nonexistent", "tag")
+
+    def test_set_metadata_key(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        item = backend.add("Test")
+        updated = backend.set_metadata_key(item.id, "status", "wip")
+        assert updated.metadata == {"status": "wip"}
+
+    def test_set_metadata_key_adds_to_existing(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        item = backend.add("Test", metadata={"a": "1"})
+        updated = backend.set_metadata_key(item.id, "b", "2")
+        assert updated.metadata == {"a": "1", "b": "2"}
+
+    def test_set_metadata_key_overwrites(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        item = backend.add("Test", metadata={"a": "1"})
+        updated = backend.set_metadata_key(item.id, "a", "2")
+        assert updated.metadata == {"a": "2"}
+
+    def test_set_metadata_key_nonexistent(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        with pytest.raises(KeyError):
+            backend.set_metadata_key("nonexistent", "k", "v")
+
+    def test_remove_metadata_key(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        item = backend.add("Test", metadata={"a": "1", "b": "2"})
+        updated = backend.remove_metadata_key(item.id, "a")
+        assert updated.metadata == {"b": "2"}
+
+    def test_remove_metadata_key_last(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        item = backend.add("Test", metadata={"a": "1"})
+        updated = backend.remove_metadata_key(item.id, "a")
+        assert updated.metadata is None or updated.metadata == {}
+
+    def test_remove_metadata_key_not_present(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        item = backend.add("Test", metadata={"a": "1"})
+        updated = backend.remove_metadata_key(item.id, "missing")
+        assert updated.metadata == {"a": "1"}
+
+    def test_remove_metadata_key_nonexistent(self, tmp_path: Path):
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        with pytest.raises(KeyError):
+            backend.remove_metadata_key("nonexistent", "k")

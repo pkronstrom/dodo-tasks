@@ -201,6 +201,40 @@ class SqliteBackend:
             raise KeyError(f"Todo not found: {id}")
         return item
 
+    def add_tag(self, id: str, tag: str) -> TodoItem:
+        item = self.get(id)
+        if not item:
+            raise KeyError(f"Todo not found: {id}")
+        tags = list(item.tags) if item.tags else []
+        if tag not in tags:
+            tags.append(tag)
+        return self.update_tags(id, tags)
+
+    def remove_tag(self, id: str, tag: str) -> TodoItem:
+        item = self.get(id)
+        if not item:
+            raise KeyError(f"Todo not found: {id}")
+        tags = list(item.tags) if item.tags else []
+        if tag in tags:
+            tags.remove(tag)
+        return self.update_tags(id, tags if tags else None)
+
+    def set_metadata_key(self, id: str, key: str, value: str) -> TodoItem:
+        item = self.get(id)
+        if not item:
+            raise KeyError(f"Todo not found: {id}")
+        meta = dict(item.metadata) if item.metadata else {}
+        meta[key] = value
+        return self.update_metadata(id, meta)
+
+    def remove_metadata_key(self, id: str, key: str) -> TodoItem:
+        item = self.get(id)
+        if not item:
+            raise KeyError(f"Todo not found: {id}")
+        meta = dict(item.metadata) if item.metadata else {}
+        meta.pop(key, None)
+        return self.update_metadata(id, meta if meta else None)
+
     def delete(self, id: str) -> None:
         with self._connect() as conn:
             cursor = conn.execute("DELETE FROM todos WHERE id = ?", (id,))
