@@ -13,7 +13,7 @@ from dodo.config import Config
 from dodo.core import TodoService
 from dodo.models import Status, TodoItem, UndoAction
 
-from .panel_builder import format_scroll_indicator
+from .panel_builder import calculate_visible_range, format_scroll_indicator
 from .rich_menu import RichTerminalMenu
 
 # UI Constants
@@ -829,63 +829,97 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
     # State for toggling visibility of all dodos
     show_all = False
     cursor = 0
+    scroll_offset = 0
 
     def build_display_items() -> list[tuple[str, str, Path | None, int, bool]]:
         """Build current display list based on show_all state."""
-        items = list(dodos)
+        display_items = list(dodos)
         if show_all and all_dodos:
-            items.extend(all_dodos)
-        return items
+            display_items.extend(all_dodos)
+        return display_items
 
-    def render() -> None:
-        items = build_display_items()
-        sys.stdout.write("\033[H\033[J")  # Clear screen
-        lines = ["[bold]Detected Dodos[/bold]", ""]
-        lines.append("[dim]The active dodo is auto-detected based on your current directory.[/dim]")
-        lines.append("")
+    def build_display() -> Panel:
+        nonlocal scroll_offset
 
-        for i, (key, name, path, count, is_current) in enumerate(items):
-            marker = "[cyan]>[/cyan] " if i == cursor else "  "
-            path_str = f"  [dim]{_shorten_path(path, cfg.config_dir)}[/dim]" if path else ""
-            count_str = f"[dim]({count} todos)[/dim]"
+        max_width = getattr(cfg, "interactive_width", DEFAULT_PANEL_WIDTH)
+        term_width = console.width or max_width
+        width = min(max_width, term_width - 4)
+        term_height = console.height or DEFAULT_TERMINAL_HEIGHT
+        # Fixed overhead: blank(1) + spacer(1) + footer(1) + borders(2) = 5
+        # Indicators (0-2) are dynamic — use two-pass to reclaim unused space
+        max_visible_base = max(3, term_height - 7)  # assumes 2 indicators
 
-            if is_current:
-                lines.append(
-                    f"{marker}[bold cyan]{name}[/bold cyan] {count_str} [cyan](active)[/cyan]"
+        display_items = build_display_items()
+        toggle_offset = 1 if all_dodos else 0
+        new_dodo_index = len(display_items) + toggle_offset
+        total_rows = new_dodo_index + 1
+
+        # First pass: determine how many indicators are needed
+        scroll_offset, vs, ve = calculate_visible_range(
+            cursor, total_rows, max_visible_base, scroll_offset,
+        )
+        n_indicators = (1 if vs > 0 else 0) + (1 if ve < total_rows else 0)
+        max_visible = max_visible_base + (2 - n_indicators)
+
+        # Second pass: with reclaimed indicator space
+        scroll_offset, visible_start, visible_end = calculate_visible_range(
+            cursor, total_rows, max_visible, scroll_offset,
+        )
+
+        lines: list[str] = []
+        lines.append("")  # blank line
+
+        above_indicator, below_indicator = format_scroll_indicator(
+            hidden_above=visible_start,
+            hidden_below=total_rows - visible_end,
+        )
+        if above_indicator:
+            lines.append(above_indicator)
+
+        for row in range(visible_start, visible_end):
+            if row < len(display_items):
+                item_key, name, path, count, is_current = display_items[row]
+                marker = "[cyan]>[/cyan] " if row == cursor else "  "
+                path_str = (
+                    f"  [dim]{_shorten_path(path, cfg.config_dir)}[/dim]" if path else ""
                 )
-            else:
-                lines.append(f"{marker}{name} {count_str}{path_str}")
+                count_str = f"[dim]({count} todos)[/dim]"
+                if is_current:
+                    lines.append(
+                        f"{marker}[bold cyan]{name}[/bold cyan]"
+                        f" {count_str} [cyan](active)[/cyan]"
+                    )
+                else:
+                    lines.append(f"{marker}{name} {count_str}{path_str}")
+            elif all_dodos and row == len(display_items):
+                toggle_label = (
+                    "▼ Hide other dodos"
+                    if show_all
+                    else f"▶ Show {len(all_dodos)} more dodos"
+                )
+                toggle_marker = "[cyan]>[/cyan] " if row == cursor else "  "
+                lines.append(f"{toggle_marker}[cyan]{toggle_label}[/cyan]")
+            elif row == new_dodo_index:
+                new_marker = "[cyan]>[/cyan] " if row == cursor else "  "
+                lines.append(f"{new_marker}[green]+ New dodo[/green]")
 
-        # Show toggle if there are other dodos
-        if all_dodos:
-            lines.append("")
-            toggle_label = (
-                "▼ Hide other dodos" if show_all else f"▶ Show {len(all_dodos)} more dodos"
-            )
-            toggle_marker = "[cyan]>[/cyan] " if cursor == len(build_display_items()) else "  "
-            lines.append(f"{toggle_marker}[cyan]{toggle_label}[/cyan]")
+        if below_indicator:
+            lines.append(below_indicator)
 
-        # Add "New dodo" option
+        # Spacer + footer
         lines.append("")
-        new_marker = (
-            "[cyan]>[/cyan] "
-            if cursor == len(build_display_items()) + (1 if all_dodos else 0)
-            else "  "
-        )
-        lines.append(f"{new_marker}[green]+ New dodo[/green]")
-
+        footer = "[dim]  ↑↓ navigate · enter view/create · l open folder · d delete · q back[/dim]"
+        lines.append(footer)
         content = "\n".join(lines)
-        content += (
-            "\n\n[dim]↑↓ navigate · enter view/create · l open folder · d delete · q back[/dim]"
-        )
+        panel_height = min(len(lines) + 2, term_height)
 
-        console.print(
-            Panel(
-                content,
-                title="Dodos",
-                border_style="blue",
-                width=min(80, console.width or 80),
-            )
+        return Panel(
+            content,
+            title="[bold]Dodos[/bold]",
+            subtitle="[dim]Active dodo is auto-detected from current directory[/dim]",
+            border_style="blue",
+            width=width + 4,
+            height=panel_height,
         )
 
     def get_project_id_for_item(key: str, name: str) -> str | None:
@@ -893,7 +927,6 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
         if key == "global":
             return None
         elif key == "current":
-            # For local dodos, current_name is used (current_path handled separately)
             return None if current_path else current_name
         elif key == "parent":
             return parent_id
@@ -902,7 +935,6 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
 
     def handle_view_todos(key: str, name: str) -> None:
         """View todos for selected dodo."""
-        # Handle local dodos with explicit path
         if key == "current" and current_path:
             temp_svc = TodoService(cfg, project_id=None, storage_path=current_path)
         else:
@@ -932,7 +964,6 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
         path = _get_project_storage_path(cfg, proj_id)
 
         if not path or not path.exists():
-            # Try alternate extension
             if path and str(path).endswith(".db"):
                 alt_path = path.with_suffix(".md")
             elif path:
@@ -947,7 +978,6 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
                 readchar.readkey()
                 return False
 
-        # Count todos
         try:
             if str(path).endswith(".db"):
                 backend = SqliteBackend(path)
@@ -971,7 +1001,6 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
 
         try:
             path.unlink()
-            # Clean up empty folder
             folder = path.parent
             if folder.exists() and not any(folder.iterdir()):
                 folder.rmdir()
@@ -982,62 +1011,72 @@ def _dodos_list(ui: RichTerminalMenu, cfg: Config) -> None:
             readchar.readkey()
             return False
 
-    show_new_dodo_menu = False
+    while True:
+        view_item: tuple[str, str] | None = None
+        show_new_dodo_menu = False
 
-    with console.screen():
-        while True:
-            render()
-            items = build_display_items()
-            # +1 for toggle if exists, +1 for "New dodo"
-            toggle_offset = 1 if all_dodos else 0
-            new_dodo_index = len(items) + toggle_offset
-            max_cursor = new_dodo_index  # New dodo is the last item
+        console.clear()
+        panel = build_display()
+        with Live(panel, console=console, auto_refresh=False) as live:
+            live.refresh()
+            while True:
+                display_items = build_display_items()
+                toggle_offset = 1 if all_dodos else 0
+                new_dodo_index = len(display_items) + toggle_offset
+                max_cursor = new_dodo_index
 
-            try:
-                key = readchar.readkey()
-            except KeyboardInterrupt:
-                return
+                try:
+                    key = readchar.readkey()
+                except KeyboardInterrupt:
+                    return
 
-            if key in (readchar.key.UP, "k"):
-                cursor = max_cursor if cursor == 0 else cursor - 1
-            elif key in (readchar.key.DOWN, "j"):
-                cursor = 0 if cursor >= max_cursor else cursor + 1
-            elif key == "q":
-                return
-            elif key in ("\r", "\n", " "):
-                # Check if on "New dodo"
-                if cursor == new_dodo_index:
-                    show_new_dodo_menu = True
-                    break
-                # Check if on toggle
-                elif all_dodos and cursor == len(items):
-                    show_all = not show_all
-                    # Adjust cursor if needed
-                    if not show_all and cursor > len(dodos):
-                        cursor = len(dodos)
-                elif cursor < len(items):
-                    item_key, item_name, _, _, _ = items[cursor]
-                    handle_view_todos(item_key, item_name)
-            elif key == "l" and cursor < len(items):
-                item_key, item_name, _, _, _ = items[cursor]
-                handle_open_location(item_key, item_name)
-            elif key == "d" and cursor < len(items):
-                item_key, item_name, _, _, _ = items[cursor]
-                if handle_delete(item_key, item_name):
-                    # Rebuild list
-                    if item_key == "other":
-                        all_dodos[:] = [
-                            (k, n, p, c, cur) for k, n, p, c, cur in all_dodos if n != item_name
-                        ]
-                    # Adjust cursor
-                    items = build_display_items()
-                    new_max = len(items) + toggle_offset
-                    if cursor > new_max:
-                        cursor = new_max
+                if key in (readchar.key.UP, "k"):
+                    cursor = max_cursor if cursor == 0 else cursor - 1
+                elif key in (readchar.key.DOWN, "j"):
+                    cursor = 0 if cursor >= max_cursor else cursor + 1
+                elif key == "q":
+                    return
+                elif key in ("\r", "\n", " "):
+                    if cursor == new_dodo_index:
+                        show_new_dodo_menu = True
+                        break
+                    elif all_dodos and cursor == len(display_items):
+                        show_all = not show_all
+                        # Move cursor to the toggle row's new position
+                        new_items = build_display_items()
+                        cursor = len(new_items)
+                    elif cursor < len(display_items):
+                        item_key, item_name, _, _, _ = display_items[cursor]
+                        view_item = (item_key, item_name)
+                        break
+                elif key == "l" and cursor < len(display_items):
+                    item_key, item_name, _, _, _ = display_items[cursor]
+                    handle_open_location(item_key, item_name)
+                elif key == "d" and cursor < len(display_items):
+                    item_key, item_name, _, _, _ = display_items[cursor]
+                    if handle_delete(item_key, item_name):
+                        if item_key == "other":
+                            all_dodos[:] = [
+                                (k, n, p, c, cur)
+                                for k, n, p, c, cur in all_dodos
+                                if n != item_name
+                            ]
+                        display_items = build_display_items()
+                        new_max = len(display_items) + toggle_offset
+                        if cursor > new_max:
+                            cursor = new_max
 
-    # "New dodo" was selected - show the new dodo menu outside screen context
-    if show_new_dodo_menu:
-        _new_dodo_menu(ui, cfg)
+                panel = build_display()
+                live.update(panel, refresh=True)
+
+        if show_new_dodo_menu:
+            _new_dodo_menu(ui, cfg)
+            continue  # Return to dodos list after new dodo menu
+        elif view_item:
+            handle_view_todos(view_item[0], view_item[1])
+            continue  # Return to dodos list after viewing todos
+        else:
+            break  # Normal exit (q)
 
 
 def _edit_in_editor(
@@ -1326,12 +1365,12 @@ def _unified_settings_loop(
     """Unified settings editor with divider support and dynamic backend cycling."""
     from dodo.cli_plugins import _load_registry
 
-    cursor = 0
+    scroll_offset = 0
     status_msg: str | None = None
-    extra_clear = [0]  # Mutable container to track extra lines to clear after plugin toggle
 
     # Find navigable items (not dividers)
     navigable_indices = [i for i, (_, _, kind, *_) in enumerate(items) if kind != "divider"]
+    cursor = navigable_indices[0] if navigable_indices else 0
 
     def find_next_navigable(current: int, direction: int) -> int:
         """Find next navigable index in given direction."""
@@ -1339,45 +1378,67 @@ def _unified_settings_loop(
         idx = (idx + direction) % len(navigable_indices)
         return navigable_indices[idx]
 
-    def render() -> None:
-        nonlocal status_msg
-        sys.stdout.write("\033[H")  # Move cursor to top-left
-        sys.stdout.flush()
-        console.print("[bold]Settings[/bold]                              ")
-        console.print("[dim]↑↓ navigate · space/enter change · q exit[/dim]")
-        console.print()
+    def build_display() -> Panel:
+        nonlocal scroll_offset
 
-        # Layout columns (using ~80 char width)
-        value_col = 28  # Column where checkmarks/values start
-        desc_col = 50  # Column where description starts
+        max_width = getattr(cfg, "interactive_width", DEFAULT_PANEL_WIDTH)
+        term_width = console.width or max_width
+        width = min(max_width, term_width - 4)
+        term_height = console.height or DEFAULT_TERMINAL_HEIGHT
+        # Fixed overhead: blank(1) + status/spacer(1) + footer(1) + borders(2) = 5
+        # Indicators (0-2) are dynamic — use two-pass to reclaim unused space
+        max_visible_base = max(3, term_height - 7)  # assumes 2 indicators
 
-        for i, (key, label, kind, options, plugin_name, desc) in enumerate(items):
+        # First pass: determine how many indicators are needed
+        scroll_offset, vs, ve = calculate_visible_range(
+            cursor, len(items), max_visible_base, scroll_offset,
+        )
+        n_indicators = (1 if vs > 0 else 0) + (1 if ve < len(items) else 0)
+        max_visible = max_visible_base + (2 - n_indicators)
+
+        # Second pass: with reclaimed indicator space
+        scroll_offset, visible_start, visible_end = calculate_visible_range(
+            cursor, len(items), max_visible, scroll_offset,
+        )
+
+        # Layout columns
+        value_col = 28
+        desc_col = 50
+
+        lines: list[str] = []
+        lines.append("")  # blank line before items
+
+        # Scroll indicators
+        above_indicator, below_indicator = format_scroll_indicator(
+            hidden_above=visible_start,
+            hidden_below=len(items) - visible_end,
+        )
+        if above_indicator:
+            lines.append(above_indicator)
+
+        for i in range(visible_start, visible_end):
+            key, label, kind, options, plugin_name, desc = items[i]
             if kind == "divider":
-                sys.stdout.write("\033[K")
-                console.print(f"  [dim]{label}[/dim]")
+                lines.append(f"  [dim]{label}[/dim]")
                 continue
 
             marker = "[cyan]>[/cyan]" if i == cursor else " "
             value = pending[key]
-            # Plugin config vars are indented (plugin_name set but kind != "plugin")
             is_plugin_setting = plugin_name and kind != "plugin"
             indent = "  " if is_plugin_setting else ""
 
             if kind == "plugin":
-                # Plugin: name + checkmark + description
-                # Enabled plugins use cyan to stand out from regular settings
                 check = "[bold blue]✓[/bold blue]" if value else " "
                 if value:
                     name_part = f" {marker} [cyan]{label}[/cyan]"
                 else:
                     name_part = f" {marker} [dim]{label}[/dim]"
-                label_len = len(indent) + len(label) + 3  # " > " = 3 chars
+                label_len = len(indent) + len(label) + 3
                 pad1 = max(1, value_col - label_len)
                 pad2 = max(1, desc_col - value_col - 1)
                 desc_str = f"[dim]{desc}[/dim]" if desc else ""
                 line = f"{name_part}{' ' * pad1}{check}{' ' * pad2}{desc_str}"
             elif kind == "toggle":
-                # Toggle: label + checkmark + description
                 check = "[bold blue]✓[/bold blue]" if value else " "
                 base = f" {marker} {indent}{label}"
                 label_len = len(indent) + len(label) + 3
@@ -1386,7 +1447,6 @@ def _unified_settings_loop(
                 desc_str = f"[dim]{desc}[/dim]" if desc else ""
                 line = f"{base}{' ' * pad1}{check}{' ' * pad2}{desc_str}"
             elif kind == "cycle":
-                # Cycle: label + value + description (value at value_col)
                 base = f" {marker} {indent}{label}"
                 label_len = len(indent) + len(label) + 3
                 pad1 = max(1, value_col - label_len)
@@ -1395,7 +1455,6 @@ def _unified_settings_loop(
                 desc_str = f"[dim]{desc}[/dim]" if desc else ""
                 line = f"{base}{' ' * pad1}{val_str}{' ' * pad2}{desc_str}"
             elif kind == "action":
-                # Migrate action - cyan arrow at value_col
                 base = f" {marker} {indent}{label}"
                 label_len = len(indent) + len(label) + 3
                 pad1 = max(1, value_col - label_len)
@@ -1403,7 +1462,6 @@ def _unified_settings_loop(
                 desc_str = f"[dim]{desc}[/dim]" if desc else ""
                 line = f"{base}{' ' * pad1}[cyan]→[/cyan]{' ' * pad2}{desc_str}"
             else:  # edit
-                # Edit: label + value at value_col + description
                 max_val_len = 18
                 display = str(value).replace("\n", "↵")[:max_val_len]
                 if len(str(value)) > max_val_len:
@@ -1416,22 +1474,29 @@ def _unified_settings_loop(
                 pad2 = max(1, desc_col - value_col - len(display))
                 desc_str = f"[dim]{desc}[/dim]" if desc else ""
                 line = f"{base}{' ' * pad1}[dim]{display}[/dim]{' ' * pad2}{desc_str}"
-            # Clear to end of line to prevent artifacts from longer previous text
-            sys.stdout.write("\033[K")
-            console.print(line)
+            lines.append(line)
 
-        # Clear any remaining lines from previous render (e.g., after plugin toggle)
-        # Use extra_clear[0] to handle shrinking item lists
-        lines_to_clear = 3 + extra_clear[0]
-        for _ in range(lines_to_clear):
-            sys.stdout.write("\033[K\n")
-        sys.stdout.write(f"\033[{lines_to_clear}A")  # Move back up
-        extra_clear[0] = 0  # Reset after clearing
+        if below_indicator:
+            lines.append(below_indicator)
 
-        # Status message
+        # Status or blank spacer (exactly 1 line), then footer
         if status_msg:
-            console.print(f"\n  {status_msg}")
-            status_msg = None
+            lines.append(f"  {status_msg}")
+        else:
+            lines.append("")
+        footer = "[dim]  ↑↓ navigate · space/enter change · q exit[/dim]"
+        lines.append(footer)
+
+        content = "\n".join(lines)
+        panel_height = min(len(lines) + 2, term_height)
+
+        return Panel(
+            content,
+            title="[bold]Settings[/bold]",
+            border_style="blue",
+            width=width + 4,
+            height=panel_height,
+        )
 
     def save_plugin_toggle(plugin_name: str, enabled: bool) -> None:
         """Update enabled_plugins in config."""
@@ -1450,7 +1515,6 @@ def _unified_settings_loop(
     def save_item(key: str, val: object, plugin: str | None = None) -> None:
         """Save single item immediately."""
         if plugin:
-            # Plugin config var - save under plugins.<name>.<key>
             cfg.set_plugin_config(plugin, key, val)
         elif getattr(cfg, key, None) != val:
             cfg.set(key, val)
@@ -1459,7 +1523,6 @@ def _unified_settings_loop(
         """Rebuild backend cycle options after plugin toggle."""
         registry = _load_registry()
         available = _get_available_backends(cfg.enabled_plugins, registry)
-        # Update the backend item's options
         for i, item in enumerate(items):
             if item[0] == "default_backend":
                 items[i] = (item[0], item[1], item[2], available, item[4], item[5])
@@ -1469,7 +1532,6 @@ def _unified_settings_loop(
         """Rebuild migrate options after backend change."""
         nonlocal navigable_indices
 
-        # Find backend index and editor index
         backend_idx = None
         editor_idx = None
         for i, item in enumerate(items):
@@ -1482,7 +1544,6 @@ def _unified_settings_loop(
         if backend_idx is None or editor_idx is None:
             return
 
-        # Remove existing migrate items (between backend and editor)
         to_remove = []
         for i in range(backend_idx + 1, editor_idx):
             if items[i][0].startswith("_migrate_"):
@@ -1492,13 +1553,11 @@ def _unified_settings_loop(
             items.pop(i)
             pending.pop(key, None)
 
-        # Recalculate editor_idx after removal
         for i, item in enumerate(items):
             if item[0] == "editor":
                 editor_idx = i
                 break
 
-        # Add new migrate options
         current_backend = str(pending["default_backend"])
         other_backends = _detect_other_backend_files(cfg, current_backend, project_id)
         insert_idx = editor_idx
@@ -1518,14 +1577,15 @@ def _unified_settings_loop(
             pending[migrate_key] = backend_name
             insert_idx += 1
 
-        # Rebuild navigable indices
         navigable_indices[:] = [i for i, (_, _, k, *_) in enumerate(items) if k != "divider"]
 
     while True:
         edit_triggered = False
 
-        with console.screen():
-            render()
+        console.clear()
+        panel = build_display()
+        with Live(panel, console=console, auto_refresh=False) as live:
+            live.refresh()
             while True:
                 try:
                     key = readchar.readkey()
@@ -1541,31 +1601,27 @@ def _unified_settings_loop(
                 elif key in (" ", "\r", "\n"):
                     item_key, _, kind, options, plugin_name, _ = items[cursor]
                     if kind == "plugin":
-                        # Plugin toggle - rebuild items to show/hide config vars
                         pending[item_key] = not pending[item_key]
                         save_plugin_toggle(plugin_name, bool(pending[item_key]))
                         rebuild_backend_options()
-                        # Rebuild entire items list to show/hide plugin config vars
-                        old_len = len(items)
                         items[:], pending_new = _build_settings_items(cfg, project_id)
                         pending.clear()
                         pending.update(pending_new)
-                        # Track max for clearing stale lines when list shrinks
-                        if old_len > len(items):
-                            extra_clear[0] = max(extra_clear[0], old_len - len(items))
                         navigable_indices[:] = [
                             idx for idx, (_, _, k, *_) in enumerate(items) if k != "divider"
                         ]
-                        # Find the plugin's new position (it moved after config vars removed)
                         for new_idx, (key, *_) in enumerate(items):
                             if key == item_key:
                                 cursor = new_idx
                                 break
                     elif kind == "toggle":
                         pending[item_key] = not pending[item_key]
-                        # Plugin config vars save as strings, general toggles as booleans
                         if plugin_name:
-                            save_item(item_key, "true" if pending[item_key] else "false", plugin_name)
+                            save_item(
+                                item_key,
+                                "true" if pending[item_key] else "false",
+                                plugin_name,
+                            )
                         else:
                             save_item(item_key, pending[item_key])
                     elif kind == "cycle" and options:
@@ -1576,20 +1632,17 @@ def _unified_settings_loop(
                             idx = -1
                         pending[item_key] = options[(idx + 1) % len(options)]
                         save_item(item_key, pending[item_key], plugin_name)
-                        # If backend changed, rebuild migrate options
                         if item_key == "default_backend":
                             rebuild_migrate_options()
                     elif kind == "edit":
                         edit_triggered = True
                         break
                     elif kind == "action" and item_key.startswith("_migrate_"):
-                        # Run migration
                         source_backend = str(pending[item_key])
                         result = _run_migration(
                             cfg, source_backend, cfg.default_backend, project_id
                         )
                         status_msg = result
-                        # Remove migrate row and rebuild navigable indices
                         for idx, item in enumerate(items):
                             if item[0] == item_key:
                                 items.pop(idx)
@@ -1600,7 +1653,9 @@ def _unified_settings_loop(
                         if cursor >= len(navigable_indices):
                             cursor = max(0, len(navigable_indices) - 1)
 
-                render()
+                panel = build_display()
+                live.update(panel, refresh=True)
+                status_msg = None  # Clear after displaying once
 
         if edit_triggered:
             item_key, _, _, _, plugin_name, _ = items[cursor]
@@ -1609,12 +1664,11 @@ def _unified_settings_loop(
                 [f"Edit: {items[cursor][1].strip()}"],
             )
             if new_val is not None:
-                # Convert numeric fields to int
                 if item_key == "interactive_width":
                     try:
                         new_val = int(new_val)
                     except ValueError:
-                        new_val = 120  # Default on invalid input
+                        new_val = 120
                 pending[item_key] = new_val
                 save_item(item_key, new_val, plugin_name)
             continue
