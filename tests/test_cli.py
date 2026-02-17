@@ -706,18 +706,6 @@ class TestCliTagCommands:
         assert result.exit_code == 0, f"Failed: {result.output}"
 
 
-class TestCliWipCommand:
-    def test_wip(self, cli_env):
-        with patch("dodo.project.detect_project", return_value=None):
-            add_r = runner.invoke(app, ["add", "Test task"])
-            todo_id = re.search(r"\(([a-f0-9]+)\)", add_r.stdout).group(1)
-
-            result = runner.invoke(app, ["wip", todo_id])
-
-        assert result.exit_code == 0, f"Failed: {result.output}"
-        assert "wip" in result.stdout.lower()
-
-
 class TestCliDueCommand:
     def test_due_set(self, cli_env):
         with patch("dodo.project.detect_project", return_value=None):

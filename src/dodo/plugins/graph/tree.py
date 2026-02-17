@@ -53,6 +53,23 @@ class TreeFormatter:
             return item.item.tags or []
         return getattr(item, "tags", None) or []
 
+    def _get_due_at(self, item):
+        """Get due_at from item or wrapped item."""
+        if hasattr(item, "item"):
+            return item.item.due_at
+        return getattr(item, "due_at", None)
+
+    def _format_due(self, due_at) -> str:
+        """Format due date as colored string."""
+        if not due_at:
+            return ""
+        from datetime import datetime
+
+        date_str = due_at.strftime("%Y-%m-%d")
+        if due_at < datetime.now(tz=due_at.tzinfo):
+            return f" [red]@{date_str}[/red]"
+        return f" [dim]@{date_str}[/dim]"
+
     def _format_priority(self, priority) -> str:
         """Format priority as colored indicator."""
         from dodo.ui.formatting import format_priority
@@ -115,10 +132,14 @@ class TreeFormatter:
             text = self._get_text(item)
             priority = self._get_priority(item)
             tags = self._get_tags(item)
+            due_at = self._get_due_at(item)
 
             # Priority indicator (after icon to preserve tree indentation)
             prio_str = self._format_priority(priority)
             prio_suffix = f" {prio_str}" if prio_str else ""
+
+            # Due date suffix
+            due_str = self._format_due(due_at) if not is_done else ""
 
             # Colorblind-safe: blue for done, dim for pending (lighter than orange)
             icon = "[blue]✓[/blue]" if is_done else "[dim]•[/dim]"
@@ -172,8 +193,11 @@ class TreeFormatter:
                     return f"{first_line}\n{continuation}"
                 return first_line
             else:
-                # Pending items with tags
-                first_line = f"{icon} {id_str}{prio_suffix} {lines[0]}{tags_str}{suffix}"
+                # Pending items with tags and due date
+                first_line = (
+                    f"{icon} {id_str}{prio_suffix} {lines[0]}"
+                    f"{due_str}{tags_str}{suffix}"
+                )
                 if len(lines) > 1:
                     continuation = "\n".join(f"{cont_prefix}{line}" for line in lines[1:])
                     return f"{first_line}\n{continuation}"

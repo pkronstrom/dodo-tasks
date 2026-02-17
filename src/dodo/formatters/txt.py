@@ -17,6 +17,8 @@ class TxtFormatter:
             line = item.text
             if item.priority:
                 line += f" !{item.priority.value}"
+            if item.due_at:
+                line += f" @{item.due_at.strftime('%Y-%m-%d')}"
             if item.tags:
                 line += " " + " ".join(f"#{t}" for t in item.tags)
             lines.append(line)

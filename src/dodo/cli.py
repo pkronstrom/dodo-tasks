@@ -1278,35 +1278,6 @@ def tag_rm(
 app.add_typer(tag_app, name="tag")
 
 
-# --- wip command ---
-
-@app.command()
-def wip(
-    id: Annotated[str, typer.Argument(help="Todo ID")],
-    global_: Annotated[bool, typer.Option("-g", "--global")] = False,
-    dodo: Annotated[str | None, typer.Option("--dodo", "-d")] = None,
-):
-    """Mark a todo as work-in-progress (sets metadata status=wip)."""
-    cfg = _get_config()
-    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
-    if explicit_path:
-        svc = _get_service_with_path(cfg, explicit_path)
-    else:
-        svc = _get_service(cfg, dodo_id)
-
-    item = _find_item_by_partial_id(svc, id)
-    if not item:
-        console.print(f"[red]Error:[/red] Todo not found: {id}")
-        raise typer.Exit(1)
-
-    try:
-        updated = svc.set_metadata_key(item.id, "status", "wip")
-    except NotImplementedError:
-        console.print("[red]Error:[/red] This backend does not support metadata operations.")
-        raise typer.Exit(1)
-    console.print(f"[green]✓[/green] WIP: {updated.text}")
-
-
 # --- due command ---
 
 @app.command()
