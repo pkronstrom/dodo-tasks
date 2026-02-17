@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -65,8 +66,13 @@ class TodoService:
         text: str,
         priority: Priority | None = None,
         tags: list[str] | None = None,
+        due_at: datetime | None = None,
+        metadata: dict[str, str] | None = None,
     ) -> TodoItem:
-        return self._backend.add(text, project=self._project_id, priority=priority, tags=tags)
+        return self._backend.add(
+            text, project=self._project_id, priority=priority, tags=tags,
+            due_at=due_at, metadata=metadata,
+        )
 
     def list(self, status: Status | None = None) -> list[TodoItem]:
         return self._backend.list(project=self._project_id, status=status)
@@ -96,6 +102,24 @@ class TodoService:
     def update_tags(self, id: str, tags: list[str] | None) -> TodoItem:
         """Update todo tags."""
         return self._backend.update_tags(id, tags)
+
+    def update_due_at(self, id: str, due_at: datetime | None) -> TodoItem:
+        return self._backend.update_due_at(id, due_at)
+
+    def update_metadata(self, id: str, metadata: dict[str, str] | None) -> TodoItem:
+        return self._backend.update_metadata(id, metadata)
+
+    def set_metadata_key(self, id: str, key: str, value: str) -> TodoItem:
+        return self._backend.set_metadata_key(id, key, value)
+
+    def remove_metadata_key(self, id: str, key: str) -> TodoItem:
+        return self._backend.remove_metadata_key(id, key)
+
+    def add_tag(self, id: str, tag: str) -> TodoItem:
+        return self._backend.add_tag(id, tag)
+
+    def remove_tag(self, id: str, tag: str) -> TodoItem:
+        return self._backend.remove_tag(id, tag)
 
     def delete(self, id: str) -> None:
         self._backend.delete(id)

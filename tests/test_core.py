@@ -161,6 +161,64 @@ class TestBackendInstantiation:
         del _backend_registry["simple"]
 
 
+class TestTodoServiceDueAtMetadata:
+    def test_add_with_due_at(self, tmp_path: Path):
+        from datetime import datetime
+        config = Config.load(tmp_path / "config")
+        svc = TodoService(config, project_id=None)
+        item = svc.add("Test", due_at=datetime(2026, 3, 1))
+        assert item.due_at == datetime(2026, 3, 1)
+
+    def test_add_with_metadata(self, tmp_path: Path):
+        config = Config.load(tmp_path / "config")
+        svc = TodoService(config, project_id=None)
+        item = svc.add("Test", metadata={"status": "wip"})
+        assert item.metadata == {"status": "wip"}
+
+    def test_update_due_at(self, tmp_path: Path):
+        from datetime import datetime
+        config = Config.load(tmp_path / "config")
+        svc = TodoService(config, project_id=None)
+        item = svc.add("Test")
+        updated = svc.update_due_at(item.id, datetime(2026, 3, 1))
+        assert updated.due_at == datetime(2026, 3, 1)
+
+    def test_update_metadata(self, tmp_path: Path):
+        config = Config.load(tmp_path / "config")
+        svc = TodoService(config, project_id=None)
+        item = svc.add("Test")
+        updated = svc.update_metadata(item.id, {"k": "v"})
+        assert updated.metadata == {"k": "v"}
+
+    def test_set_metadata_key(self, tmp_path: Path):
+        config = Config.load(tmp_path / "config")
+        svc = TodoService(config, project_id=None)
+        item = svc.add("Test")
+        updated = svc.set_metadata_key(item.id, "status", "wip")
+        assert updated.metadata == {"status": "wip"}
+
+    def test_remove_metadata_key(self, tmp_path: Path):
+        config = Config.load(tmp_path / "config")
+        svc = TodoService(config, project_id=None)
+        item = svc.add("Test", metadata={"a": "1", "b": "2"})
+        updated = svc.remove_metadata_key(item.id, "a")
+        assert updated.metadata == {"b": "2"}
+
+    def test_add_tag(self, tmp_path: Path):
+        config = Config.load(tmp_path / "config")
+        svc = TodoService(config, project_id=None)
+        item = svc.add("Test", tags=["a"])
+        updated = svc.add_tag(item.id, "b")
+        assert "b" in updated.tags
+
+    def test_remove_tag(self, tmp_path: Path):
+        config = Config.load(tmp_path / "config")
+        svc = TodoService(config, project_id=None)
+        item = svc.add("Test", tags=["a", "b"])
+        updated = svc.remove_tag(item.id, "a")
+        assert updated.tags == ["b"]
+
+
 class TestTodoServiceExplicitPath:
     def test_service_with_explicit_path(self, tmp_path):
         """TodoService can use an explicit storage path."""
