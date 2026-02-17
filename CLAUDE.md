@@ -13,6 +13,7 @@ src/dodo/
 ├── models.py          # TodoItem, Status, Priority (frozen dataclasses, with due_at/metadata)
 ├── config.py          # Config with nested plugin config (plugins.<name>.<key>)
 ├── resolve.py         # Dodo resolution (local, global, mapped, git-based)
+├── api.py             # Public Python API (Dodo class - programmatic access)
 ├── core.py            # TodoService - routes to backends
 ├── cli.py             # Typer commands (add, list, done, rm, new, destroy, meta, tag, due, etc.)
 ├── cli_bulk.py        # Bulk operations (bulk add/done/rm/edit/dep)
@@ -40,4 +41,5 @@ src/dodo/
 - **Plugin config**: `cfg.get_plugin_config(name, key)` / `set_plugin_config()`
 - **Dodo resolution** (`resolve.py`): `--global` → `--dodo <name>` → `.dodo/` in parents → dir mapping → git root hash
 - **Testing**: Use `tmp_path` fixture; call `clear_*_cache()` helpers to ensure isolation
+- **Public API** (`api.py`): `Dodo.named()`, `Dodo.local()`, `Dodo.auto()` — thin wrapper over TodoService for external consumers. String inputs for enums, standard exceptions (KeyError/ValueError).
 - Type hints on all public functions

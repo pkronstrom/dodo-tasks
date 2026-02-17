@@ -86,6 +86,27 @@ dodo                                # Interactive menu
 | `-g` / `--global` | Force global, skip detection |
 | `-d name` | Target specific dodo by name |
 
+## Python API
+
+Use dodo as a library — no subprocess overhead, native Python objects:
+
+```python
+from dodo.api import Dodo
+
+d = Dodo.named("work")               # open a named dodo
+d = Dodo.local("/path/to/proj")      # open local .dodo/
+d = Dodo.auto()                      # auto-detect from cwd
+
+item = d.add("Fix bug", priority="high", tags=["backend"], due="2026-03-01")
+items = d.list(status="pending")
+d.complete(item.id)
+d.update(item.id, priority="critical", due=None)
+d.add_tag(item.id, "urgent")
+d.set_meta(item.id, "state", "wip")
+```
+
+Returns `TodoItem` objects (frozen dataclasses). Use `.to_dict()` for plain dicts. Raises `KeyError` for missing items, `ValueError` for bad inputs.
+
 ## Bulk Operations
 
 For scripting and AI agents:
@@ -135,7 +156,13 @@ dodo server start --host 0.0.0.0 --port 9090  # Remote access
 Provides three channels (each individually toggleable):
 - **Web UI** at `/` — mobile-first task manager with dark mode
 - **REST API** at `/api/v1/` — full CRUD, multi-dodo
-- **MCP** at `/mcp` — AI agent integration
+- **MCP over SSE** at `/mcp` — AI agent integration via web server
+
+**MCP stdio** (no web server needed — add directly to Claude Code):
+```bash
+pip install "dodo-tasks[server]"
+claude mcp add dodo -- dodo mcp
+```
 
 Remote backend (no extra deps needed):
 ```bash
