@@ -81,6 +81,54 @@ class TestMcpServiceIntegration:
         svc.delete(item.id)
         assert svc.get(item.id) is None
 
+    def test_add_with_due_at(self, registry):
+        from datetime import datetime
+        svc = registry.get_service("_default")
+        item = svc.add("Due task", due_at=datetime(2026, 3, 1))
+        assert item.due_at == datetime(2026, 3, 1)
+
+    def test_add_with_metadata(self, registry):
+        svc = registry.get_service("_default")
+        item = svc.add("Meta task", metadata={"status": "wip"})
+        assert item.metadata == {"status": "wip"}
+
+    def test_update_due_at(self, registry):
+        from datetime import datetime
+        svc = registry.get_service("_default")
+        item = svc.add("Test")
+        updated = svc.update_due_at(item.id, datetime(2026, 6, 15))
+        assert updated.due_at == datetime(2026, 6, 15)
+
+    def test_update_metadata(self, registry):
+        svc = registry.get_service("_default")
+        item = svc.add("Test")
+        updated = svc.update_metadata(item.id, {"k": "v"})
+        assert updated.metadata == {"k": "v"}
+
+    def test_set_metadata_key(self, registry):
+        svc = registry.get_service("_default")
+        item = svc.add("Test")
+        updated = svc.set_metadata_key(item.id, "status", "wip")
+        assert updated.metadata == {"status": "wip"}
+
+    def test_remove_metadata_key(self, registry):
+        svc = registry.get_service("_default")
+        item = svc.add("Test", metadata={"a": "1", "b": "2"})
+        updated = svc.remove_metadata_key(item.id, "a")
+        assert updated.metadata == {"b": "2"}
+
+    def test_add_tag(self, registry):
+        svc = registry.get_service("_default")
+        item = svc.add("Test", tags=["a"])
+        updated = svc.add_tag(item.id, "b")
+        assert "b" in updated.tags
+
+    def test_remove_tag(self, registry):
+        svc = registry.get_service("_default")
+        item = svc.add("Test", tags=["a", "b"])
+        updated = svc.remove_tag(item.id, "a")
+        assert updated.tags == ["b"]
+
     def test_mcp_app_creates(self, registry):
         """Smoke test that create_mcp_app returns an ASGI app."""
         app = create_mcp_app(registry)

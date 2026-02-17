@@ -50,14 +50,19 @@ def create_mcp_app(registry: ServiceRegistry):
         text: str,
         priority: str | None = None,
         tags: list[str] | None = None,
+        due_at: str | None = None,
+        metadata: dict[str, str] | None = None,
     ) -> dict:
         """Add a new todo. Priority: critical, high, normal, low, someday."""
+        from datetime import datetime
+
         from dodo.models import Priority
 
         _validate_dodo(dodo)
         svc = registry.get_service(dodo)
         p = Priority(priority) if priority else None
-        item = svc.add(text, priority=p, tags=tags)
+        d = datetime.fromisoformat(due_at) if due_at else None
+        item = svc.add(text, priority=p, tags=tags, due_at=d, metadata=metadata)
         return item.to_dict()
 
     @mcp.tool()
@@ -89,8 +94,12 @@ def create_mcp_app(registry: ServiceRegistry):
         text: str | None = None,
         priority: str | None = None,
         tags: list[str] | None = None,
+        due_at: str | None = None,
+        metadata: dict[str, str] | None = None,
     ) -> dict:
-        """Update a todo's text, priority, or tags."""
+        """Update a todo's text, priority, tags, due_at, or metadata."""
+        from datetime import datetime
+
         from dodo.models import Priority
 
         _validate_dodo(dodo)
@@ -103,6 +112,11 @@ def create_mcp_app(registry: ServiceRegistry):
             item = svc.update_priority(id, p)
         if tags is not None:
             item = svc.update_tags(id, tags)
+        if due_at is not None:
+            d = datetime.fromisoformat(due_at) if due_at else None
+            item = svc.update_due_at(id, d)
+        if metadata is not None:
+            item = svc.update_metadata(id, metadata)
         if item is None:
             raise ValueError("No fields to update")
         return item.to_dict()
@@ -114,5 +128,33 @@ def create_mcp_app(registry: ServiceRegistry):
         svc = registry.get_service(dodo)
         svc.delete(id)
         return {"status": "deleted"}
+
+    @mcp.tool()
+    def add_tag(dodo: str, id: str, tag: str) -> dict:
+        """Add a tag to a todo."""
+        _validate_dodo(dodo)
+        svc = registry.get_service(dodo)
+        return svc.add_tag(id, tag).to_dict()
+
+    @mcp.tool()
+    def remove_tag(dodo: str, id: str, tag: str) -> dict:
+        """Remove a tag from a todo."""
+        _validate_dodo(dodo)
+        svc = registry.get_service(dodo)
+        return svc.remove_tag(id, tag).to_dict()
+
+    @mcp.tool()
+    def set_metadata(dodo: str, id: str, key: str, value: str) -> dict:
+        """Set a metadata key on a todo."""
+        _validate_dodo(dodo)
+        svc = registry.get_service(dodo)
+        return svc.set_metadata_key(id, key, value).to_dict()
+
+    @mcp.tool()
+    def remove_metadata(dodo: str, id: str, key: str) -> dict:
+        """Remove a metadata key from a todo."""
+        _validate_dodo(dodo)
+        svc = registry.get_service(dodo)
+        return svc.remove_metadata_key(id, key).to_dict()
 
     return mcp.sse_app()
