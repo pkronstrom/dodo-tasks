@@ -238,8 +238,15 @@ def add(
     ] = None,
     # Keep old --tags for backward compatibility
     tags: Annotated[str | None, typer.Option("--tags", help="Comma-separated tags (deprecated, use -t)")] = None,
+    due: Annotated[str | None, typer.Option("--due", help="Due date (YYYY-MM-DD)")] = None,
+    meta: Annotated[
+        list[str] | None,
+        typer.Option("--meta", help="Metadata key=value (can repeat)"),
+    ] = None,
 ):
     """Add a todo item."""
+    from datetime import datetime
+
     from dodo.models import Priority
 
     cfg = _get_config()
@@ -288,7 +295,28 @@ def add(
 
     parsed_tags = unique_tags if unique_tags else None
 
-    item = svc.add(text, priority=parsed_priority, tags=parsed_tags)
+    # Parse due date
+    parsed_due = None
+    if due:
+        try:
+            parsed_due = datetime.fromisoformat(due)
+        except ValueError:
+            console.print(f"[red]Error:[/red] Invalid date '{due}'. Use YYYY-MM-DD format.")
+            raise typer.Exit(1)
+
+    # Parse metadata
+    parsed_metadata = None
+    if meta:
+        parsed_metadata = {}
+        for m in meta:
+            if "=" not in m:
+                console.print(f"[red]Error:[/red] Invalid metadata '{m}'. Use key=value format.")
+                raise typer.Exit(1)
+            k, v = m.split("=", 1)
+            parsed_metadata[k.strip()] = v.strip()
+
+    item = svc.add(text, priority=parsed_priority, tags=parsed_tags,
+                   due_at=parsed_due, metadata=parsed_metadata)
 
     _save_last_action("add", item.id, target, undo_path)
 
@@ -1068,6 +1096,208 @@ def backend(
     config = ProjectConfig(backend=name)
     config.save(project_dir)
     console.print(f"[green]✓[/green] Backend set to: {name}")
+
+
+# --- meta sub-app ---
+
+meta_app = typer.Typer(name="meta", help="Manage todo metadata.")
+
+
+@meta_app.command(name="show")
+def meta_show(
+    id: Annotated[str, typer.Argument(help="Todo ID")],
+    global_: Annotated[bool, typer.Option("-g", "--global")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d")] = None,
+):
+    """Show metadata for a todo."""
+    cfg = _get_config()
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
+    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+
+    item = _find_item_by_partial_id(svc, id)
+    if not item:
+        console.print(f"[red]Error:[/red] Todo not found: {id}")
+        raise typer.Exit(1)
+
+    if not item.metadata:
+        console.print("[dim]No metadata[/dim]")
+        return
+
+    for k, v in item.metadata.items():
+        console.print(f"  [cyan]{k}[/cyan] = {v}")
+
+
+@meta_app.command(name="set")
+def meta_set(
+    id: Annotated[str, typer.Argument(help="Todo ID")],
+    key: Annotated[str, typer.Argument(help="Metadata key")],
+    value: Annotated[str, typer.Argument(help="Metadata value")],
+    global_: Annotated[bool, typer.Option("-g", "--global")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d")] = None,
+):
+    """Set a metadata key on a todo."""
+    cfg = _get_config()
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
+    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+
+    item = _find_item_by_partial_id(svc, id)
+    if not item:
+        console.print(f"[red]Error:[/red] Todo not found: {id}")
+        raise typer.Exit(1)
+
+    updated = svc.set_metadata_key(item.id, key, value)
+    console.print(f"[green]✓[/green] Set {key}={value} on {updated.text}")
+
+
+@meta_app.command(name="rm")
+def meta_rm(
+    id: Annotated[str, typer.Argument(help="Todo ID")],
+    key: Annotated[str, typer.Argument(help="Metadata key to remove")],
+    global_: Annotated[bool, typer.Option("-g", "--global")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d")] = None,
+):
+    """Remove a metadata key from a todo."""
+    cfg = _get_config()
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
+    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+
+    item = _find_item_by_partial_id(svc, id)
+    if not item:
+        console.print(f"[red]Error:[/red] Todo not found: {id}")
+        raise typer.Exit(1)
+
+    updated = svc.remove_metadata_key(item.id, key)
+    console.print(f"[green]✓[/green] Removed {key} from {updated.text}")
+
+
+@meta_app.command(name="ls")
+def meta_ls(
+    global_: Annotated[bool, typer.Option("-g", "--global")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d")] = None,
+):
+    """List todos with metadata."""
+    cfg = _get_config()
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
+    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+
+    items = [i for i in svc.list() if i.metadata]
+    if not items:
+        console.print("[dim]No todos with metadata[/dim]")
+        return
+
+    for item in items:
+        meta_str = " ".join(f"[cyan]{k}[/cyan]={v}" for k, v in item.metadata.items())
+        console.print(f"  {item.text} [dim]({item.id})[/dim]  {meta_str}")
+
+
+app.add_typer(meta_app, name="meta")
+
+
+# --- tag sub-app ---
+
+tag_app = typer.Typer(name="tag", help="Manage todo tags.")
+
+
+@tag_app.command(name="add")
+def tag_add(
+    id: Annotated[str, typer.Argument(help="Todo ID")],
+    tag: Annotated[str, typer.Argument(help="Tag to add")],
+    global_: Annotated[bool, typer.Option("-g", "--global")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d")] = None,
+):
+    """Add a tag to a todo."""
+    cfg = _get_config()
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
+    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+
+    item = _find_item_by_partial_id(svc, id)
+    if not item:
+        console.print(f"[red]Error:[/red] Todo not found: {id}")
+        raise typer.Exit(1)
+
+    updated = svc.add_tag(item.id, tag)
+    tags_str = " ".join(f"#{t}" for t in (updated.tags or []))
+    console.print(f"[green]✓[/green] Added #{tag}: {updated.text} {tags_str}")
+
+
+@tag_app.command(name="rm")
+def tag_rm(
+    id: Annotated[str, typer.Argument(help="Todo ID")],
+    tag: Annotated[str, typer.Argument(help="Tag to remove")],
+    global_: Annotated[bool, typer.Option("-g", "--global")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d")] = None,
+):
+    """Remove a tag from a todo."""
+    cfg = _get_config()
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
+    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+
+    item = _find_item_by_partial_id(svc, id)
+    if not item:
+        console.print(f"[red]Error:[/red] Todo not found: {id}")
+        raise typer.Exit(1)
+
+    updated = svc.remove_tag(item.id, tag)
+    console.print(f"[green]✓[/green] Removed #{tag} from {updated.text}")
+
+
+app.add_typer(tag_app, name="tag")
+
+
+# --- wip command ---
+
+@app.command()
+def wip(
+    id: Annotated[str, typer.Argument(help="Todo ID")],
+    global_: Annotated[bool, typer.Option("-g", "--global")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d")] = None,
+):
+    """Mark a todo as work-in-progress (sets metadata status=wip)."""
+    cfg = _get_config()
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
+    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+
+    item = _find_item_by_partial_id(svc, id)
+    if not item:
+        console.print(f"[red]Error:[/red] Todo not found: {id}")
+        raise typer.Exit(1)
+
+    updated = svc.set_metadata_key(item.id, "status", "wip")
+    console.print(f"[green]✓[/green] WIP: {updated.text}")
+
+
+# --- due command ---
+
+@app.command()
+def due(
+    id: Annotated[str, typer.Argument(help="Todo ID")],
+    date: Annotated[str, typer.Argument(help="Due date (YYYY-MM-DD) or 'none' to clear")],
+    global_: Annotated[bool, typer.Option("-g", "--global")] = False,
+    dodo: Annotated[str | None, typer.Option("--dodo", "-d")] = None,
+):
+    """Set or clear a todo's due date."""
+    from datetime import datetime
+
+    cfg = _get_config()
+    dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
+    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+
+    item = _find_item_by_partial_id(svc, id)
+    if not item:
+        console.print(f"[red]Error:[/red] Todo not found: {id}")
+        raise typer.Exit(1)
+
+    if date.lower() == "none":
+        updated = svc.update_due_at(item.id, None)
+        console.print(f"[green]✓[/green] Cleared due date for {updated.text}")
+    else:
+        try:
+            parsed = datetime.fromisoformat(date)
+        except ValueError:
+            console.print(f"[red]Error:[/red] Invalid date '{date}'. Use YYYY-MM-DD format.")
+            raise typer.Exit(1)
+        updated = svc.update_due_at(item.id, parsed)
+        console.print(f"[green]✓[/green] Due {date}: {updated.text}")
 
 
 _plugin_commands_registered = False

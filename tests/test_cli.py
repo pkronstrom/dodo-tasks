@@ -631,3 +631,110 @@ class TestCliAddFlags:
         assert result.exit_code == 0, f"Failed: {result.output}"
         assert "!high" in result.stdout
         assert "#work" in result.stdout
+
+    def test_add_with_due(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            result = runner.invoke(app, ["add", "Task", "--due", "2026-06-15"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Task" in result.stdout
+
+    def test_add_with_meta(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            result = runner.invoke(app, ["add", "Task", "--meta", "status=wip"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Task" in result.stdout
+
+
+class TestCliMetaCommands:
+    def test_meta_set_and_show(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            add_r = runner.invoke(app, ["add", "Test task"])
+            todo_id = re.search(r"\(([a-f0-9]+)\)", add_r.stdout).group(1)
+
+            runner.invoke(app, ["meta", "set", todo_id, "status", "wip"])
+            result = runner.invoke(app, ["meta", "show", todo_id])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "status" in result.stdout
+        assert "wip" in result.stdout
+
+    def test_meta_rm(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            add_r = runner.invoke(app, ["add", "Test task"])
+            todo_id = re.search(r"\(([a-f0-9]+)\)", add_r.stdout).group(1)
+
+            runner.invoke(app, ["meta", "set", todo_id, "status", "wip"])
+            result = runner.invoke(app, ["meta", "rm", todo_id, "status"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+
+    def test_meta_ls(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            add_r = runner.invoke(app, ["add", "Task with meta"])
+            todo_id = re.search(r"\(([a-f0-9]+)\)", add_r.stdout).group(1)
+            runner.invoke(app, ["meta", "set", todo_id, "status", "wip"])
+
+            runner.invoke(app, ["add", "Task without meta"])
+
+            result = runner.invoke(app, ["meta", "ls"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "Task with meta" in result.stdout
+        assert "Task without meta" not in result.stdout
+
+
+class TestCliTagCommands:
+    def test_tag_add(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            add_r = runner.invoke(app, ["add", "Test task"])
+            todo_id = re.search(r"\(([a-f0-9]+)\)", add_r.stdout).group(1)
+
+            result = runner.invoke(app, ["tag", "add", todo_id, "urgent"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "urgent" in result.stdout
+
+    def test_tag_rm(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            add_r = runner.invoke(app, ["add", "Test task", "-t", "work,urgent"])
+            todo_id = re.search(r"\(([a-f0-9]+)\)", add_r.stdout).group(1)
+
+            result = runner.invoke(app, ["tag", "rm", todo_id, "work"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+
+
+class TestCliWipCommand:
+    def test_wip(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            add_r = runner.invoke(app, ["add", "Test task"])
+            todo_id = re.search(r"\(([a-f0-9]+)\)", add_r.stdout).group(1)
+
+            result = runner.invoke(app, ["wip", todo_id])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "wip" in result.stdout.lower()
+
+
+class TestCliDueCommand:
+    def test_due_set(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            add_r = runner.invoke(app, ["add", "Test task"])
+            todo_id = re.search(r"\(([a-f0-9]+)\)", add_r.stdout).group(1)
+
+            result = runner.invoke(app, ["due", todo_id, "2026-06-15"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "2026-06-15" in result.stdout
+
+    def test_due_clear(self, cli_env):
+        with patch("dodo.project.detect_project", return_value=None):
+            add_r = runner.invoke(app, ["add", "Test task", "--due", "2026-06-15"])
+            todo_id = re.search(r"\(([a-f0-9]+)\)", add_r.stdout).group(1)
+
+            result = runner.invoke(app, ["due", todo_id, "none"])
+
+        assert result.exit_code == 0, f"Failed: {result.output}"
+        assert "cleared" in result.stdout.lower()
