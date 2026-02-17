@@ -2,17 +2,21 @@
 
 ![dodo banner](docs/dodo_banner.png)
 
-A fast, flexible todo manager with smart project routing and plugin support.
+**The project-aware todo manager for developers and their AI agents — zero config, zero overhead.**
 
 Part of [**Nest-Driven Development**](https://github.com/pkronstrom/nest-driven-development) — the minimum vibable workflow.
 
+Your todos pile up across projects because your tools don't know which project you're in. Dodo does — automatically, the moment you `cd`.
+
+No Jira. No setup. Just tasks that know where they belong, captured fast and routed right. Open a terminal in any directory and your task list is already scoped to that project. Your AI agents get the same context you do.
+
 ## Features
 
-- **Smart routing**: Todos automatically go to the right project based on your current directory
-- **Multiple backends**: SQLite (default), Markdown, Obsidian, Remote
-- **Plugin system**: Extend with AI processing, dependency graphs, server mode, ntfy.sh
-- **Interactive UI**: Full TUI with vim-style navigation
-- **Priority & tags**: Organize with `!!:` prefixes and `#hashtags`
+- **Land in any directory, see the right tasks** — project routing is automatic, based on where you are
+- **Capture fast, triage later** — add todos in seconds with priority prefixes (`!!:`) and `#hashtags`
+- **Works how your team stores things** — SQLite, Markdown, or Obsidian, your call
+- **A full TUI when you want to dig in** — vim-style navigation, no mouse required
+- **Extend it with AI** — plugin system lets your agents process, link, and act on tasks
 
 ## Installation
 
