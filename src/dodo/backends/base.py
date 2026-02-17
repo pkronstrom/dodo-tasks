@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 from dodo.models import Status, TodoItem
@@ -20,6 +21,8 @@ class TodoBackend(Protocol):
         project: str | None = None,
         priority: "Priority | None" = None,
         tags: list[str] | None = None,
+        due_at: datetime | None = None,
+        metadata: dict[str, str] | None = None,
     ) -> TodoItem:
         """Create a new todo item."""
         ...
@@ -54,6 +57,30 @@ class TodoBackend(Protocol):
 
     def delete(self, id: str) -> None:
         """Delete a todo."""
+        ...
+
+    def update_due_at(self, id: str, due_at: datetime | None) -> TodoItem:
+        """Update todo due date."""
+        ...
+
+    def update_metadata(self, id: str, metadata: dict[str, str] | None) -> TodoItem:
+        """Update todo metadata (full replacement)."""
+        ...
+
+    def set_metadata_key(self, id: str, key: str, value: str) -> TodoItem:
+        """Set a single metadata key."""
+        ...
+
+    def remove_metadata_key(self, id: str, key: str) -> TodoItem:
+        """Remove a single metadata key."""
+        ...
+
+    def add_tag(self, id: str, tag: str) -> TodoItem:
+        """Add a single tag atomically."""
+        ...
+
+    def remove_tag(self, id: str, tag: str) -> TodoItem:
+        """Remove a single tag atomically."""
         ...
 
 
