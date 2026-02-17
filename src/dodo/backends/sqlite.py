@@ -26,7 +26,9 @@ class SqliteBackend:
             created_at TEXT NOT NULL,
             completed_at TEXT,
             priority TEXT,
-            tags TEXT
+            tags TEXT,
+            due_at TEXT,
+            metadata TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_project ON todos(project);
         CREATE INDEX IF NOT EXISTS idx_status ON todos(status);
@@ -53,6 +55,8 @@ class SqliteBackend:
         project: str | None = None,
         priority: Priority | None = None,
         tags: list[str] | None = None,
+        due_at: datetime | None = None,
+        metadata: dict[str, str] | None = None,
     ) -> TodoItem:
         item = TodoItem(
             id=uuid.uuid4().hex[:8],
@@ -62,10 +66,12 @@ class SqliteBackend:
             project=project,
             priority=priority,
             tags=tags,
+            due_at=due_at,
+            metadata=metadata,
         )
         with self._connect() as conn:
             conn.execute(
-                "INSERT INTO todos (id, text, status, project, created_at, priority, tags) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO todos (id, text, status, project, created_at, priority, tags, due_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     item.id,
                     item.text,
@@ -74,6 +80,8 @@ class SqliteBackend:
                     item.created_at.isoformat(),
                     item.priority.value if item.priority else None,
                     json.dumps(item.tags) if item.tags else None,
+                    item.due_at.isoformat() if item.due_at else None,
+                    json.dumps(item.metadata) if item.metadata else None,
                 ),
             )
         return item
@@ -83,7 +91,7 @@ class SqliteBackend:
         project: str | None = None,
         status: Status | None = None,
     ) -> list[TodoItem]:
-        query = "SELECT id, text, status, project, created_at, completed_at, priority, tags FROM todos WHERE 1=1"
+        query = "SELECT id, text, status, project, created_at, completed_at, priority, tags, due_at, metadata FROM todos WHERE 1=1"
         params: list[str] = []
 
         if project:
@@ -102,7 +110,7 @@ class SqliteBackend:
 
     def get(self, id: str) -> TodoItem | None:
         query = """
-            SELECT id, text, status, project, created_at, completed_at, priority, tags
+            SELECT id, text, status, project, created_at, completed_at, priority, tags, due_at, metadata
             FROM todos WHERE id = ?
         """
         with self._connect() as conn:
@@ -167,6 +175,32 @@ class SqliteBackend:
             raise KeyError(f"Todo not found: {id}")
         return item
 
+    def update_due_at(self, id: str, due_at: datetime | None) -> TodoItem:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE todos SET due_at = ? WHERE id = ?",
+                (due_at.isoformat() if due_at else None, id),
+            )
+            if cursor.rowcount == 0:
+                raise KeyError(f"Todo not found: {id}")
+        item = self.get(id)
+        if not item:
+            raise KeyError(f"Todo not found: {id}")
+        return item
+
+    def update_metadata(self, id: str, metadata: dict[str, str] | None) -> TodoItem:
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE todos SET metadata = ? WHERE id = ?",
+                (json.dumps(metadata) if metadata else None, id),
+            )
+            if cursor.rowcount == 0:
+                raise KeyError(f"Todo not found: {id}")
+        item = self.get(id)
+        if not item:
+            raise KeyError(f"Todo not found: {id}")
+        return item
+
     def delete(self, id: str) -> None:
         with self._connect() as conn:
             cursor = conn.execute("DELETE FROM todos WHERE id = ?", (id,))
@@ -202,7 +236,7 @@ class SqliteBackend:
                     continue
 
                 conn.execute(
-                    "INSERT INTO todos (id, text, status, project, created_at, completed_at, priority, tags) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO todos (id, text, status, project, created_at, completed_at, priority, tags, due_at, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         item.id,
                         item.text,
@@ -212,6 +246,8 @@ class SqliteBackend:
                         item.completed_at.isoformat() if item.completed_at else None,
                         item.priority.value if item.priority else None,
                         json.dumps(item.tags) if item.tags else None,
+                        item.due_at.isoformat() if item.due_at else None,
+                        json.dumps(item.metadata) if item.metadata else None,
                     ),
                 )
                 imported += 1
@@ -244,18 +280,21 @@ class SqliteBackend:
 
     def _run_migrations(self, conn: sqlite3.Connection) -> None:
         """Run any pending migrations."""
-        # Check if priority column exists
         cursor = conn.execute("PRAGMA table_info(todos)")
         columns = {row[1] for row in cursor.fetchall()}
 
         if "priority" not in columns:
-            # Run migration - split statements since ALTER TABLE can't be batched
             conn.execute("ALTER TABLE todos ADD COLUMN priority TEXT")
             conn.execute("ALTER TABLE todos ADD COLUMN tags TEXT")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_priority ON todos(priority)")
 
+        if "due_at" not in columns:
+            conn.execute("ALTER TABLE todos ADD COLUMN due_at TEXT")
+            conn.execute("ALTER TABLE todos ADD COLUMN metadata TEXT")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_due_at ON todos(due_at)")
+
     def _row_to_item(self, row: tuple) -> TodoItem:
-        id, text, status, project, created_at, completed_at, priority, tags = row
+        id, text, status, project, created_at, completed_at, priority, tags, due_at, metadata = row
         return TodoItem(
             id=id,
             text=text,
@@ -265,4 +304,6 @@ class SqliteBackend:
             completed_at=datetime.fromisoformat(completed_at) if completed_at else None,
             priority=Priority(priority) if priority else None,
             tags=json.loads(tags) if tags else None,
+            due_at=datetime.fromisoformat(due_at) if due_at else None,
+            metadata=json.loads(metadata) if metadata else None,
         )
