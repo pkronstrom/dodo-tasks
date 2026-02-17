@@ -72,8 +72,10 @@ async def list_todos(request: Request) -> JSONResponse:
 
     # Filter: overdue
     if request.query_params.get("overdue") == "true":
-        now = datetime.now()
-        items = [i for i in items if i.due_at and i.due_at < now]
+        items = [
+            i for i in items
+            if i.due_at and i.due_at < datetime.now(tz=i.due_at.tzinfo)
+        ]
 
     # Filter: meta.key=value
     for key, value in request.query_params.items():
@@ -117,6 +119,8 @@ async def add_todo(request: Request) -> JSONResponse:
             return JSONResponse({"error": "Invalid due_at format"}, status_code=400)
 
     metadata = body.get("metadata")
+    if metadata is not None and not isinstance(metadata, dict):
+        return JSONResponse({"error": "metadata must be a JSON object"}, status_code=400)
     item = await asyncio.to_thread(svc.add, text, priority, tags, due_at, metadata)
     return JSONResponse(item.to_dict(), status_code=201)
 
@@ -149,7 +153,7 @@ async def update_todo(request: Request) -> JSONResponse:
     if not any(k in body for k in ("text", "priority", "tags", "due_at", "metadata")):
         return JSONResponse({"error": "no fields to update"}, status_code=400)
 
-    # Validate all fields before applying any (atomic: no partial updates on error)
+    # Validate ALL fields before applying any (no partial updates on error)
     priority = None
     if "priority" in body:
         try:
@@ -159,6 +163,21 @@ async def update_todo(request: Request) -> JSONResponse:
                 {"error": f"Invalid priority: {body['priority']}"}, status_code=400,
             )
 
+    due_at = ...  # sentinel: ... means "not provided", None means "clear"
+    if "due_at" in body:
+        if body["due_at"]:
+            try:
+                due_at = datetime.fromisoformat(body["due_at"])
+            except (ValueError, TypeError):
+                return JSONResponse({"error": "Invalid due_at format"}, status_code=400)
+        else:
+            due_at = None
+
+    if "metadata" in body:
+        if body["metadata"] is not None and not isinstance(body["metadata"], dict):
+            return JSONResponse({"error": "metadata must be a JSON object"}, status_code=400)
+
+    # All validation passed — apply changes
     item = None
     try:
         if "text" in body:
@@ -167,13 +186,7 @@ async def update_todo(request: Request) -> JSONResponse:
             item = await asyncio.to_thread(svc.update_priority, todo_id, priority)
         if "tags" in body:
             item = await asyncio.to_thread(svc.update_tags, todo_id, body["tags"])
-        if "due_at" in body:
-            due_at = None
-            if body["due_at"]:
-                try:
-                    due_at = datetime.fromisoformat(body["due_at"])
-                except (ValueError, TypeError):
-                    return JSONResponse({"error": "Invalid due_at format"}, status_code=400)
+        if due_at is not ...:
             item = await asyncio.to_thread(svc.update_due_at, todo_id, due_at)
         if "metadata" in body:
             item = await asyncio.to_thread(svc.update_metadata, todo_id, body["metadata"])

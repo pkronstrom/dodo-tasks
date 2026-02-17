@@ -450,6 +450,42 @@ class TestListTodosFiltering:
         assert items[0]["text"] == "WIP"
 
 
+class TestMetadataValidation:
+    def test_add_todo_rejects_non_dict_metadata(self, client):
+        resp = client.post("/api/v1/dodos/_default/todos", json={
+            "text": "Test", "metadata": "not-a-dict",
+        })
+        assert resp.status_code == 400
+        assert "metadata must be" in resp.json()["error"]
+
+    def test_add_todo_rejects_list_metadata(self, client):
+        resp = client.post("/api/v1/dodos/_default/todos", json={
+            "text": "Test", "metadata": ["a", "b"],
+        })
+        assert resp.status_code == 400
+
+    def test_patch_rejects_non_dict_metadata(self, client):
+        resp = client.post("/api/v1/dodos/_default/todos", json={"text": "Test"})
+        todo_id = resp.json()["id"]
+        resp = client.patch(f"/api/v1/dodos/_default/todos/{todo_id}", json={
+            "metadata": 42,
+        })
+        assert resp.status_code == 400
+        assert "metadata must be" in resp.json()["error"]
+
+    def test_patch_invalid_due_at_does_not_partial_apply(self, client):
+        """PATCH with valid text + invalid due_at should not apply text change."""
+        resp = client.post("/api/v1/dodos/_default/todos", json={"text": "Original"})
+        todo_id = resp.json()["id"]
+        resp = client.patch(f"/api/v1/dodos/_default/todos/{todo_id}", json={
+            "text": "Changed", "due_at": "not-a-date",
+        })
+        assert resp.status_code == 400
+        # Verify original text is unchanged
+        resp = client.get(f"/api/v1/dodos/_default/todos/{todo_id}")
+        assert resp.json()["text"] == "Original"
+
+
 class TestAuth:
     def test_auth_required_when_configured(self, tmp_path):
         cfg = Config.load(tmp_path / "config")

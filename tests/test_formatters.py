@@ -333,6 +333,40 @@ class TestTableFormatterDueDate:
         output = formatter.format(items)
         assert output is not None
 
+    def test_timezone_aware_due_at_no_crash(self):
+        """Timezone-aware due_at should not crash comparison with now()."""
+        from datetime import UTC
+
+        items = [
+            TodoItem(
+                id="abc123",
+                text="TZ-aware task",
+                status=Status.PENDING,
+                created_at=datetime(2024, 1, 9, 10, 0),
+                due_at=datetime(2020, 1, 1, tzinfo=UTC),
+            ),
+        ]
+        formatter = TableFormatter()
+        output = formatter.format(items)
+        assert output is not None
+
+    def test_timezone_aware_future_due_at(self):
+        """Timezone-aware future due_at should render without red."""
+        from datetime import UTC
+
+        items = [
+            TodoItem(
+                id="abc123",
+                text="Future TZ task",
+                status=Status.PENDING,
+                created_at=datetime(2024, 1, 9, 10, 0),
+                due_at=datetime(2099, 1, 1, tzinfo=UTC),
+            ),
+        ]
+        formatter = TableFormatter()
+        output = formatter.format(items)
+        assert output is not None
+
 
 class TestMarkdownFormatter:
     def test_format_empty(self):

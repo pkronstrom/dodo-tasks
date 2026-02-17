@@ -1112,7 +1112,10 @@ def meta_show(
     """Show metadata for a todo."""
     cfg = _get_config()
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
-    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
+    else:
+        svc = _get_service(cfg, dodo_id)
 
     item = _find_item_by_partial_id(svc, id)
     if not item:
@@ -1138,14 +1141,21 @@ def meta_set(
     """Set a metadata key on a todo."""
     cfg = _get_config()
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
-    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
+    else:
+        svc = _get_service(cfg, dodo_id)
 
     item = _find_item_by_partial_id(svc, id)
     if not item:
         console.print(f"[red]Error:[/red] Todo not found: {id}")
         raise typer.Exit(1)
 
-    updated = svc.set_metadata_key(item.id, key, value)
+    try:
+        updated = svc.set_metadata_key(item.id, key, value)
+    except NotImplementedError:
+        console.print("[red]Error:[/red] This backend does not support metadata operations.")
+        raise typer.Exit(1)
     console.print(f"[green]✓[/green] Set {key}={value} on {updated.text}")
 
 
@@ -1159,14 +1169,21 @@ def meta_rm(
     """Remove a metadata key from a todo."""
     cfg = _get_config()
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
-    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
+    else:
+        svc = _get_service(cfg, dodo_id)
 
     item = _find_item_by_partial_id(svc, id)
     if not item:
         console.print(f"[red]Error:[/red] Todo not found: {id}")
         raise typer.Exit(1)
 
-    updated = svc.remove_metadata_key(item.id, key)
+    try:
+        updated = svc.remove_metadata_key(item.id, key)
+    except NotImplementedError:
+        console.print("[red]Error:[/red] This backend does not support metadata operations.")
+        raise typer.Exit(1)
     console.print(f"[green]✓[/green] Removed {key} from {updated.text}")
 
 
@@ -1178,7 +1195,10 @@ def meta_ls(
     """List todos with metadata."""
     cfg = _get_config()
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
-    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
+    else:
+        svc = _get_service(cfg, dodo_id)
 
     items = [i for i in svc.list() if i.metadata]
     if not items:
@@ -1208,14 +1228,21 @@ def tag_add(
     """Add a tag to a todo."""
     cfg = _get_config()
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
-    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
+    else:
+        svc = _get_service(cfg, dodo_id)
 
     item = _find_item_by_partial_id(svc, id)
     if not item:
         console.print(f"[red]Error:[/red] Todo not found: {id}")
         raise typer.Exit(1)
 
-    updated = svc.add_tag(item.id, tag)
+    try:
+        updated = svc.add_tag(item.id, tag)
+    except NotImplementedError:
+        console.print("[red]Error:[/red] This backend does not support tag operations.")
+        raise typer.Exit(1)
     tags_str = " ".join(f"#{t}" for t in (updated.tags or []))
     console.print(f"[green]✓[/green] Added #{tag}: {updated.text} {tags_str}")
 
@@ -1230,14 +1257,21 @@ def tag_rm(
     """Remove a tag from a todo."""
     cfg = _get_config()
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
-    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
+    else:
+        svc = _get_service(cfg, dodo_id)
 
     item = _find_item_by_partial_id(svc, id)
     if not item:
         console.print(f"[red]Error:[/red] Todo not found: {id}")
         raise typer.Exit(1)
 
-    updated = svc.remove_tag(item.id, tag)
+    try:
+        updated = svc.remove_tag(item.id, tag)
+    except NotImplementedError:
+        console.print("[red]Error:[/red] This backend does not support tag operations.")
+        raise typer.Exit(1)
     console.print(f"[green]✓[/green] Removed #{tag} from {updated.text}")
 
 
@@ -1255,14 +1289,21 @@ def wip(
     """Mark a todo as work-in-progress (sets metadata status=wip)."""
     cfg = _get_config()
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
-    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
+    else:
+        svc = _get_service(cfg, dodo_id)
 
     item = _find_item_by_partial_id(svc, id)
     if not item:
         console.print(f"[red]Error:[/red] Todo not found: {id}")
         raise typer.Exit(1)
 
-    updated = svc.set_metadata_key(item.id, "status", "wip")
+    try:
+        updated = svc.set_metadata_key(item.id, "status", "wip")
+    except NotImplementedError:
+        console.print("[red]Error:[/red] This backend does not support metadata operations.")
+        raise typer.Exit(1)
     console.print(f"[green]✓[/green] WIP: {updated.text}")
 
 
@@ -1280,24 +1321,33 @@ def due(
 
     cfg = _get_config()
     dodo_id, explicit_path = _resolve_dodo(cfg, dodo, global_)
-    svc = _get_service_with_path(cfg, explicit_path) if explicit_path else _get_service(cfg, dodo_id)
+    if explicit_path:
+        svc = _get_service_with_path(cfg, explicit_path)
+    else:
+        svc = _get_service(cfg, dodo_id)
 
     item = _find_item_by_partial_id(svc, id)
     if not item:
         console.print(f"[red]Error:[/red] Todo not found: {id}")
         raise typer.Exit(1)
 
-    if date.lower() == "none":
-        updated = svc.update_due_at(item.id, None)
-        console.print(f"[green]✓[/green] Cleared due date for {updated.text}")
-    else:
-        try:
-            parsed = datetime.fromisoformat(date)
-        except ValueError:
-            console.print(f"[red]Error:[/red] Invalid date '{date}'. Use YYYY-MM-DD format.")
-            raise typer.Exit(1)
-        updated = svc.update_due_at(item.id, parsed)
-        console.print(f"[green]✓[/green] Due {date}: {updated.text}")
+    try:
+        if date.lower() == "none":
+            updated = svc.update_due_at(item.id, None)
+            console.print(f"[green]✓[/green] Cleared due date for {updated.text}")
+        else:
+            try:
+                parsed = datetime.fromisoformat(date)
+            except ValueError:
+                console.print(
+                    f"[red]Error:[/red] Invalid date '{date}'. Use YYYY-MM-DD format."
+                )
+                raise typer.Exit(1)
+            updated = svc.update_due_at(item.id, parsed)
+            console.print(f"[green]✓[/green] Due {date}: {updated.text}")
+    except NotImplementedError:
+        console.print("[red]Error:[/red] This backend does not support due dates.")
+        raise typer.Exit(1)
 
 
 _plugin_commands_registered = False

@@ -113,8 +113,12 @@ def extend_backend(backend, config: Config):
     if not url:
         return backend
     secret = config.get_plugin_config("server", "webhook_secret", "")
+    # Derive dodo name from backend's storage path if available
+    dodo_name = "default"
+    if hasattr(backend, "_path"):
+        dodo_name = backend._path.parent.name
     from dodo.plugins.server.webhook import WebhookWrapper
-    return WebhookWrapper(backend, url, secret, "default")
+    return WebhookWrapper(backend, url, secret, dodo_name)
 
 
 def register_root_commands(app: typer.Typer, config: Config) -> None:

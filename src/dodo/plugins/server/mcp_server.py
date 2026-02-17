@@ -59,6 +59,8 @@ def create_mcp_app(registry: ServiceRegistry):
         from dodo.models import Priority
 
         _validate_dodo(dodo)
+        if metadata is not None and not isinstance(metadata, dict):
+            raise ValueError("metadata must be a dict")
         svc = registry.get_service(dodo)
         p = Priority(priority) if priority else None
         d = datetime.fromisoformat(due_at) if due_at else None
@@ -103,6 +105,8 @@ def create_mcp_app(registry: ServiceRegistry):
         from dodo.models import Priority
 
         _validate_dodo(dodo)
+        if metadata is not None and not isinstance(metadata, dict):
+            raise ValueError("metadata must be a dict")
         svc = registry.get_service(dodo)
         item = None
         if text is not None:

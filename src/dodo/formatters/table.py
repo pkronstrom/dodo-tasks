@@ -45,7 +45,7 @@ class TableFormatter:
         date_str = due_at.strftime("%Y-%m-%d")
         if status == Status.DONE:
             return f"[dim]{date_str}[/dim]"
-        if due_at < datetime.now():
+        if due_at < datetime.now(tz=due_at.tzinfo):
             return f"[red bold]{date_str}[/red bold]"
         return date_str
 
