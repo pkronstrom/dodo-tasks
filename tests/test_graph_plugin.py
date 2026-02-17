@@ -164,6 +164,72 @@ class TestGraphWrapperQueries:
         assert t3.id not in blocked_ids
 
 
+class TestGraphWrapperNewMethods:
+    def test_add_with_due_at(self, tmp_path):
+        from datetime import datetime
+        from dodo.backends.sqlite import SqliteBackend
+        from dodo.plugins.graph.wrapper import GraphWrapper
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        wrapper = GraphWrapper(backend)
+        item = wrapper.add("Test", due_at=datetime(2026, 3, 1))
+        assert item.due_at == datetime(2026, 3, 1)
+
+    def test_update_due_at(self, tmp_path):
+        from datetime import datetime
+        from dodo.backends.sqlite import SqliteBackend
+        from dodo.plugins.graph.wrapper import GraphWrapper
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        wrapper = GraphWrapper(backend)
+        item = wrapper.add("Test")
+        updated = wrapper.update_due_at(item.id, datetime(2026, 3, 1))
+        assert updated.due_at == datetime(2026, 3, 1)
+
+    def test_update_metadata(self, tmp_path):
+        from dodo.backends.sqlite import SqliteBackend
+        from dodo.plugins.graph.wrapper import GraphWrapper
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        wrapper = GraphWrapper(backend)
+        item = wrapper.add("Test")
+        updated = wrapper.update_metadata(item.id, {"k": "v"})
+        assert updated.metadata == {"k": "v"}
+
+    def test_set_metadata_key(self, tmp_path):
+        from dodo.backends.sqlite import SqliteBackend
+        from dodo.plugins.graph.wrapper import GraphWrapper
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        wrapper = GraphWrapper(backend)
+        item = wrapper.add("Test")
+        updated = wrapper.set_metadata_key(item.id, "k", "v")
+        assert updated.metadata == {"k": "v"}
+
+    def test_remove_metadata_key(self, tmp_path):
+        from dodo.backends.sqlite import SqliteBackend
+        from dodo.plugins.graph.wrapper import GraphWrapper
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        wrapper = GraphWrapper(backend)
+        item = wrapper.add("Test", metadata={"a": "1"})
+        updated = wrapper.remove_metadata_key(item.id, "a")
+        assert updated.metadata is None or updated.metadata == {}
+
+    def test_add_tag(self, tmp_path):
+        from dodo.backends.sqlite import SqliteBackend
+        from dodo.plugins.graph.wrapper import GraphWrapper
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        wrapper = GraphWrapper(backend)
+        item = wrapper.add("Test", tags=["a"])
+        updated = wrapper.add_tag(item.id, "b")
+        assert "b" in updated.tags
+
+    def test_remove_tag(self, tmp_path):
+        from dodo.backends.sqlite import SqliteBackend
+        from dodo.plugins.graph.wrapper import GraphWrapper
+        backend = SqliteBackend(tmp_path / "dodo.db")
+        wrapper = GraphWrapper(backend)
+        item = wrapper.add("Test", tags=["a", "b"])
+        updated = wrapper.remove_tag(item.id, "a")
+        assert updated.tags == ["b"]
+
+
 def test_list_attaches_blocked_by(tmp_path):
     """GraphWrapper.list() should attach blocked_by to items."""
     from dodo.backends.sqlite import SqliteBackend
