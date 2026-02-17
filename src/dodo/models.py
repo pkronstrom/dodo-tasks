@@ -45,6 +45,8 @@ class TodoItem:
     project: str | None = None
     priority: Priority | None = None
     tags: list[str] | None = None
+    due_at: datetime | None = None
+    metadata: dict[str, str] | None = None
 
     def to_dict(self) -> dict:
         """Serialize to dict for formatters."""
@@ -57,6 +59,8 @@ class TodoItem:
             "project": self.project,
             "priority": self.priority.value if self.priority else None,
             "tags": self.tags,
+            "due_at": self.due_at.isoformat() if self.due_at else None,
+            "metadata": self.metadata,
         }
 
 
@@ -102,6 +106,14 @@ class TodoItemView:
     @property
     def tags(self) -> list[str] | None:
         return self.item.tags
+
+    @property
+    def due_at(self) -> datetime | None:
+        return self.item.due_at
+
+    @property
+    def metadata(self) -> dict[str, str] | None:
+        return self.item.metadata
 
     def to_dict(self) -> dict:
         """Serialize to dict, including extension fields."""

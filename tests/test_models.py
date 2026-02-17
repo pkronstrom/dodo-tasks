@@ -120,3 +120,84 @@ class TestTodoItemPriorityTags:
         d = item.to_dict()
         assert d["priority"] == "high"
         assert d["tags"] == ["api"]
+
+
+class TestTodoItemDueAtMetadata:
+    def test_todoitem_with_due_at(self):
+        from dodo.models import TodoItem, Status
+        from datetime import datetime
+        item = TodoItem(
+            id="abc12345", text="Test", status=Status.PENDING,
+            created_at=datetime.now(), due_at=datetime(2026, 3, 1),
+        )
+        assert item.due_at == datetime(2026, 3, 1)
+
+    def test_todoitem_with_metadata(self):
+        from dodo.models import TodoItem, Status
+        from datetime import datetime
+        item = TodoItem(
+            id="abc12345", text="Test", status=Status.PENDING,
+            created_at=datetime.now(), metadata={"status": "wip", "assignee": "agent"},
+        )
+        assert item.metadata == {"status": "wip", "assignee": "agent"}
+
+    def test_todoitem_defaults_none(self):
+        from dodo.models import TodoItem, Status
+        from datetime import datetime
+        item = TodoItem(
+            id="abc12345", text="Test", status=Status.PENDING,
+            created_at=datetime.now(),
+        )
+        assert item.due_at is None
+        assert item.metadata is None
+
+    def test_todoitem_to_dict_includes_new_fields(self):
+        from dodo.models import TodoItem, Status
+        from datetime import datetime
+        item = TodoItem(
+            id="abc12345", text="Test", status=Status.PENDING,
+            created_at=datetime(2024, 1, 15, 10, 30),
+            due_at=datetime(2026, 3, 1),
+            metadata={"status": "wip"},
+        )
+        d = item.to_dict()
+        assert d["due_at"] == "2026-03-01T00:00:00"
+        assert d["metadata"] == {"status": "wip"}
+
+    def test_todoitem_to_dict_none_fields(self):
+        from dodo.models import TodoItem, Status
+        from datetime import datetime
+        item = TodoItem(
+            id="abc12345", text="Test", status=Status.PENDING,
+            created_at=datetime(2024, 1, 15, 10, 30),
+        )
+        d = item.to_dict()
+        assert d["due_at"] is None
+        assert d["metadata"] is None
+
+
+class TestTodoItemViewNewFields:
+    def test_view_delegates_due_at(self):
+        from dodo.models import TodoItem, TodoItemView, Status
+        from datetime import datetime
+        item = TodoItem(
+            id="abc12345", text="Test", status=Status.PENDING,
+            created_at=datetime.now(), due_at=datetime(2026, 3, 1),
+            metadata={"k": "v"},
+        )
+        view = TodoItemView(item=item)
+        assert view.due_at == datetime(2026, 3, 1)
+        assert view.metadata == {"k": "v"}
+
+    def test_view_to_dict_includes_new_fields(self):
+        from dodo.models import TodoItem, TodoItemView, Status
+        from datetime import datetime
+        item = TodoItem(
+            id="abc12345", text="Test", status=Status.PENDING,
+            created_at=datetime(2024, 1, 15, 10, 30),
+            due_at=datetime(2026, 3, 1), metadata={"k": "v"},
+        )
+        view = TodoItemView(item=item)
+        d = view.to_dict()
+        assert d["due_at"] == "2026-03-01T00:00:00"
+        assert d["metadata"] == {"k": "v"}
