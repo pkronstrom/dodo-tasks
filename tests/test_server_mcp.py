@@ -7,7 +7,7 @@ import pytest
 mcp = pytest.importorskip("mcp")
 
 from dodo.config import Config  # noqa: E402
-from dodo.plugins.server.app import ServiceRegistry  # noqa: E402
+from dodo.plugins.server.registry import ServiceRegistry  # noqa: E402
 from dodo.plugins.server.mcp_server import (  # noqa: E402
     _build_mcp,
     _validate_dodo,
@@ -145,10 +145,8 @@ class TestMcpServiceIntegration:
         mcp_instance = _build_mcp(registry)
         assert isinstance(mcp_instance, FastMCP)
 
-    def test_build_mcp_has_tools(self, registry):
-        """_build_mcp registers all expected tools."""
+    def test_build_mcp_has_single_dodo_tool(self, registry):
+        """_build_mcp registers a single 'dodo' tool (action dispatch pattern)."""
         mcp_instance = _build_mcp(registry)
         tool_names = {t.name for t in mcp_instance._tool_manager.list_tools()}
-        assert "list_dodos" in tool_names
-        assert "add_todo" in tool_names
-        assert "list_todos" in tool_names
+        assert tool_names == {"dodo"}

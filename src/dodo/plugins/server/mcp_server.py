@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
 
     from dodo.config import Config
-    from dodo.plugins.server.app import ServiceRegistry
+    from dodo.plugins.server.registry import ServiceRegistry
 
 _ACTIONS: dict[str, dict] = {
     "list_dodos": {
@@ -353,7 +353,7 @@ def run_stdio(config: Config) -> None:
     Usage: dodo mcp
     Config: claude mcp add dodo -- dodo mcp
     """
-    from dodo.plugins.server.app import ServiceRegistry
+    from dodo.plugins.server.registry import ServiceRegistry
 
     registry = ServiceRegistry(config)
     mcp = _build_mcp(registry)
