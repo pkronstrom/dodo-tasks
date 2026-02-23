@@ -1290,7 +1290,10 @@ def mcp():
     try:
         from dodo.plugins.server.mcp_server import run_stdio
     except ImportError:
-        console.print("[red]Error:[/red] MCP requires: pip install dodo-tasks[server]")
+        console.print(
+            "[red]Error:[/red] MCP requires the mcp package.\n"
+            "  pip install dodo-tasks[mcp]   OR   uv tool install dodo-tasks --with mcp"
+        )
         raise typer.Exit(1)
     cfg = _get_config()
     run_stdio(cfg)
