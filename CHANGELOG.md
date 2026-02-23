@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.7.1
+
+### Improvements
+
+- **MCP single-tool redesign**: Replace 12 separate MCP tools with one `dodo(action, params)` tool using action dispatch pattern — cleaner tool namespace, `describe` action for parameter introspection, enriched validation errors
+- **Separate `[mcp]` optional dep**: `dodo mcp` no longer requires the full server stack (`uv tool install dodo-tasks --with mcp`)
+- **ServiceRegistry extracted**: MCP stdio transport works without importing starlette
+
 ## v0.7.0
 
 ### New Features

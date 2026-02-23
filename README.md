@@ -148,7 +148,7 @@ dodo config                         # Configure plugins
 
 ```bash
 dodo plugins enable server
-pip install -e ".[server]"      # Server deps (starlette, uvicorn, mcp)
+pip install -e ".[server]"      # Server deps (starlette, uvicorn)
 dodo server start               # Start server
 dodo server start --host 0.0.0.0 --port 9090  # Remote access
 ```
@@ -160,9 +160,11 @@ Provides three channels (each individually toggleable):
 
 **MCP stdio** (no web server needed — add directly to Claude Code):
 ```bash
-pip install "dodo-tasks[server]"
+pip install "dodo-tasks[mcp]"        # or: uv tool install dodo-tasks --with mcp
 claude mcp add dodo -- dodo mcp
 ```
+
+Uses single-tool action dispatch — one `dodo(action, params)` tool with `describe` action for parameter introspection.
 
 Remote backend (no extra deps needed):
 ```bash
