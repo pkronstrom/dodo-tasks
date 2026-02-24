@@ -5,8 +5,10 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from dodo.backends.proxy import BackendProxy
+
 if TYPE_CHECKING:
-    from dodo.models import TodoItem
+    from dodo.models import Priority, TodoItem
 
 logger = logging.getLogger("dodo.webhook")
 
@@ -36,17 +38,14 @@ def _fire_webhook(url: str, event: str, dodo_name: str, item_dict: dict | None, 
         logger.warning("Webhook delivery failed to %s", url)
 
 
-class WebhookWrapper:
+class WebhookWrapper(BackendProxy):
     """Wraps a backend to fire webhooks on mutations."""
 
     def __init__(self, backend, webhook_url: str, webhook_secret: str, dodo_name: str):
-        self._backend = backend
+        super().__init__(backend)
         self._url = webhook_url
         self._secret = webhook_secret
         self._dodo = dodo_name
-        # Expose _path for GraphWrapper and other wrappers
-        if hasattr(backend, "_path"):
-            self._path = backend._path
 
     def _fire(self, event: str, item: TodoItem | None = None):
         if self._url:
@@ -55,14 +54,8 @@ class WebhookWrapper:
                 item.to_dict() if item else None, self._secret,
             )
 
-    # Read methods — pure delegation
-    def list(self, project=None, status=None):
-        return self._backend.list(project, status)
-
-    def get(self, id):
-        return self._backend.get(id)
-
     # Mutation methods — delegate + fire webhook
+
     def add(self, text, project=None, priority=None, tags=None, due_at=None, metadata=None):
         item = self._backend.add(text, project=project, priority=priority, tags=tags,
                                   due_at=due_at, metadata=metadata)
@@ -123,7 +116,3 @@ class WebhookWrapper:
         item = self._backend.get(id)
         self._backend.delete(id)
         self._fire("todo.deleted", item)
-
-    # Pass through any other attributes to the wrapped backend
-    def __getattr__(self, name):
-        return getattr(self._backend, name)

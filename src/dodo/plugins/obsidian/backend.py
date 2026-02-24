@@ -31,6 +31,27 @@ class ObsidianBackend:
 
     DEFAULT_VAULT_PATH = "dodo/todos.md"
 
+    @classmethod
+    def from_config(cls, config, project_id=None, storage_path=None):
+        project = project_id
+        if not project and storage_path:
+            if storage_path.name == ".dodo":
+                project = storage_path.parent.name
+            else:
+                project = storage_path.name
+        return cls(
+            api_url=config.get_plugin_config("obsidian", "api_url", "https://localhost:27124"),
+            api_key=config.get_plugin_config("obsidian", "api_key", ""),
+            vault_path=config.get_plugin_config("obsidian", "vault_path", "dodo/{project}.md"),
+            project=project,
+            priority_syntax=config.get_plugin_config("obsidian", "priority_syntax", "symbols"),
+            timestamp_syntax=config.get_plugin_config("obsidian", "timestamp_syntax", "hidden"),
+            tags_syntax=config.get_plugin_config("obsidian", "tags_syntax", "hashtags"),
+            group_by_tags=config.get_plugin_config("obsidian", "group_by_tags", "true") in ("true", "1", True),
+            default_header_level=int(config.get_plugin_config("obsidian", "default_header_level", "3") or 3),
+            sort_by=config.get_plugin_config("obsidian", "sort_by", "priority"),
+        )
+
     def __init__(
         self,
         api_url: str | None = None,

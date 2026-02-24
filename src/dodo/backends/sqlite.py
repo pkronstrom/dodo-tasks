@@ -39,6 +39,10 @@ class SqliteBackend:
         self._conn: sqlite3.Connection | None = None
         self._ensure_schema()
 
+    @property
+    def storage_path(self) -> Path | None:
+        return self._path
+
     def __del__(self) -> None:
         """Clean up connection on garbage collection."""
         self.close()

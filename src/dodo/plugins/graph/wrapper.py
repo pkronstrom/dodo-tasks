@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import contextmanager
-from pathlib import Path
 from typing import TYPE_CHECKING
+
+from dodo.backends.proxy import BackendProxy
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from datetime import datetime
 
     from dodo.models import Status, TodoItem
 
 
-class GraphWrapper:
+class GraphWrapper(BackendProxy):
     """Wraps a SQLite backend to add dependency tracking.
 
     Stores dependencies in a separate table in the same database.
@@ -31,25 +31,10 @@ class GraphWrapper:
     """
 
     def __init__(self, backend):
-        self._backend = backend
-        self._path: Path = backend._path
+        super().__init__(backend)
         self._ensure_deps_schema()
 
-    # Delegate standard backend methods
-
-    def add(
-        self,
-        text: str,
-        project: str | None = None,
-        priority: Priority | None = None,
-        tags: list[str] | None = None,
-        due_at: datetime | None = None,
-        metadata: dict[str, str] | None = None,
-    ) -> TodoItem:
-        return self._backend.add(
-            text, project=project, priority=priority, tags=tags,
-            due_at=due_at, metadata=metadata,
-        )
+    # Override methods that need dependency awareness
 
     def list(
         self,
@@ -65,39 +50,6 @@ class GraphWrapper:
             view = TodoItemView(item=item, blocked_by=self.get_blockers(item.id))
             views.append(view)
         return views
-
-    def get(self, id: str) -> TodoItem | None:
-        return self._backend.get(id)
-
-    def update(self, id: str, status: Status) -> TodoItem:
-        return self._backend.update(id, status)
-
-    def update_text(self, id: str, text: str) -> TodoItem:
-        return self._backend.update_text(id, text)
-
-    def update_priority(self, id: str, priority: Priority | None) -> TodoItem:
-        return self._backend.update_priority(id, priority)
-
-    def update_tags(self, id: str, tags: list[str] | None) -> TodoItem:
-        return self._backend.update_tags(id, tags)
-
-    def update_due_at(self, id: str, due_at: datetime | None) -> TodoItem:
-        return self._backend.update_due_at(id, due_at)
-
-    def update_metadata(self, id: str, metadata: dict[str, str] | None) -> TodoItem:
-        return self._backend.update_metadata(id, metadata)
-
-    def set_metadata_key(self, id: str, key: str, value: str) -> TodoItem:
-        return self._backend.set_metadata_key(id, key, value)
-
-    def remove_metadata_key(self, id: str, key: str) -> TodoItem:
-        return self._backend.remove_metadata_key(id, key)
-
-    def add_tag(self, id: str, tag: str) -> TodoItem:
-        return self._backend.add_tag(id, tag)
-
-    def remove_tag(self, id: str, tag: str) -> TodoItem:
-        return self._backend.remove_tag(id, tag)
 
     def delete(self, id: str) -> None:
         # Also clean up dependencies
@@ -211,8 +163,9 @@ class GraphWrapper:
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self._path)
+        path = self.storage_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(path)
         # Pragmas for concurrent access (multiple agents)
         conn.execute("PRAGMA journal_mode = WAL")
         conn.execute("PRAGMA busy_timeout = 5000")

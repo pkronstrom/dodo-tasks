@@ -127,8 +127,9 @@ class TodoService:
     @property
     def storage_path(self) -> str:
         """Get the storage path for current backend."""
-        if hasattr(self._backend, "_path"):
-            return str(self._backend._path)
+        path = getattr(self._backend, "storage_path", None)
+        if path is not None:
+            return str(path)
         return "N/A"
 
     @property
@@ -219,44 +220,8 @@ class TodoService:
         elif backend_name == "sqlite":
             return backend_cls(self._get_sqlite_path())
         elif backend_name == "obsidian":
-            # For local dodos, derive project name from storage path
-            project = self._project_id
-            if not project and self._storage_path:
-                # Use parent directory name as project (e.g., .dodo/myproject -> myproject)
-                # or the directory above .dodo if it's a default local dodo
-                if self._storage_path.name == ".dodo":
-                    project = self._storage_path.parent.name
-                else:
-                    project = self._storage_path.name
-            return backend_cls(
-                api_url=self._config.get_plugin_config(
-                    "obsidian", "api_url", "https://localhost:27124"
-                ),
-                api_key=self._config.get_plugin_config("obsidian", "api_key", ""),
-                vault_path=self._config.get_plugin_config(
-                    "obsidian", "vault_path", "dodo/{project}.md"
-                ),
-                project=project,
-                # Formatting settings
-                priority_syntax=self._config.get_plugin_config(
-                    "obsidian", "priority_syntax", "symbols"
-                ),
-                timestamp_syntax=self._config.get_plugin_config(
-                    "obsidian", "timestamp_syntax", "hidden"
-                ),
-                tags_syntax=self._config.get_plugin_config(
-                    "obsidian", "tags_syntax", "hashtags"
-                ),
-                group_by_tags=self._config.get_plugin_config(
-                    "obsidian", "group_by_tags", "true"
-                ) in ("true", "1", True),
-                default_header_level=int(self._config.get_plugin_config(
-                    "obsidian", "default_header_level", "3"
-                ) or 3),
-                sort_by=self._config.get_plugin_config(
-                    "obsidian", "sort_by", "priority"
-                ),
-            )
+            backend_cls = _resolve_backend_class(backend_ref)
+            return backend_cls.from_config(self._config, self._project_id, self._storage_path)
         else:
             # For plugin backends, check constructor signature
             sig = inspect.signature(backend_cls.__init__)

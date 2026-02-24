@@ -8,6 +8,11 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from dodo.cli_context import (
+    get_service_for_path as _get_service_with_path,
+    resolve_for_cli as _resolve_dodo,
+)
+
 console = Console()
 
 bulk_app = typer.Typer(
@@ -21,25 +26,9 @@ def _get_config():
     from dodo.config import Config
     return Config.load()
 
-
-def _resolve_dodo(config, dodo_name=None, global_=False):
-    from dodo.resolve import InvalidDodoNameError, resolve_dodo
-    try:
-        result = resolve_dodo(config, dodo_name, global_)
-        return result.name, result.path
-    except InvalidDodoNameError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
-
-
 def _get_service(config, project_id):
     from dodo.core import TodoService
     return TodoService(config, project_id)
-
-
-def _get_service_with_path(config, path):
-    from dodo.core import TodoService
-    return TodoService(config, project_id=None, storage_path=path)
 
 
 def _get_ids_from_input(args: list[str]) -> list[str]:

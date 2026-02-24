@@ -11,6 +11,11 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 from rich.console import Console
 
+from dodo.cli_context import (
+    get_service_for_path as _get_service_with_path,
+    resolve_for_cli as _resolve_dodo,
+)
+
 if TYPE_CHECKING:
     from dodo.config import Config
     from dodo.core import TodoService
@@ -53,36 +58,6 @@ def _get_service(config: Config, project_id: str | None) -> TodoService:
     from dodo.core import TodoService
 
     return TodoService(config, project_id)
-
-
-def _resolve_dodo(
-    config: Config,
-    dodo_name: str | None = None,
-    global_: bool = False,
-) -> tuple[str | None, Path | None]:
-    """Resolve which dodo to use. Wrapper for shared resolve_dodo.
-
-    Returns tuple for backward compatibility (supports unpacking).
-    The underlying resolve_dodo returns ResolvedDodo which supports __iter__.
-
-    Raises typer.Exit(1) if dodo_name is invalid.
-    """
-    from dodo.resolve import InvalidDodoNameError, resolve_dodo
-
-    try:
-        result = resolve_dodo(config, dodo_name, global_)
-        return result.name, result.path
-    except InvalidDodoNameError as e:
-        console.print(f"[red]Error:[/red] {e}")
-        raise typer.Exit(1)
-
-
-def _get_service_with_path(config: Config, path: Path) -> TodoService:
-    """Create TodoService with explicit storage path."""
-    from dodo.core import TodoService
-
-    return TodoService(config, project_id=None, storage_path=path)
-
 
 # --- Plugin command routing ---
 
@@ -508,7 +483,7 @@ def rm(
 @app.command()
 def undo():
     """Undo the last operation."""
-    from dodo.models import Priority, Status
+    from dodo.models import Priority
 
     last = _load_last_action()
 
@@ -551,7 +526,7 @@ def undo():
                 try:
                     svc.delete(item_id)
                     restored += 1
-                except Exception as e:
+                except (KeyError, ValueError) as e:
                     failed += 1
                     console.print(f"[red]Failed to remove {item_id}:[/red] {e}")
         if restored > 0:
@@ -566,9 +541,9 @@ def undo():
             if item_id:
                 try:
                     # Update status back to pending
-                    svc._backend.update(item_id, Status.PENDING)
+                    svc.toggle(item_id)
                     restored += 1
-                except Exception as e:
+                except (KeyError, ValueError) as e:
                     failed += 1
                     console.print(f"[red]Failed to restore {item_id}:[/red] {e}")
         if restored > 0:
@@ -588,14 +563,13 @@ def undo():
                     except ValueError:
                         pass
 
-                svc._backend.add(
+                svc.add(
                     text=item_data.get("text", ""),
-                    project=project_id,
                     priority=priority,
                     tags=item_data.get("tags"),
                 )
                 restored += 1
-            except Exception as e:
+            except (KeyError, ValueError) as e:
                 failed += 1
                 text_preview = item_data.get("text", "")[:30]
                 console.print(f"[red]Failed to restore '{text_preview}...':[/red] {e}")
@@ -623,7 +597,7 @@ def undo():
                     if "text" in item_data:
                         svc.update_text(item_id, item_data["text"])
                     restored += 1
-                except Exception as e:
+                except (KeyError, ValueError) as e:
                     failed += 1
                     console.print(f"[red]Failed to restore {item_id}:[/red] {e}")
         if restored > 0:

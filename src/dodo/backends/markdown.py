@@ -52,6 +52,10 @@ class MarkdownBackend:
         self._format = format or MarkdownFormat()
         self._lock_path = file_path.with_suffix(".lock")
 
+    @property
+    def storage_path(self) -> Path | None:
+        return self._path
+
     def add(
         self,
         text: str,

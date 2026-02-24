@@ -28,3 +28,11 @@ def test_protocol_has_new_methods():
     assert "remove_metadata_key" in methods
     assert "add_tag" in methods
     assert "remove_tag" in methods
+
+
+def test_backend_has_storage_path_property(tmp_path):
+    """All backends must expose storage_path as a property."""
+    from dodo.backends.sqlite import SqliteBackend
+
+    backend = SqliteBackend(tmp_path / "test.db")
+    assert backend.storage_path == tmp_path / "test.db"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from dodo.models import Priority, Status, TodoItem
@@ -81,6 +82,11 @@ class TodoBackend(Protocol):
 
     def remove_tag(self, id: str, tag: str) -> TodoItem:
         """Remove a single tag atomically."""
+        ...
+
+    @property
+    def storage_path(self) -> Path | None:
+        """Get the storage path for this backend, if applicable."""
         ...
 
 
